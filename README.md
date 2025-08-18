@@ -18,14 +18,14 @@ Smart (sort of), safe (at least, I think so...), and configurable cache manageme
 
 ## Features
 
-- ** Smart Detection**: Automatically detects installed development tools and their cache locations
-- ** Interactive Wizard**: CLI interface with progress bars and colored output
-- ** Configurable**: Choose exactly which caches to clean and when
-- ** Size Analytics**: See how much space each cache is using before cleaning
-- ** Safe by Default**: Dry-run mode to preview cache clean queue
-- ** Performance**: Parallel cleaning operations for efficiency
-- ** Auto-clean Mode**: Schedule automatic cache cleaning based on your preferences
-- ** Cross-platform**: Works on macOS, Linux, and Windows
+- **Smart Detection**: Automatically detects installed development tools and their cache locations
+- **Interactive Wizard**: CLI interface with progress bars and colored output
+- **Configurable**: Choose exactly which caches to clean and when
+- **Size Analytics**: See how much space each cache is using before cleaning
+- **Safe by Default**: Dry-run mode to preview cache clean queue
+- **Performance**: Parallel cleaning operations for efficiency
+- **Auto-clean Mode**: Schedule automatic cache cleaning based on your preferences
+- **Cross-platform**: Works on macOS, Linux, and Windows
 
 ## 📦 Installation
 
