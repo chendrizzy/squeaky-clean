@@ -77,6 +77,8 @@ export interface UserConfig {
     verbose: boolean;
     showSizes: boolean;
     useColors: boolean;
+    quiet?: boolean;
+    format?: 'json' | 'text';
   };
 }
 

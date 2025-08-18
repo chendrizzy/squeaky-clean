@@ -11,6 +11,16 @@ const cleaner: CleanerModule = {
   type: 'package-manager' as CacheType,
   description: 'Nix package manager store and garbage collection',
 
+  async isAvailable(): Promise<boolean> {
+    // Check if nix is installed
+    try {
+      execSync('which nix-collect-garbage', { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
   async getCacheInfo(): Promise<CacheInfo> {
     // Check if nix is installed
     let isInstalled = false;

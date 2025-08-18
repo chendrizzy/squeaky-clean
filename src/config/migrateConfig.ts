@@ -52,9 +52,9 @@ export function legacyToNew(json: LegacyConfig): NewConfig {
   // 3) output -> defaults (map what reasonably translates)
   if (json.output && typeof json.output === "object") {
     out.defaults = {
-      // dryRun remains user-controlled; don’t infer from verbose/useColors
+      // dryRun remains user-controlled; don't infer from verbose/useColors
       // Carry nothing by default—these were UI prefs. If you prefer, you can stash them:
-      // @ts-expect-error keep legacy UI hints
+      // keep legacy UI hints
       _legacyOutput: json.output
     } as any;
   }

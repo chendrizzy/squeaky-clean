@@ -204,3 +204,15 @@ export function sanitizePath(inputPath: string): string {
   // Normalize path separators to forward slashes and remove invalid characters
   return path.normalize(inputPath).replace(/\\/g, '/').replace(/[<>:"|?*]/g, '');
 }
+
+// Alias for cache size calculation
+export async function getCacheSize(dirPath: string): Promise<number> {
+  return getDirectorySize(dirPath, false);
+}
+
+// Clear multiple paths
+export async function clearPaths(paths: string[]): Promise<void> {
+  for (const p of paths) {
+    await safeRmrf(p);
+  }
+}

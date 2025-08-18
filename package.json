@@ -1,6 +1,6 @@
 {
   "name": "squeaky-clean",
-  "version": "0.2.0",
+  "version": "0.0.2",
   "description": "✨ The ultimate developer cache cleaner with interactive configuration wizard! Smart, safe, and configurable cache management for 25+ development tools.",
   "main": "dist/cli.js",
   "bin": {
@@ -20,7 +20,11 @@
     "format": "prettier --write src/**/*.{ts,tsx,json}",
     "clean": "rimraf dist",
     "prepublishOnly": "npm run clean && npm run build",
-    "release": "npm run test && npm run build && npm publish"
+    "release": "npm run test && npm run build && npm publish",
+    "version:patch": "npm version patch && node scripts/update-version.js",
+    "version:minor": "npm version minor && node scripts/update-version.js",
+    "version:major": "npm version major && node scripts/update-version.js",
+    "version:sync": "node scripts/update-version.js"
   },
   "keywords": [
     "cache",
@@ -80,6 +84,8 @@
     "LICENSE"
   ],
   "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "chalk": "^4.1.2",
     "commander": "^11.1.0",
     "conf": "^10.2.0",

@@ -1,4 +1,4 @@
-# 🧼 Squeaky Clean ✨
+# squeaky🧼✨clean
 <div align="center">
 
 [![npm version](https://img.shields.io/npm/v/squeaky-clean.svg)](https://www.npmjs.com/package/squeaky-clean)
@@ -6,7 +6,7 @@
 [![Node.js Version](https://img.shields.io/node/v/squeaky-clean.svg)](https://nodejs.org)
 [![npm downloads](https://img.shields.io/npm/dm/squeaky-clean.svg)](https://www.npmjs.com/package/squeaky-clean)
 
-**Easy development cache cleaner with interactive configuration**
+**Easy cross-system development cache cleaner/manager with interactive configuration**
 
 Smart (sort of), safe (at least, I think so...), and configurable cache management for 25+ development tools.
 

@@ -1,5 +1,5 @@
 import { CleanerModule, CacheInfo, ClearResult, CacheType } from '../types';
-import { getCacheSize, clearPaths } from '../utils/fs';
+import { getCacheSize } from '../utils/fs';
 import { execSync } from 'child_process';
 import { printVerbose, symbols } from '../utils/cli';
 import os from 'os';
@@ -8,6 +8,21 @@ const cleaner: CleanerModule = {
   name: 'brew',
   type: 'package-manager' as CacheType,
   description: 'Homebrew package manager caches and old versions',
+
+  async isAvailable(): Promise<boolean> {
+    // Only works on macOS and Linux
+    if (os.platform() !== 'darwin' && os.platform() !== 'linux') {
+      return false;
+    }
+
+    // Check if brew is installed
+    try {
+      execSync('which brew', { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  },
 
   async getCacheInfo(): Promise<CacheInfo> {
     // Only works on macOS and Linux

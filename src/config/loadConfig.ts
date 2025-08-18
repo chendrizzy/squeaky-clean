@@ -3,14 +3,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import Ajv, { DefinedError } from "ajv";
 import addFormats from "ajv-formats";
 
 const ajv = new Ajv({ allErrors: true, strict: true, allowUnionTypes: true });
 addFormats(ajv);
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export type SqueakyConfig = Record<string, any>;
 
@@ -64,7 +61,7 @@ export async function resolveExtendsChain(
 }
 
 export async function loadAndValidateConfig(configPath: string): Promise<SqueakyConfig> {
-  const schemaPath = path.join(__dirname, "../../schemas/config.schema.json");
+  const schemaPath = path.join(process.cwd(), "schemas/config.schema.json");
   const schema = await loadJson(schemaPath);
   const validate = ajv.compile(schema);
 
