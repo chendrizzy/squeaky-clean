@@ -1,4 +1,4 @@
-# 🧼 Squeaky Clean
+# 🧼 Squeaky Clean ✨
 
 <div align="center">
 
@@ -7,9 +7,9 @@
 [![Node.js Version](https://img.shields.io/node/v/squeaky-clean.svg)](https://nodejs.org)
 [![npm downloads](https://img.shields.io/npm/dm/squeaky-clean.svg)](https://www.npmjs.com/package/squeaky-clean)
 
-**✨ The ultimate developer cache cleaner with interactive configuration wizard!**
+**Easy development cache cleaner with interactive configuration**
 
-Smart, safe, and configurable cache management for 25+ development tools.
+Smart (sort of), safe (at least, I think so...), and configurable cache management for 25+ development tools.
 
 [Features](#features) • [Installation](#installation) • [Usage](#usage) • [Configuration](#configuration) • [Supported Tools](#supported-tools) • [Contributing](#contributing)
 
@@ -17,16 +17,16 @@ Smart, safe, and configurable cache management for 25+ development tools.
 
 ---
 
-## 🚀 Features
+## Features
 
-- **🎯 Smart Detection**: Automatically detects installed development tools and their cache locations
-- **🎨 Interactive Wizard**: Beautiful CLI interface with progress bars and colored output
-- **🔧 Highly Configurable**: Choose exactly which caches to clean and when
-- **📊 Size Analytics**: See how much space each cache is using before cleaning
-- **🛡️ Safe by Default**: Dry-run mode to preview what will be cleaned
-- **⚡ Performance**: Parallel cleaning operations for maximum speed
-- **🔄 Auto-clean Mode**: Schedule automatic cache cleaning based on your preferences
-- **📱 Cross-platform**: Works on macOS, Linux, and Windows
+- ** Smart Detection**: Automatically detects installed development tools and their cache locations
+- ** Interactive Wizard**: CLI interface with progress bars and colored output
+- ** Configurable**: Choose exactly which caches to clean and when
+- ** Size Analytics**: See how much space each cache is using before cleaning
+- ** Safe by Default**: Dry-run mode to preview cache clean queue
+- ** Performance**: Parallel cleaning operations for efficiency
+- ** Auto-clean Mode**: Schedule automatic cache cleaning based on your preferences
+- ** Cross-platform**: Works on macOS, Linux, and Windows
 
 ## 📦 Installation
 
@@ -55,7 +55,7 @@ bun add -g squeaky-clean
 npm install --save-dev squeaky-clean
 ```
 
-## 🎮 Usage
+## Usage
 
 ### Interactive Mode (Recommended)
 
@@ -350,20 +350,21 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- Built with [Commander.js](https://github.com/tj/commander.js) for CLI parsing
-- [Chalk](https://github.com/chalk/chalk) for beautiful terminal output
+**Built with**:
+- [Commander.js](https://github.com/tj/commander.js) for CLI parsing
+- [Chalk](https://github.com/chalk/chalk) for puuurrrtty terminal output
 - [Inquirer.js](https://github.com/SBoudrias/Inquirer.js) for interactive prompts
 - [Ora](https://github.com/sindresorhus/ora) for elegant terminal spinners
 
 ## 📮 Support
 
-- 🐛 [Report bugs](https://github.com/justinchen/squeaky-clean/issues)
-- 💡 [Request features](https://github.com/justinchen/squeaky-clean/issues)
-- 📖 [Read the docs](https://github.com/justinchen/squeaky-clean#readme)
+- 🐛 [Report bugs](https://github.com/chendrizzy/squeaky-clean/issues)
+- 💡 [Request features](https://github.com/chendrizzy/squeaky-clean/issues)
+- 📖 [Read the docs](https://github.com/chendrizzy/squeaky-clean#readme)
 - ⭐ Star the project on GitHub!
 
 ---
 
 <div align="center">
-Made with ❤️ by developers, for developers
+Made with ❤️ by and for developers
 </div>
