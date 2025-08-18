@@ -66,7 +66,9 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
     
     for (const result of results) {
       if (result.success) {
-        const freed = (result.sizeBefore || 0) - (result.sizeAfter || 0);
+        // In dry-run mode, sizeBefore shows what would be cleaned
+        // In actual clean mode, it shows what was cleaned
+        const freed = options.dryRun ? (result.sizeBefore || 0) : ((result.sizeBefore || 0) - (result.sizeAfter || 0));
         totalFreed += freed;
         successCount++;
         

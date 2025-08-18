@@ -1,5 +1,5 @@
 import { cacheManager } from '../cleaners';
-import { printHeader, printSuccess, printInfo } from '../utils/cli';
+import { printHeader, printSuccess, printInfo, formatSize } from '../utils/cli';
 import chalk from 'chalk';
 
 export async function listCommand(options?: any): Promise<void> {
@@ -23,6 +23,9 @@ export async function listCommand(options?: any): Promise<void> {
   // Check availability for each cleaner
   console.log(chalk.cyan('\nDetecting installed tools...\n'));
   
+  let totalSize = 0;
+  let availableCount = 0;
+  
   for (const [type, cleaners] of Object.entries(cleanersByType)) {
     if (cleaners.length === 0) continue;
     
@@ -38,12 +41,30 @@ export async function listCommand(options?: any): Promise<void> {
     for (const cleaner of cleaners) {
       const isAvailable = await cleaner.isAvailable();
       const status = isAvailable ? chalk.green('✅ Available') : chalk.gray('⚪ Not detected');
-      console.log(`  ${status} ${chalk.bold(cleaner.name)} - ${cleaner.description}`);
+      
+      let sizeInfo = '';
+      if (options?.sizes && isAvailable) {
+        try {
+          const result = await cleaner.getCacheInfo();
+          if (result.size && result.size > 0) {
+            sizeInfo = chalk.yellow(` (${formatSize(result.size)})`);
+            totalSize += result.size;
+          }
+        } catch (error) {
+          // Silently ignore size check errors
+        }
+      }
+      
+      if (isAvailable) availableCount++;
+      console.log(`  ${status} ${chalk.bold(cleaner.name)}${sizeInfo} - ${cleaner.description}`);
     }
     
     console.log(); // Add spacing between sections
   }
   
-  printInfo(`Total cleaners: ${allCleaners.length}`);
+  printInfo(`Total cleaners: ${allCleaners.length} (${availableCount} available)`);
+  if (options?.sizes && totalSize > 0) {
+    printInfo(`Total cache size: ${formatSize(totalSize)}`);
+  }
   printSuccess('Use \`squeaky-clean clean --dry-run\` to see what would be cleaned');
 }

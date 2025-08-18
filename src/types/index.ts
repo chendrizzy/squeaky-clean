@@ -1,3 +1,20 @@
+// Cache category for granular control
+export interface CacheCategory {
+  id: string;
+  name: string;
+  description: string;
+  paths: string[];
+  size?: number;
+  lastAccessed?: Date;
+  lastModified?: Date;
+  priority: 'critical' | 'important' | 'normal' | 'low';
+  useCase: 'development' | 'testing' | 'production' | 'experimental' | 'archived';
+  isProjectSpecific?: boolean;
+  projectPath?: string;
+  ageInDays?: number;
+}
+
+// Enhanced cache info with categories
 export interface CacheInfo {
   name: string;
   type: CacheType;
@@ -6,9 +23,25 @@ export interface CacheInfo {
   isInstalled: boolean;
   size?: number;
   lastModified?: Date;
+  categories?: CacheCategory[];
+  totalSize?: number;
+  oldestCache?: Date;
+  newestCache?: Date;
 }
 
 export type CacheType = 'package-manager' | 'build-tool' | 'browser' | 'ide' | 'system' | 'other';
+
+// Cache selection criteria
+export interface CacheSelectionCriteria {
+  olderThanDays?: number;
+  newerThanDays?: number;
+  largerThanMB?: number;
+  smallerThanMB?: number;
+  useCases?: Array<'development' | 'testing' | 'production' | 'experimental' | 'archived'>;
+  priorities?: Array<'critical' | 'important' | 'normal' | 'low'>;
+  projectSpecific?: boolean;
+  categories?: string[];
+}
 
 export interface ClearResult {
   name: string;
@@ -17,6 +50,21 @@ export interface ClearResult {
   sizeAfter?: number;
   error?: string;
   clearedPaths: string[];
+  clearedCategories?: string[];
+}
+
+// Tool-specific granular settings
+export interface ToolGranularSettings {
+  enabled: boolean;
+  categories?: {
+    [categoryId: string]: {
+      enabled: boolean;
+      autoClean?: boolean;
+      maxAge?: number; // days
+      maxSize?: number; // MB
+    };
+  };
+  defaultSelectionCriteria?: CacheSelectionCriteria;
 }
 
 export interface UserConfig {
@@ -29,7 +77,7 @@ export interface UserConfig {
     system: boolean;
   };
   
-  // Specific tool preferences
+  // Specific tool preferences (backward compatible)
   tools: {
     // Package managers
     npm: boolean;
@@ -61,12 +109,27 @@ export interface UserConfig {
     maven: boolean;
   };
   
+  // Granular tool settings (new)
+  toolSettings?: {
+    [toolName: string]: ToolGranularSettings;
+  };
+  
+  // Global cache policies (new)
+  cachePolicies?: {
+    autoCleanOlderThan?: number; // days
+    preserveRecentlyUsed?: number; // days
+    preserveProjectSpecific?: boolean;
+    preserveCriticalPriority?: boolean;
+    defaultUseCase?: 'development' | 'testing' | 'production' | 'experimental' | 'archived';
+  };
+  
   // Safety settings
   safety: {
     requireConfirmation: boolean;
     dryRunDefault: boolean;
     backupBeforeClearing: boolean;
     excludeSystemCritical: boolean;
+    preserveActiveDevelopment?: boolean; // new
   };
   
   // Custom paths
@@ -79,6 +142,8 @@ export interface UserConfig {
     useColors: boolean;
     quiet?: boolean;
     format?: 'json' | 'text';
+    showCategories?: boolean; // new
+    showRecency?: boolean; // new
   };
 }
 
@@ -88,7 +153,9 @@ export interface CleanerModule {
   description: string;
   isAvailable: () => Promise<boolean>;
   getCacheInfo: () => Promise<CacheInfo>;
-  clear: (dryRun?: boolean) => Promise<ClearResult>;
+  getCacheCategories?: () => Promise<CacheCategory[]>;
+  clear: (dryRun?: boolean, criteria?: CacheSelectionCriteria) => Promise<ClearResult>;
+  clearByCategory?: (categoryIds: string[], dryRun?: boolean) => Promise<ClearResult>;
 }
 
 export interface CommandOptions {
@@ -98,6 +165,15 @@ export interface CommandOptions {
   force?: boolean;
   types?: string[];
   exclude?: string[];
+  // Granular selection options
+  olderThan?: string; // e.g., "7d", "2w", "1m"
+  newerThan?: string;
+  largerThan?: string; // e.g., "100MB", "1GB"
+  smallerThan?: string;
+  useCase?: string; // development, testing, production, etc.
+  priority?: string; // critical, important, normal, low
+  categories?: string[]; // specific category IDs
+  showCategories?: boolean; // show available categories
   config?: boolean;
   sizes?: boolean;
 }
