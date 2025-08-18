@@ -1,0 +1,9 @@
+// Example user config when working with team presets with extends and envs expansions
+
+{
+  "extends": ["@yourorg/squeaky-preset.json", "${HOME}/.squeaky-clean/local.json"],
+  "profiles": {
+    "ci": { "include": ["npm", "pnpm", "yarn", "gradle", "pip"], "exclude": ["docker", "xcode"] }
+  },
+  "plugins": { "scopes": ["@yourorg"] }
+}

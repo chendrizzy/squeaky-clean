@@ -1,0 +1,26 @@
+// (new keys) trimmed; alignment with updated schema
+
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Squeaky Config (new)",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "cleaners": { "type": "object", "additionalProperties": true },
+    "scheduler": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "frequency": { "type": "string", "enum": ["daily","weekly","monthly"] },
+        "dayOfWeek": { "type": ["string","integer"] },
+        "time": { "type": "string" },
+        "args": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "defaults": { "type": "object", "additionalProperties": true },
+    "plugins": { "type": "object", "additionalProperties": true },
+    "profiles": { "type": "object", "additionalProperties": true },
+    "extends": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] }
+  }
+}

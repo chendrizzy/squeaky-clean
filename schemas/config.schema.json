@@ -1,0 +1,196 @@
+{
+  "$id": "https://squeaky.clean/schema/config.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Squeaky Clean Config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "description": "Config version. Increment when breaking fields change.",
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[\\w.-]+)?(?:\\+[\\w.-]+)?$",
+      "default": "0.1.0"
+    },
+    "extends": {
+      "description": "Path(s) or package id(s) of base configs to merge in (earlier entries merge first).",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      ]
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": { "type": "boolean", "default": true },
+        "followSymlinks": { "type": "boolean", "default": false },
+        "restrictToHome": { "type": "boolean", "default": true },
+        "trash": { "type": "boolean", "default": false },
+        "concurrency": { "type": "integer", "minimum": 1, "maximum": 64, "default": 4 },
+        "recentDays": {
+          "description": "Skip cleaning paths modified within the last N days unless forced.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 7
+        },
+        "sizeScan": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enableCache": { "type": "boolean", "default": true },
+            "cachePath": { "type": "string", "default": "${HOME}/.squeaky-clean/state.json" },
+            "maxParallelFs": { "type": "integer", "minimum": 1, "maximum": 128, "default": 16 }
+          }
+        }
+      }
+    },
+    "profiles": {
+      "description": "Named bundles of cleaners to run together.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "description": { "type": "string" },
+          "include": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "uniqueItems": true
+          },
+          "exclude": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "cleaners": {
+      "description": "Per-cleaner configuration keyed by cleaner id (e.g., npm, yarn, pnpm, brew, docker, xcode, jetbrains-<ide>, gradle, nix, pip, …).",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean", "default": true },
+          "paths": {
+            "description": "Extra paths for file-based cleaners (globs allowed).",
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "exclude": {
+            "description": "Path globs to exclude.",
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "trash": { "type": "boolean" },
+          "dryRun": { "type": "boolean" },
+          "followSymlinks": { "type": "boolean" },
+          "restrictToHome": { "type": "boolean" },
+          "recentDays": { "type": "integer", "minimum": 0 },
+          "concurrency": { "type": "integer", "minimum": 1, "maximum": 64 },
+          "pre": {
+            "description": "Optional shell/command to run before cleaning.",
+            "type": "string"
+          },
+          "post": {
+            "description": "Optional shell/command to run after cleaning.",
+            "type": "string"
+          },
+
+          /* --- Cleaner-specific knobs (optional per cleaner) --- */
+          "docker": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "pruneVolumes": { "type": "boolean", "default": true },
+              "until": {
+                "description": "e.g. '168h' or Docker filter date like '2024-01-01T00:00:00'.",
+                "type": "string"
+              },
+              "keepBytes": {
+                "description": "Keep at least this many bytes (approx) by skipping oldest deletions.",
+                "type": "integer",
+                "minimum": 0
+              },
+              "requireConfirm": { "type": "boolean", "default": true }
+            }
+          },
+          "xcode": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "skipRecentProjects": { "type": "integer", "minimum": 0, "default": 3 },
+              "derivedDataPath": { "type": "string", "default": "${HOME}/Library/Developer/Xcode/DerivedData" }
+            }
+          },
+          "nix": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "deleteOlderThan": { "type": "string", "default": "7d" }
+            }
+          }
+        }
+      }
+    },
+    "plugins": {
+      "description": "Plugin resolution options.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "scopes": {
+          "description": "NPM scopes/namespaces to search for plugins (e.g., '@yourorg').",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "prefixes": {
+          "description": "Package name prefixes used for discovery.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": ["squeaky-cleaner-"],
+          "uniqueItems": true
+        }
+      }
+    },
+    "scheduler": {
+      "description": "Cross-platform scheduling configuration for `squeaky auto`.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "frequency": {
+          "description": "How often to run.",
+          "type": "string",
+          "enum": ["daily", "weekly", "monthly"]
+        },
+        "dayOfWeek": {
+          "description": "0-6 (Sun-Sat) or name; used when frequency=weekly.",
+          "oneOf": [
+            { "type": "integer", "minimum": 0, "maximum": 6 },
+            { "type": "string", "enum": ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] }
+          ]
+        },
+        "time": {
+          "description": "24h time like '09:00'.",
+          "type": "string",
+          "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+          "default": "09:00"
+        },
+        "args": {
+          "description": "Extra CLI args for scheduled runs (e.g., ['--profile','web','--force']).",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "required": []
+}

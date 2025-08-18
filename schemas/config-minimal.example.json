@@ -1,0 +1,29 @@
+// minimal example config
+
+{
+  "version": "0.1.0",
+  "defaults": {
+    "dryRun": true,
+    "restrictToHome": true,
+    "recentDays": 7
+  },
+  "profiles": {
+    "web": { "include": ["npm", "yarn", "pnpm", "vite", "webpack"] },
+    "mobile": { "include": ["gradle", "android-sdk", "xcode"] }
+  },
+  "cleaners": {
+    "npm": { "enabled": true },
+    "pnpm": { "enabled": true },
+    "yarn": { "enabled": false },
+    "brew": { "enabled": true },
+    "docker": { "docker": { "until": "168h", "pruneVolumes": true, "requireConfirm": true } },
+    "xcode": { "xcode": { "skipRecentProjects": 3 } }
+  },
+  "scheduler": {
+    "enabled": true,
+    "frequency": "weekly",
+    "dayOfWeek": "sun",
+    "time": "10:00",
+    "args": ["--profile", "web", "--json"]
+  }
+}

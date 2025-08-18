@@ -9,6 +9,8 @@ import yarnCleaner from './yarn';
 import pnpmCleaner from './pnpm';
 import bunCleaner from './bun';
 import pipCleaner from './pip';
+import brewCleaner from './brew';
+import nixCleaner from './nix';
 
 // Build tools
 import webpackCleaner from './webpack';
@@ -44,6 +46,8 @@ export class CacheManager {
     this.cleaners.set('pnpm', pnpmCleaner);
     this.cleaners.set('bun', bunCleaner);
     this.cleaners.set('pip', pipCleaner);
+    this.cleaners.set('brew', brewCleaner);
+    this.cleaners.set('nix', nixCleaner);
     
     // Build tools
     this.cleaners.set('webpack', webpackCleaner);

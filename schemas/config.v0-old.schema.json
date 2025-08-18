@@ -1,0 +1,32 @@
+// (legacy keys) minimal ; placeholders for later expansion
+
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Squeaky Config (legacy)",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "tools": { "type": "object", "additionalProperties": true },
+    "auto": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "schedule": { "type": "string", "enum": ["daily","weekly","monthly"] },
+        "dayOfWeek": { "type": ["string","integer"] },
+        "time": { "type": "string" },
+        "sizeThreshold": { "type": "string" },
+        "args": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "verbose": { "type": "boolean" },
+        "useColors": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "extends": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] }
+  }
+}

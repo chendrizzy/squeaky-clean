@@ -18,14 +18,17 @@ Smart (sort of), safe (at least, I think so...), and configurable cache manageme
 
 ## Features
 
-- **Smart Detection**: Automatically detects installed development tools and their cache locations
-- **Interactive Wizard**: CLI interface with progress bars and colored output
-- **Configurable**: Choose exactly which caches to clean and when
-- **Size Analytics**: See how much space each cache is using before cleaning
-- **Safe by Default**: Dry-run mode to preview cache clean queue
-- **Performance**: Parallel cleaning operations for efficiency
-- **Auto-clean Mode**: Schedule automatic cache cleaning based on your preferences
-- **Cross-platform**: Works on macOS, Linux, and Windows
+- **🎯 Smart Detection**: Automatically detects installed development tools and their cache locations
+- **🎨 Interactive Wizard**: Beautiful CLI interface with progress bars and colored output
+- **🔧 Highly Configurable**: Choose exactly which caches to clean and when
+- **📊 Size Analytics**: See how much space each cache is using before cleaning
+- **🛡️ Safe by Default**: Dry-run mode to preview what will be cleaned (v0.1.0+ defaults to dry-run)
+- **⚡ Performance**: Parallel cleaning operations for maximum speed
+- **🔄 Auto-clean Mode**: Schedule automatic cache cleaning based on your preferences
+- **📱 Cross-platform**: Works on macOS, Linux, and Windows
+- **🔄 Config Migration**: Automatic migration from legacy to new configuration format
+- **🔌 Plugin Support**: Discover and use community cleaners via npm packages
+- **📋 JSON Output**: Machine-readable output for scripting and automation
 
 ## 📦 Installation
 
@@ -154,6 +157,8 @@ squeaky list
 | **pnpm** | `~/.pnpm-store`, `~/.cache/pnpm` |
 | **Bun** | `~/.bun/install/cache` |
 | **pip** | `~/.cache/pip` |
+| **Homebrew** | `brew --cache`, old versions |
+| **Nix** | `/nix/store` garbage, old generations |
 
 ### Build Tools
 
@@ -196,8 +201,51 @@ Squeaky Clean can be configured through:
 2. **Configuration file**: `~/.squeaky-clean/config.json`
 3. **Environment variables**: `SQUEAKY_*`
 
-### Configuration File Example
+### Configuration Migration (v0.2.0+)
 
+Squeaky Clean now supports automatic migration from legacy configuration format to the new schema:
+
+```bash
+# Migrate your config automatically
+squeaky config doctor
+
+# Or use the doctor command
+squeaky doctor --config
+
+# Preview migration without changing files
+squeaky config doctor --dry-run
+
+# Migrate to a different file
+squeaky config doctor --input old-config.json --output new-config.json
+```
+
+### Configuration File Examples
+
+#### New Schema (v0.2.0+)
+```json
+{
+  "cleaners": {
+    "npm": { "enabled": true },
+    "yarn": { "enabled": true },
+    "webpack": { "enabled": false }
+  },
+  "scheduler": {
+    "enabled": true,
+    "interval": "weekly",
+    "thresholds": {
+      "size": "1GB",
+      "age": "30d"
+    }
+  },
+  "defaults": {
+    "verbose": false,
+    "colors": true,
+    "format": "text"
+  }
+}
+```
+
+#### Legacy Schema (still supported)
 ```json
 {
   "tools": {

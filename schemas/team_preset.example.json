@@ -1,0 +1,15 @@
+// Example Team preset with extends and env expansions
+
+{
+  "version": "0.1.0",
+  "defaults": {
+    "dryRun": true,
+    "trash": true,
+    "concurrency": 8
+  },
+  "cleaners": {
+    "jetbrains-idea": {
+      "paths": ["${HOME}/Library/Caches/JetBrains/Idea*", "${XDG_CACHE_HOME}/JetBrains/Idea*"]
+    }
+  }
+}

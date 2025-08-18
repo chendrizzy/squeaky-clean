@@ -25,6 +25,8 @@ program
 program
   .option('-v, --verbose', 'enable verbose output')
   .option('--no-color', 'disable colored output')
+  .option('-q, --quiet', 'suppress non-essential output')
+  .option('--json', 'output results in JSON format')
   .hook('preAction', (thisCommand) => {
     const options = thisCommand.opts();
     
@@ -34,6 +36,14 @@ program
     
     if (options.noColor) {
       config.set({ output: { ...config.get().output, useColors: false } });
+    }
+    
+    if (options.quiet) {
+      config.set({ output: { ...config.get().output, quiet: true } });
+    }
+    
+    if (options.json) {
+      config.set({ output: { ...config.get().output, format: 'json' } });
     }
   });
 
@@ -98,7 +108,7 @@ program
   });
 
 // Config command - manage configuration
-program
+const configCmd = program
   .command('config')
   .description('manage configuration settings')
   .option('-l, --list', 'list current configuration')
@@ -121,19 +131,60 @@ program
     }
   });
 
-// Doctor command - diagnose issues
+// Config doctor subcommand - migrate legacy config
+configCmd
+  .command('doctor')
+  .description('migrate legacy configuration to new format')
+  .option('-i, --input <path>', 'input config path (default: ~/.squeaky-clean/config.json)')
+  .option('-o, --output <path>', 'output path for migrated config (default: overwrites input)')
+  .option('-d, --dry-run', 'show what would be migrated without writing')
+  .option('-q, --quiet', 'minimal output')
+  .action(async (options) => {
+    try {
+      printHeader('Configuration Migration');
+      const { runConfigDoctor } = await import('./commands/configDoctor');
+      await runConfigDoctor({
+        input: options.input,
+        output: options.output,
+        dryRun: options.dryRun,
+        quiet: options.quiet,
+      });
+    } catch (error) {
+      printError(`Failed to migrate config: ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+  });
+
+// Doctor command - diagnose issues and migrate config
 program
   .command('doctor')
   .alias('dr')
-  .description('diagnose potential issues with cache clearing')
-  .action(async () => {
+  .description('diagnose potential issues and migrate legacy config')
+  .option('--config', 'migrate legacy configuration to new format')
+  .option('-i, --input <path>', 'input config path (default: ~/.squeaky-clean/config.json)')
+  .option('-o, --output <path>', 'output path for migrated config (default: overwrites input)')
+  .option('-d, --dry-run', 'show what would be migrated without writing')
+  .option('-q, --quiet', 'minimal output')
+  .action(async (options) => {
     try {
-      printHeader('System Diagnosis');
-      
-      const { doctorCommand } = await import('./commands/doctor');
-      await doctorCommand();
+      if (options.config || options.input || options.output || options.dryRun) {
+        // Config migration mode
+        printHeader('Configuration Migration');
+        const { runConfigDoctor } = await import('./commands/configDoctor');
+        await runConfigDoctor({
+          input: options.input,
+          output: options.output,
+          dryRun: options.dryRun,
+          quiet: options.quiet,
+        });
+      } else {
+        // System diagnosis mode
+        printHeader('System Diagnosis');
+        const { doctorCommand } = await import('./commands/doctor');
+        await doctorCommand();
+      }
     } catch (error) {
-      printError(`Failed to run diagnosis: ${error instanceof Error ? error.message : error}`);
+      printError(`Failed to run doctor: ${error instanceof Error ? error.message : error}`);
       process.exit(1);
     }
   });
