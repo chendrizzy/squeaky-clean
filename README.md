@@ -1,20 +1,19 @@
-# squeaky🧼✨clean
+# 🧼squeaky-clean✨
 <div align="center">
-
-[![npm version](https://img.shields.io/npm/v/squeaky-clean.svg)](https://www.npmjs.com/package/squeaky-clean)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/node/v/squeaky-clean.svg)](https://nodejs.org)
-[![npm downloads](https://img.shields.io/npm/dm/squeaky-clean.svg)](https://www.npmjs.com/package/squeaky-clean)
 
 **Easy cross-system development cache cleaner/manager with interactive configuration**
 
-Smart (sort of), safe (at least, I think so...), and configurable cache management for 25+ development tools.
+Essentially a *"universal cachectl"*—**smart** *(sort of)*, **safe** (at least, I *think* it is...), and **configurable** cache cleaner/manager CLI-tool with support for *most* common development tools. Dsigned for easy integration expansion with additional tools *(forks **encouraged!**)*.
 
 [Features](#features) • [Installation](#installation) • [Usage](#usage) • [Configuration](#configuration) • [Supported Tools](#supported-tools) • [Contributing](#contributing)
 
-</div>
+---
+
+[![npm downloads](https://img.shields.io/npm/dm/squeaky-clean.svg)](https://www.npmjs.com/package/squeaky-clean) [![Node.js Version](https://img.shields.io/node/v/squeaky-clean.svg)](https://nodejs.org) [![npm version](https://img.shields.io/npm/v/squeaky-clean.svg)](https://www.npmjs.com/package/squeaky-clean) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
+
+</div>
 
 ## Features
 
@@ -398,10 +397,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 **Built with**:
-- [Commander.js](https://github.com/tj/commander.js) for CLI parsing
-- [Chalk](https://github.com/chalk/chalk) for puuurrrtty terminal output
-- [Inquirer.js](https://github.com/SBoudrias/Inquirer.js) for interactive prompts
-- [Ora](https://github.com/sindresorhus/ora) for elegant terminal spinners
+- *[Commander.js](https://github.com/tj/commander.js)* for CLI parsing
+- *[Chalk](https://github.com/chalk/chalk)* for puuurrrtty terminal output
+- *[Inquirer.js](https://github.com/SBoudrias/Inquirer.js)* for interactive prompts
+- *[Ora](https://github.com/sindresorhus/ora)* for elegant terminal spinners
 
 ## 📮 Support
 

@@ -158,3 +158,10 @@ lib/
 *.bak
 *.backup
 *.orig
+
+# Claude stuff
+.claude-flow/
+.swarm/
+
+# Development & project tracking docs
+docs-dev/
