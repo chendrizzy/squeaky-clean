@@ -1,7 +1,7 @@
 {
   "name": "squeaky-clean",
   "version": "0.0.2",
-  "description": "✨ Easy, customizable and expandable development cache cleaner CLI with interactive configuration! Smart, safe, and configurable cache management for 25+ development tools."
+  "description": "✨ Easy, customizable and expandable development cache cleaner CLI with interactive configuration! Smart, safe, and configurable cache management for 25+ development tools.",
   "main": "dist/cli.js",
   "bin": {
     "squeaky": "dist/cli.js",
