@@ -1,0 +1,737 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import dockerCleaner from '../../cleaners/docker';
+import gradleCleaner from '../../cleaners/gradle';
+import flutterCleaner from '../../cleaners/flutter';
+import pipCleaner from '../../cleaners/pip';
+import execa from 'execa';
+import { pathExists, getDirectorySize, safeRmrf } from '../../utils/fs.js';
+import * as os from 'os';
+
+// Mock execa
+vi.mock('execa', () => {
+  const mockExeca = vi.fn();
+  return {
+    default: mockExeca,
+    __esModule: true,
+  };
+});
+
+// Mock filesystem utilities
+vi.mock('../../utils/fs.js', () => {
+  return {
+    pathExists: vi.fn(),
+    getDirectorySize: vi.fn(),
+    safeRmrf: vi.fn()
+  };
+});
+
+// Mock os module
+vi.mock('os', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    homedir: vi.fn(() => '/Users/test'),
+    platform: vi.fn(() => 'darwin')
+  };
+});
+
+// Mock command utilities
+const mockCommandSuccess = (command: string, output: string) => {
+  const mockedExeca = vi.mocked(execa);
+  mockedExeca.mockImplementation((cmd: string, args?: string[]) => {
+    const fullCommand = args ? `${cmd} ${args.join(' ')}` : cmd;
+    if (fullCommand === command) {
+      return Promise.resolve({
+        stdout: output,
+        stderr: '',
+        exitCode: 0,
+        failed: false,
+        killed: false,
+        signal: undefined,
+        timedOut: false,
+        command: fullCommand,
+        escapedCommand: fullCommand,
+      } as any);
+    }
+    return Promise.reject(new Error(`Command not mocked: ${fullCommand}`));
+  });
+};
+
+const mockCommandError = (command: string, error: string) => {
+  const mockedExeca = vi.mocked(execa);
+  mockedExeca.mockImplementation((cmd: string, args?: string[]) => {
+    const fullCommand = args ? `${cmd} ${args.join(' ')}` : cmd;
+    if (fullCommand === command) {
+      const err = new Error(error) as any;
+      err.exitCode = 1;
+      err.failed = true;
+      return Promise.reject(err);
+    }
+    return Promise.reject(new Error(`Command not mocked: ${fullCommand}`));
+  });
+};
+
+const mockPathExists = (paths: Record<string, boolean>) => {
+  const mockPathExists = vi.mocked(pathExists);
+  mockPathExists.mockImplementation(async (pathToCheck: string) => {
+    return paths[pathToCheck] || false;
+  });
+};
+
+const mockGetDirectorySize = (sizes: Record<string, number>) => {
+  const mockGetDirectorySize = vi.mocked(getDirectorySize);
+  mockGetDirectorySize.mockImplementation(async (pathToCheck: string) => {
+    return sizes[pathToCheck] || 0;
+  });
+};
+
+describe('System Tools Cache Cleaners', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    
+    // Set up default filesystem mocks
+    vi.mocked(pathExists).mockResolvedValue(false);
+    vi.mocked(getDirectorySize).mockResolvedValue(0);
+    vi.mocked(safeRmrf).mockResolvedValue(undefined);
+  });
+
+  describe('DockerCleaner', () => {
+    const cleaner = dockerCleaner;
+
+    it('should detect Docker installation with docker command', async () => {
+      mockCommandSuccess('docker version --format {{.Server.Version}}', '20.10.0');
+
+      const detected = await cleaner.isAvailable();
+      expect(detected).toBe(true);
+    });
+
+    it('should not detect Docker when command fails', async () => {
+      mockCommandError('docker version --format {{.Server.Version}}', 'command not found: docker');
+      mockCommandError('docker --version', 'command not found: docker');
+
+      const detected = await cleaner.isAvailable();
+      expect(detected).toBe(false);
+    });
+
+    it('should find Docker images cache', async () => {
+      mockCommandSuccess('docker version --format {{.Server.Version}}', '20.10.0');
+      mockCommandSuccess(
+        'docker system df --format table {{.Type}}\\t{{.TotalCount}}\\t{{.Size}}\\t{{.Reclaimable}}',
+        'TYPE\tTOTAL\tSIZE\tRECLAIMABLE\nImages\t10\t2.5GB\t1.2GB\nContainers\t3\t100MB\t50MB\nLocal Volumes\t2\t1.2GB\t500MB\nBuild Cache\t5\t500MB\t400MB'
+      );
+      mockCommandSuccess('docker network ls --filter type=custom --format {{.ID}}', 'net1\nnet2');
+
+      const info = await cleaner.getCacheInfo();
+
+      expect(info.paths).toContainEqual(
+        expect.stringContaining('Docker System')
+      );
+    });
+
+    it('should find Docker containers cache', async () => {
+      mockCommandSuccess('docker version --format {{.Server.Version}}', '20.10.0');
+      mockCommandSuccess(
+        'docker system df --format table {{.Type}}\\t{{.TotalCount}}\\t{{.Size}}\\t{{.Reclaimable}}',
+        'TYPE\tTOTAL\tSIZE\tRECLAIMABLE\nImages\t5\t1GB\t500MB\nContainers\t8\t500MB\t200MB\nLocal Volumes\t1\t200MB\t100MB'
+      );
+      mockCommandSuccess('docker network ls --filter type=custom --format {{.ID}}', 'net1\nnet2');
+
+      const info = await cleaner.getCacheInfo();
+
+      expect(info.paths).toContainEqual(
+        expect.stringContaining('Docker System')
+      );
+    });
+
+    it('should find Docker volumes cache', async () => {
+      mockCommandSuccess('docker version --format {{.Server.Version}}', '20.10.0');
+      mockCommandSuccess(
+        'docker system df --format table {{.Type}}\\t{{.TotalCount}}\\t{{.Size}}\\t{{.Reclaimable}}',
+        'TYPE\tTOTAL\tSIZE\tRECLAIMABLE\nImages\t2\t800MB\t400MB\nContainers\t1\t50MB\t25MB\nLocal Volumes\t5\t2.1GB\t1.5GB\nBuild Cache\t0\t0B\t0B'
+      );
+      mockCommandSuccess('docker network ls --filter type=custom --format {{.ID}}', '');
+
+      const info = await cleaner.getCacheInfo();
+
+      expect(info.paths).toContainEqual(
+        expect.stringContaining('Docker System')
+      );
+    });
+
+    it('should find Docker build cache', async () => {
+      mockCommandSuccess('docker version --format {{.Server.Version}}', '20.10.0');
+      mockCommandSuccess(
+        'docker system df --format table {{.Type}}\\t{{.TotalCount}}\\t{{.Size}}\\t{{.Reclaimable}}',
+        'TYPE\tTOTAL\tSIZE\tRECLAIMABLE\nImages\t1\t100MB\t50MB\nContainers\t0\t0B\t0B\nLocal Volumes\t0\t0B\t0B\nBuild Cache\t15\t3.2GB\t2.8GB'
+      );
+      mockCommandSuccess('docker network ls --filter type=custom --format {{.ID}}', 'net1\nnet2');
+
+      const info = await cleaner.getCacheInfo();
+
+      expect(info.paths).toContainEqual(
+        expect.stringContaining('Docker System')
+      );
+    });
+
+    it('should clean unused images successfully', async () => {
+      mockCommandSuccess('docker version --format {{.Server.Version}}', '20.10.0');
+      mockCommandSuccess(
+        'docker system df --format table {{.Type}}\\t{{.TotalCount}}\\t{{.Size}}\\t{{.Reclaimable}}',
+        'TYPE\tTOTAL\tSIZE\tRECLAIMABLE\nImages\t5\t1GB\t512MB'
+      );
+      mockCommandSuccess('docker network ls --filter type=custom --format {{.ID}}', '');
+      mockCommandSuccess('docker system prune -af --volumes', 'Deleted Images: 3\nTotal reclaimed space: 512MB');
+      mockCommandSuccess('docker builder prune -af', 'Total reclaimed space: 0B');
+
+      const result = await cleaner.clear();
+
+      expect(result.success).toBe(true);
+      expect(result.clearedPaths).toContain('System resources (containers, networks, images, volumes)');
+    });
+
+    it('should clean stopped containers successfully', async () => {
+      mockCommandSuccess('docker version --format {{.Server.Version}}', '20.10.0');
+      mockCommandSuccess(
+        'docker system df --format table {{.Type}}\\t{{.TotalCount}}\\t{{.Size}}\\t{{.Reclaimable}}',
+        'TYPE\tTOTAL\tSIZE\tRECLAIMABLE\nContainers\t3\t200MB\t150MB'
+      );
+      mockCommandSuccess('docker network ls --filter type=custom --format {{.ID}}', '');
+      mockCommandSuccess('docker system prune -af --volumes', 'Deleted containers: 3\nTotal reclaimed space: 150MB');
+      mockCommandSuccess('docker builder prune -af', 'Total reclaimed space: 0B');
+
+      const result = await cleaner.clear();
+
+      expect(result.success).toBe(true);
+      expect(result.clearedPaths).toContain('System resources (containers, networks, images, volumes)');
+    });
+
+    it('should clean unused volumes successfully', async () => {
+      mockCommandSuccess('docker version --format {{.Server.Version}}', '20.10.0');
+      mockCommandSuccess(
+        'docker system df --format table {{.Type}}\\t{{.TotalCount}}\\t{{.Size}}\\t{{.Reclaimable}}',
+        'TYPE\tTOTAL\tSIZE\tRECLAIMABLE\nLocal Volumes\t2\t1GB\t800MB'
+      );
+      mockCommandSuccess('docker network ls --filter type=custom --format {{.ID}}', '');
+      mockCommandSuccess('docker system prune -af --volumes', 'Deleted volumes: 2\nTotal reclaimed space: 800MB');
+      mockCommandSuccess('docker builder prune -af', 'Total reclaimed space: 0B');
+
+      const result = await cleaner.clear();
+
+      expect(result.success).toBe(true);
+      expect(result.clearedPaths).toContain('System resources (containers, networks, images, volumes)');
+    });
+
+    it('should clean build cache successfully', async () => {
+      mockCommandSuccess('docker version --format {{.Server.Version}}', '20.10.0');
+      mockCommandSuccess(
+        'docker system df --format table {{.Type}}\\t{{.TotalCount}}\\t{{.Size}}\\t{{.Reclaimable}}',
+        'TYPE\tTOTAL\tSIZE\tRECLAIMABLE\nBuild Cache\t10\t2GB\t1.8GB'
+      );
+      mockCommandSuccess('docker network ls --filter type=custom --format {{.ID}}', '');
+      mockCommandSuccess('docker system prune -af --volumes', 'Total reclaimed space: 0B');
+      mockCommandSuccess('docker builder prune -af', 'Total reclaimed space: 1.8GB');
+
+      const result = await cleaner.clear();
+
+      expect(result.success).toBe(true);
+      expect(result.clearedPaths).toContain('Build cache');
+    });
+
+    it('should handle Docker command errors gracefully', async () => {
+      mockCommandSuccess('docker version --format {{.Server.Version}}', '20.10.0');
+      mockCommandSuccess(
+        'docker system df --format table {{.Type}}\\t{{.TotalCount}}\\t{{.Size}}\\t{{.Reclaimable}}',
+        'TYPE\tTOTAL\tSIZE\tRECLAIMABLE\nImages\t1\t100MB\t50MB'
+      );
+      mockCommandSuccess('docker network ls --filter type=custom --format {{.ID}}', '');
+      mockCommandError('docker system prune -af --volumes', 'Error response from daemon: permission denied');
+
+      const result = await cleaner.clear();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('permission denied');
+    });
+
+    it('should parse Docker system df output correctly', async () => {
+      mockCommandSuccess('docker version --format {{.Server.Version}}', '24.0.7');
+      mockCommandSuccess(
+        'docker system df --format table {{.Type}}\\t{{.TotalCount}}\\t{{.Size}}\\t{{.Reclaimable}}',
+        'TYPE\tTOTAL\tSIZE\tRECLAIMABLE\nImages\t8\t1.2GB\t600MB\nContainers\t4\t300MB\t150MB\nLocal Volumes\t3\t800MB\t400MB\nBuild Cache\t12\t2.5GB\t2GB'
+      );
+      mockCommandSuccess('docker network ls --filter type=custom --format {{.ID}}', 'net1\nnet2');
+
+      await cleaner.isAvailable();
+      const info = await cleaner.getCacheInfo();
+
+      expect(info.paths.length).toBeGreaterThan(0);
+      expect(info.size).toBeGreaterThan(0);
+    });
+  });
+
+  describe('GradleCleaner', () => {
+    const cleaner = gradleCleaner;
+
+    it('should detect Gradle with gradle command', async () => {
+      mockCommandSuccess('gradle --version', 'Gradle 8.4');
+
+      const detected = await cleaner.isAvailable();
+      expect(detected).toBe(true);
+    });
+
+    it('should find Gradle cache directory', async () => {
+      vi.mocked(os.homedir).mockReturnValue('/Users/test');
+      mockCommandSuccess('gradle --version', 'Gradle 8.4');
+
+      const cachesPath = '/Users/test/.gradle/caches';
+      
+      // Mock that the cache directory exists and has size
+      mockPathExists({ [cachesPath]: true });
+      mockGetDirectorySize({ [cachesPath]: 1024 * 1024 * 1024 }); // 1GB
+
+      await cleaner.isAvailable();
+      const info = await cleaner.getCacheInfo();
+      
+      expect(info.paths.length).toBeGreaterThan(0);
+      expect(info.paths).toContainEqual(
+        expect.stringContaining(cachesPath)
+      );
+    });
+
+    it('should handle Gradle command errors', async () => {
+      mockCommandSuccess('gradle --version', 'Gradle 8.4');
+      mockCommandError('gradle clean', 'FAILURE: Build failed with an exception');
+
+      await cleaner.isAvailable();
+      const result = await cleaner.clear();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Build failed');
+    });
+  });
+
+  describe('FlutterCleaner', () => {
+    const cleaner = flutterCleaner;
+
+    it('should detect Flutter installation', async () => {
+      mockCommandSuccess('flutter --version', 'Flutter 3.16.0 • channel stable • https://github.com/flutter/flutter.git');
+
+      const detected = await cleaner.isAvailable();
+      expect(detected).toBe(true);
+    });
+
+    it('should not detect Flutter when command fails', async () => {
+      mockCommandError('flutter --version', 'command not found: flutter');
+
+      const detected = await cleaner.isAvailable();
+      expect(detected).toBe(false);
+    });
+
+    it('should find Flutter build directory', async () => {
+      mockCommandSuccess('flutter --version', 'Flutter 3.16.0');
+
+      const buildPath = '/path/to/flutter/project/build';
+      mockDirectoryWithSize(buildPath, 100 * 1024 * 1024); // 100MB
+
+      vol.fromJSON({
+        '/path/to/flutter/project/pubspec.yaml': 'name: my_app\ndependencies:\n  flutter:\n    sdk: flutter',
+        [`${buildPath}/app/outputs/flutter-apk/app-debug.apk`]: 'apk content',
+        [`${buildPath}/ios/Debug-iphonesimulator/Runner.app`]: null
+      });
+
+      await cleaner.isAvailable();
+      const info = await cleaner.getCacheInfo();
+
+      expect(info.paths).toContainEqual(
+        expect.stringContaining(buildPath)
+      );
+    });
+
+    it('should find pub cache directory', async () => {
+      mockCommandSuccess('flutter --version', 'Flutter 3.16.0');
+      vi.mocked(os.homedir).mockReturnValue('/Users/test');
+
+      const pubCachePath = '/Users/test/.pub-cache';
+      mockDirectoryWithSize(pubCachePath, 500 * 1024 * 1024); // 500MB
+
+      vol.fromJSON({
+        [`${pubCachePath}/hosted/pub.dev`]: null,
+        [`${pubCachePath}/git`]: null,
+        [`${pubCachePath}/bin`]: null
+      });
+
+      await cleaner.isAvailable();
+      const info = await cleaner.getCacheInfo();
+
+      expect(info.paths).toContainEqual(
+        expect.stringContaining(pubCachePath)
+      );
+    });
+
+    it('should find DartPad cache', async () => {
+      mockCommandSuccess('flutter --version', 'Flutter 3.16.0');
+      vi.mocked(os.platform).mockReturnValue('darwin');
+      vi.mocked(os.homedir).mockReturnValue('/Users/test');
+
+      const dartpadPath = '/Users/test/Library/Caches/dartpad';
+      mockDirectoryWithSize(dartpadPath, 50 * 1024 * 1024); // 50MB
+
+      vol.fromJSON({
+        [`${dartpadPath}/compile_cache`]: null,
+        [`${dartpadPath}/analysis_cache`]: null
+      });
+
+      await cleaner.isAvailable();
+      const info = await cleaner.getCacheInfo();
+
+      expect(info.paths).toContainEqual(
+        expect.stringContaining(dartpadPath)
+      );
+    });
+
+    it('should clean Flutter build outputs using flutter clean', async () => {
+      mockCommandSuccess('flutter --version', 'Flutter 3.16.0');
+      mockCommandSuccess('flutter clean', 'Deleting build/ directory...\nDeleting .dart_tool/ directory...');
+
+      vol.fromJSON({
+        '/path/to/project/pubspec.yaml': 'name: test_app',
+        '/path/to/project/build': null
+      });
+
+      await cleaner.isAvailable();
+      const result = await cleaner.clear();
+
+      expect(result.success).toBe(true);
+      expect(result.clearedPaths).toContainEqual(
+        expect.stringContaining('build')
+      );
+    });
+
+    it('should clean pub cache using flutter pub cache clean', async () => {
+      mockCommandSuccess('flutter --version', 'Flutter 3.16.0');
+      mockCommandSuccess('flutter pub cache clean', 'Clearing pub cache...\nCleared 245 MB from pub cache.');
+
+      vi.mocked(os.homedir).mockReturnValue('/Users/test');
+      vol.fromJSON({
+        '/Users/test/.pub-cache/hosted': null
+      });
+
+      await cleaner.isAvailable();
+      const result = await cleaner.clear();
+
+      expect(result.success).toBe(true);
+      expect(result.clearedPaths).toContainEqual(
+        expect.stringContaining('pub-cache')
+      );
+    });
+
+    it('should clean DartPad cache by removing directory', async () => {
+      mockCommandSuccess('flutter --version', 'Flutter 3.16.0');
+      vi.mocked(os.platform).mockReturnValue('darwin');
+      vi.mocked(os.homedir).mockReturnValue('/Users/test');
+
+      const dartpadPath = '/Users/test/Library/Caches/dartpad';
+      vol.fromJSON({
+        [dartpadPath]: null
+      });
+
+      await cleaner.isAvailable();
+      const result = await cleaner.clear();
+
+      expect(result.success).toBe(true);
+      expect(result.clearedPaths).toContainEqual(
+        expect.stringContaining('dartpad')
+      );
+    });
+
+    it('should handle Flutter command errors', async () => {
+      mockCommandSuccess('flutter --version', 'Flutter 3.16.0');
+      mockCommandError('flutter clean', 'Error: No pubspec.yaml file found');
+
+      vol.fromJSON({
+        '/path/to/project/some-file.dart': 'void main() {}'
+      });
+
+      await cleaner.isAvailable();
+      const result = await cleaner.clear();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('No pubspec.yaml');
+    });
+
+    it('should detect Flutter projects by pubspec.yaml', async () => {
+      mockCommandSuccess('flutter --version', 'Flutter 3.16.0');
+
+      vol.fromJSON({
+        '/project1/pubspec.yaml': 'name: app1\ndependencies:\n  flutter:\n    sdk: flutter',
+        '/project2/pubspec.yaml': 'name: app2\ndependencies:\n  flutter\n    sdk: flutter',
+        '/project1/build': null,
+        '/project2/build': null
+      });
+
+      await cleaner.isAvailable();
+      const info = await cleaner.getCacheInfo();
+
+      expect(info.paths.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('PipCleaner', () => {
+    const cleaner = pipCleaner;
+
+    it('should detect Python pip installation', async () => {
+      mockCommandSuccess('pip --version', 'pip 23.3.1 from /usr/local/lib/python3.11/site-packages/pip (python 3.11)');
+
+      const detected = await cleaner.isAvailable();
+      expect(detected).toBe(true);
+    });
+
+    it('should detect Python3 pip installation', async () => {
+      mockCommandError('pip --version', 'command not found: pip');
+      mockCommandSuccess('pip3 --version', 'pip 23.3.1 from /usr/local/lib/python3.11/site-packages/pip (python 3.11)');
+
+      const detected = await cleaner.isAvailable();
+      expect(detected).toBe(true);
+    });
+
+    it('should not detect pip when both commands fail', async () => {
+      mockCommandError('pip --version', 'command not found: pip');
+      mockCommandError('pip3 --version', 'command not found: pip3');
+
+      const detected = await cleaner.isAvailable();
+      expect(detected).toBe(false);
+    });
+
+    it('should find pip cache directory on macOS', async () => {
+      mockCommandSuccess('pip --version', 'pip 23.3.1');
+      vi.mocked(os.platform).mockReturnValue('darwin');
+      vi.mocked(os.homedir).mockReturnValue('/Users/test');
+
+      const pipCachePath = '/Users/test/Library/Caches/pip';
+      mockDirectoryWithSize(pipCachePath, 300 * 1024 * 1024); // 300MB
+
+      vol.fromJSON({
+        [`${pipCachePath}/wheels`]: null,
+        [`${pipCachePath}/http`]: null
+      });
+
+      await cleaner.isAvailable();
+      const info = await cleaner.getCacheInfo();
+
+      expect(info.paths).toContainEqual(
+        expect.stringContaining(pipCachePath)
+      );
+    });
+
+    it('should find pip cache directory on Windows', async () => {
+      mockCommandSuccess('pip --version', 'pip 23.3.1');
+      vi.mocked(os.platform).mockReturnValue('win32');
+      vi.mocked(os.homedir).mockReturnValue('C:\\Users\\test');
+
+      const pipCachePath = 'C:\\Users\\test\\AppData\\Local\\pip\\Cache';
+      mockDirectoryWithSize(pipCachePath, 250 * 1024 * 1024); // 250MB
+
+      vol.fromJSON({
+        [`${pipCachePath}/wheels`]: null,
+        [`${pipCachePath}/http`]: null
+      });
+
+      await cleaner.isAvailable();
+      const info = await cleaner.getCacheInfo();
+
+      expect(info.paths).toContainEqual(
+        expect.stringContaining(pipCachePath)
+      );
+    });
+
+    it('should find pip cache directory on Linux', async () => {
+      mockCommandSuccess('pip --version', 'pip 23.3.1');
+      vi.mocked(os.platform).mockReturnValue('linux');
+      vi.mocked(os.homedir).mockReturnValue('/home/test');
+
+      const pipCachePath = '/home/test/.cache/pip';
+      mockDirectoryWithSize(pipCachePath, 400 * 1024 * 1024); // 400MB
+
+      vol.fromJSON({
+        [`${pipCachePath}/wheels`]: null,
+        [`${pipCachePath}/http`]: null
+      });
+
+      await cleaner.isAvailable();
+      const info = await cleaner.getCacheInfo();
+
+      expect(info.paths).toContainEqual(
+        expect.stringContaining(pipCachePath)
+      );
+    });
+
+    it('should respect PIP_CACHE_DIR environment variable', async () => {
+      process.env.PIP_CACHE_DIR = '/custom/pip/cache';
+      mockCommandSuccess('pip --version', 'pip 23.3.1');
+
+      const customCachePath = '/custom/pip/cache';
+      mockDirectoryWithSize(customCachePath, 100 * 1024 * 1024); // 100MB
+
+      vol.fromJSON({
+        [customCachePath]: null
+      });
+
+      await cleaner.isAvailable();
+      const info = await cleaner.getCacheInfo();
+
+      expect(info.paths).toContainEqual(
+        expect.stringContaining(customCachePath)
+      );
+
+      delete process.env.PIP_CACHE_DIR;
+    });
+
+    it('should clean pip cache using pip cache purge', async () => {
+      mockCommandSuccess('pip --version', 'pip 23.3.1');
+      mockCommandSuccess('pip cache purge', 'Files removed: 42\nTotal size: 245.7 MB');
+
+      vi.mocked(os.platform).mockReturnValue('darwin');
+      vi.mocked(os.homedir).mockReturnValue('/Users/test');
+
+      vol.fromJSON({
+        '/Users/test/Library/Caches/pip': null
+      });
+
+      await cleaner.isAvailable();
+      const result = await cleaner.clear();
+
+      expect(result.success).toBe(true);
+      expect(result.clearedPaths).toContainEqual(
+        expect.stringContaining('cache')
+      );
+    });
+
+    it('should fallback to manual cache cleaning when pip cache purge fails', async () => {
+      mockCommandSuccess('pip --version', 'pip 23.3.1');
+      mockCommandError('pip cache purge', 'ERROR: No cache directory found');
+
+      vi.mocked(os.platform).mockReturnValue('linux');
+      vi.mocked(os.homedir).mockReturnValue('/home/test');
+
+      const pipCachePath = '/home/test/.cache/pip';
+      vol.fromJSON({
+        [pipCachePath]: null
+      });
+
+      await cleaner.isAvailable();
+      const result = await cleaner.clear();
+
+      expect(result.success).toBe(true);
+      expect(result.clearedPaths).toContainEqual(
+        expect.stringContaining('cache')
+      );
+    });
+
+    it('should use pip3 when pip is not available', async () => {
+      mockCommandError('pip --version', 'command not found: pip');
+      mockCommandSuccess('pip3 --version', 'pip 23.3.1');
+      mockCommandSuccess('pip3 cache purge', 'Files removed: 15\nTotal size: 89.2 MB');
+
+      vi.mocked(os.platform).mockReturnValue('darwin');
+      vi.mocked(os.homedir).mockReturnValue('/Users/test');
+
+      vol.fromJSON({
+        '/Users/test/Library/Caches/pip': null
+      });
+
+      await cleaner.isAvailable();
+      const result = await cleaner.clear();
+
+      expect(result.success).toBe(true);
+      expect(result.clearedPaths).toContainEqual(
+        expect.stringContaining('cache')
+      );
+    });
+
+    it('should handle pip cache size calculation', async () => {
+      mockCommandSuccess('pip --version', 'pip 23.3.1');
+      mockCommandSuccess(
+        'pip cache info',
+        'Package index page cache location: /Users/test/Library/Caches/pip/http\nPackage index page cache size: 123.4 MB\nNumber of HTTP files: 156\nWheel cache location: /Users/test/Library/Caches/pip/wheels\nWheel cache size: 456.7 MB\nNumber of wheels: 89'
+      );
+
+      vi.mocked(os.platform).mockReturnValue('darwin');
+      vi.mocked(os.homedir).mockReturnValue('/Users/test');
+
+      vol.fromJSON({
+        '/Users/test/Library/Caches/pip': null
+      });
+
+      await cleaner.isAvailable();
+      const info = await cleaner.getCacheInfo();
+
+      expect(info.size).toBeGreaterThan(0);
+    });
+
+    it('should handle permission errors gracefully', async () => {
+      mockCommandSuccess('pip --version', 'pip 23.3.1');
+      mockCommandError('pip cache purge', 'ERROR: [Errno 13] Permission denied');
+
+      vi.mocked(os.platform).mockReturnValue('linux');
+      vi.mocked(os.homedir).mockReturnValue('/home/test');
+
+      vol.fromJSON({
+        '/home/test/.cache/pip': null
+      });
+
+      await cleaner.isAvailable();
+      const result = await cleaner.clear();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Permission denied');
+    });
+  });
+
+  describe('Cross-platform system tools compatibility', () => {
+    it('should handle different command availability across platforms', async () => {
+      const platforms = ['darwin', 'win32', 'linux'] as const;
+      
+      for (const platform of platforms) {
+        vi.mocked(os.platform).mockReturnValue(platform);
+        
+        const docker = dockerCleaner;
+        const gradle = gradleCleaner;
+        const flutter = flutterCleaner;
+        const pip = pipCleaner;
+        
+        // Mock successful command detection
+        mockCommandSuccess('docker --version', 'Docker version 24.0.7');
+        mockCommandSuccess('gradle --version', 'Gradle 8.4');
+        mockCommandSuccess('flutter --version', 'Flutter 3.16.0');
+        mockCommandSuccess('pip --version', 'pip 23.3.1');
+        
+        const detections = await Promise.all([
+          docker.isAvailable(),
+          gradle.isAvailable(),
+          flutter.isAvailable(),
+          pip.isAvailable()
+        ]);
+        
+        // All should detect successfully with mocked commands
+        expect(detections.every(detected => detected)).toBe(true);
+      }
+    });
+
+    it('should use platform-specific cache paths', () => {
+      const testCases = [
+        { platform: 'darwin', homedir: '/Users/test' },
+        { platform: 'win32', homedir: 'C:\\Users\\test' },
+        { platform: 'linux', homedir: '/home/test' }
+      ] as const;
+
+      testCases.forEach(({ platform, homedir }) => {
+        vi.mocked(os.platform).mockReturnValue(platform);
+        vi.mocked(os.homedir).mockReturnValue(homedir);
+
+        const pip = pipCleaner;
+        
+        // Should not throw and should handle platform-specific paths
+        expect(() => pip.isAvailable()).not.toThrow();
+      });
+    });
+  });
+});

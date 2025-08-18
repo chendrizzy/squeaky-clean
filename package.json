@@ -1,0 +1,110 @@
+{
+  "name": "squeaky-clean",
+  "version": "2.0.0",
+  "description": "✨ The ultimate developer cache cleaner with interactive configuration wizard! Smart, safe, and configurable cache management for 25+ development tools.",
+  "main": "dist/cli.js",
+  "bin": {
+    "squeaky": "dist/cli.js",
+    "squeaky-clean": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "format": "prettier --write src/**/*.{ts,tsx,json}",
+    "clean": "rimraf dist",
+    "prepublishOnly": "npm run clean && npm run build",
+    "release": "npm run test && npm run build && npm publish"
+  },
+  "keywords": [
+    "cache",
+    "clear",
+    "developer",
+    "tools",
+    "interactive",
+    "configuration",
+    "wizard",
+    "npm",
+    "yarn",
+    "pnpm",
+    "bun",
+    "webpack",
+    "vite",
+    "nx",
+    "turbo",
+    "flutter",
+    "gradle",
+    "docker",
+    "vscode",
+    "xcode",
+    "android-studio",
+    "jetbrains",
+    "chrome",
+    "firefox",
+    "node",
+    "build",
+    "cli",
+    "development",
+    "clean",
+    "system",
+    "performance",
+    "disk-space",
+    "cleanup",
+    "maintenance"
+  ],
+  "author": {
+    "name": "Justin Chen",
+    "email": "justin@example.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/justinchen/squeaky-clean.git"
+  },
+  "bugs": {
+    "url": "https://github.com/justinchen/squeaky-clean/issues"
+  },
+  "homepage": "https://github.com/justinchen/squeaky-clean#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "conf": "^10.2.0",
+    "execa": "^5.1.1",
+    "filesize": "^10.1.0",
+    "fs-extra": "^11.2.0",
+    "globby": "^11.1.0",
+    "inquirer": "^8.2.5",
+    "ora": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^20.10.6",
+    "@typescript-eslint/eslint-plugin": "^6.18.0",
+    "@typescript-eslint/parser": "^6.18.0",
+    "@vitest/coverage-v8": "^1.1.3",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.1.2",
+    "memfs": "^4.36.0",
+    "prettier": "^3.1.1",
+    "rimraf": "^5.0.5",
+    "tsx": "^4.6.2",
+    "typescript": "^5.3.3",
+    "vitest": "^1.1.3"
+  }
+}
