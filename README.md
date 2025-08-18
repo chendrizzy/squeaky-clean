@@ -1,4 +1,4 @@
-# <p style="text-align:center;">🧼 Squeaky Clean ✨</p>
+# 🧼 Squeaky Clean ✨
 <div align="center">
 
 [![npm version](https://img.shields.io/npm/v/squeaky-clean.svg)](https://www.npmjs.com/package/squeaky-clean)
