@@ -38,6 +38,16 @@ export const interactiveCommand = new Command('interactive')
   .option('-v, --verbose', 'enable verbose output')
   .action(async (options: InteractiveOptions) => {
     try {
+      // Check if we're in a TTY environment
+      if (!process.stdin.isTTY) {
+        printError('Interactive mode requires a TTY environment.');
+        console.log(chalk.yellow('💡 Tip: Use non-interactive commands instead:'));
+        console.log(chalk.gray('   • squeaky clean --all    # Clean all caches'));
+        console.log(chalk.gray('   • squeaky clean --dry-run # Preview what would be cleaned'));
+        console.log(chalk.gray('   • squeaky list --sizes   # List caches with sizes'));
+        return;
+      }
+
       printHeader('Interactive Cache Cleaning');
 
       // Set verbose mode in config if requested

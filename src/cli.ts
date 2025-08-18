@@ -9,7 +9,7 @@ const program = new Command();
 // Package info (this would normally be imported from package.json)
 const packageInfo = {
   name: 'squeaky-clean',
-  version: '0.1.0',
+  version: '0.0.2',
   description: '✨ Make your dev environment squeaky clean!',
 };
 
@@ -27,8 +27,19 @@ program
   .option('--no-color', 'disable colored output')
   .option('-q, --quiet', 'suppress non-essential output')
   .option('--json', 'output results in JSON format')
+  .option('--config <path>', 'use custom config file')
   .hook('preAction', (thisCommand) => {
     const options = thisCommand.opts();
+    
+    // Load custom config if specified
+    if (options.config) {
+      try {
+        config.loadCustomConfig(options.config);
+      } catch (error) {
+        printError(`Failed to load config: ${error}`);
+        process.exit(1);
+      }
+    }
     
     if (options.verbose) {
       config.set({ output: { ...config.get().output, verbose: true } });
@@ -47,16 +58,23 @@ program
     }
   });
 
-// Clean command - main functionality
+// Clean command - main functionality with granular options
 program
   .command('clean')
-  .description('clean development caches')
+  .description('clean development caches with granular control')
   .option('-a, --all', 'clean all configured caches')
   .option('-t, --types <types>', 'comma-separated list of cache types (package-manager,build-tool,browser,ide,system)')
   .option('-e, --exclude <tools>', 'comma-separated list of tools to exclude')
   .option('-d, --dry-run', 'show what would be cleaned without actually cleaning')
   .option('-f, --force', 'skip confirmation prompts')
   .option('-s, --sizes', 'show cache sizes before cleaning')
+  .option('--older-than <age>', 'clean caches older than specified age (e.g., 7d, 2w, 1m)')
+  .option('--newer-than <age>', 'clean caches newer than specified age')
+  .option('--larger-than <size>', 'clean caches larger than specified size (e.g., 100MB, 1GB)')
+  .option('--smaller-than <size>', 'clean caches smaller than specified size')
+  .option('--use-case <case>', 'clean specific use cases (development,testing,production,experimental,archived)')
+  .option('--priority <level>', 'clean only specified priority (critical,important,normal,low)')
+  .option('--categories <ids>', 'clean specific category IDs (comma-separated)')
   .action(async (options) => {
     try {
       printHeader('Cache Cleaning');
@@ -85,6 +103,24 @@ program
       await listCommand(options);
     } catch (error) {
       printError(`Failed to list caches: ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+  });
+
+// Categories command - show cache categories with granular details
+program
+  .command('categories')
+  .alias('cats')
+  .description('show detailed cache categories with usage patterns')
+  .option('-t, --tool <tool>', 'show categories for specific tool')
+  .option('--type <type>', 'filter by cache type')
+  .option('-v, --verbose', 'show detailed information')
+  .action(async (options) => {
+    try {
+      const { categoriesCommand } = await import('./commands/categories');
+      await categoriesCommand(options);
+    } catch (error) {
+      printError(`Failed to show categories: ${error instanceof Error ? error.message : error}`);
       process.exit(1);
     }
   });

@@ -1,5 +1,7 @@
 import Conf from 'conf';
 import { UserConfig } from '../types';
+import fs from 'fs';
+import path from 'path';
 
 export const defaultConfig: UserConfig = {
   enabledCaches: {
@@ -59,6 +61,8 @@ export const defaultConfig: UserConfig = {
 
 class ConfigManager {
   private conf: Conf<UserConfig>;
+  private customConfig: UserConfig | null = null;
+  private customConfigPath: string | null = null;
 
   constructor() {
     this.conf = new Conf<UserConfig>({
@@ -134,53 +138,93 @@ class ConfigManager {
     });
   }
 
+  loadCustomConfig(configPath: string): void {
+    try {
+      const resolvedPath = path.resolve(configPath);
+      if (!fs.existsSync(resolvedPath)) {
+        throw new Error(`Config file not found: ${resolvedPath}`);
+      }
+      
+      const configContent = fs.readFileSync(resolvedPath, 'utf-8');
+      this.customConfig = JSON.parse(configContent);
+      this.customConfigPath = resolvedPath;
+    } catch (error) {
+      throw new Error(`Failed to load config from ${configPath}: ${error}`);
+    }
+  }
+
   get(): UserConfig {
+    // If custom config is loaded, return it instead of the default
+    if (this.customConfig) {
+      return this.customConfig;
+    }
     return this.conf.store;
   }
 
   set(config: Partial<UserConfig>): void {
-    this.conf.set(config);
+    if (this.customConfig) {
+      // Update custom config in memory (but don't save to file)
+      this.customConfig = { ...this.customConfig, ...config };
+    } else {
+      this.conf.set(config);
+    }
   }
 
   reset(): void {
-    this.conf.clear();
+    if (this.customConfig) {
+      this.customConfig = null;
+      this.customConfigPath = null;
+    } else {
+      this.conf.clear();
+    }
   }
 
   getConfigPath(): string {
+    if (this.customConfigPath) {
+      return this.customConfigPath;
+    }
     return this.conf.path;
   }
 
   // Specific getters for convenience
   isToolEnabled(tool: keyof UserConfig['tools']): boolean {
-    return this.conf.get(`tools.${tool}`, defaultConfig.tools[tool]);
+    const config = this.get();
+    return config.tools?.[tool] ?? defaultConfig.tools[tool];
   }
 
   isCacheTypeEnabled(type: keyof UserConfig['enabledCaches']): boolean {
-    return this.conf.get(`enabledCaches.${type}`, defaultConfig.enabledCaches[type]);
+    const config = this.get();
+    return config.enabledCaches?.[type] ?? defaultConfig.enabledCaches[type];
   }
 
   shouldRequireConfirmation(): boolean {
-    return this.conf.get('safety.requireConfirmation', defaultConfig.safety.requireConfirmation);
+    const config = this.get();
+    return config.safety?.requireConfirmation ?? defaultConfig.safety.requireConfirmation;
   }
 
   shouldUseDryRunDefault(): boolean {
-    return this.conf.get('safety.dryRunDefault', defaultConfig.safety.dryRunDefault);
+    const config = this.get();
+    return config.safety?.dryRunDefault ?? defaultConfig.safety.dryRunDefault;
   }
 
   shouldShowSizes(): boolean {
-    return this.conf.get('output.showSizes', defaultConfig.output.showSizes);
+    const config = this.get();
+    return config.output?.showSizes ?? defaultConfig.output.showSizes;
   }
 
   shouldUseColors(): boolean {
-    return this.conf.get('output.useColors', defaultConfig.output.useColors);
+    const config = this.get();
+    return config.output?.useColors ?? defaultConfig.output.useColors;
   }
 
   isVerbose(): boolean {
-    return this.conf.get('output.verbose', defaultConfig.output.verbose);
+    const config = this.get();
+    return config.output?.verbose ?? defaultConfig.output.verbose;
   }
 
   getCustomPaths(): string[] {
-    return this.conf.get('customPaths', defaultConfig.customPaths);
+    const config = this.get();
+    return config.customPaths ?? defaultConfig.customPaths;
   }
 }
 

@@ -41,7 +41,7 @@ export async function configCommand(options: ConfigOptions): Promise<void> {
     
     // List all configuration options
     if (options.list) {
-      await listAllOptions();
+      await showCurrentConfig();
       return;
     }
     
@@ -131,35 +131,6 @@ async function showCurrentConfig(): Promise<void> {
   
   console.log();
   printInfo('💡 Use `squeaky config --help` to see available configuration options');
-}
-
-async function listAllOptions(): Promise<void> {
-  console.log('\n📝 Available Configuration Options:');
-  console.log();
-  
-  console.log(chalk.bold('Tool Management:'));
-  console.log('  --enable <tool>     Enable a specific cache cleaner');
-  console.log('  --disable <tool>    Disable a specific cache cleaner');
-  console.log();
-  
-  console.log(chalk.bold('Configuration Values:'));
-  console.log('  --set verbose=true       Enable verbose output');
-  console.log('  --set verbose=false      Disable verbose output');
-  console.log('  --set colors=true        Enable colored output');
-  console.log('  --set colors=false       Disable colored output');
-  console.log();
-  
-  console.log(chalk.bold('Examples:'));
-  console.log('  squeaky config --enable npm');
-  console.log('  squeaky config --disable vscode');
-  console.log('  squeaky config --set verbose=true');
-  console.log('  squeaky config --get verbose');
-  console.log('  squeaky config --reset');
-  console.log();
-  
-  const allCleaners = cacheManager.getAllCleaners();
-  console.log(chalk.bold('Available Tools:'));
-  console.log(`  ${allCleaners.map(c => c.name).join(', ')}`);
 }
 
 async function getConfigValue(key: string): Promise<void> {

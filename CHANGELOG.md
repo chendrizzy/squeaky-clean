@@ -5,12 +5,63 @@ All notable changes to Squeaky Clean will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - 2025-01-18
+## [0.0.2] - 2025-08-18
 
-### 🎉 Major Features Added
+### Added:
+
+#### Granular Cache Management
+- **Deep cache categorization** with smart separation for common use-cases
+- **Cache categories** with detailed metadata:
+  - Priority levels (critical, important, normal, low)
+  - Use case classification (development, testing, production, experimental, archived)
+  - Project-specific vs global cache detection
+  - Age tracking with last accessed/modified timestamps
+  - Size tracking per category
+- **`squeaky categories`** command to visualize cache categories with usage patterns
+- **Smart recency detection** to preserve recently-used caches
+
+#### Selection Criteria
+- *`--older-than <age>`* - Clean caches older than specified time (e.g., 7d, 2w, 1m)
+- *`--newer-than <age>`* - Clean caches newer than specified time
+- *`--larger-than <size>`* - Clean caches larger than specified size (e.g., 100MB, 1GB)
+- *`--smaller-than <size>`* - Clean caches smaller than specified size
+- *`--use-case <case>`* - Target specific use cases (development, testing, production, etc.)
+- *`--priority <level>`* - Clean only specified priority levels
+- *`--categories <ids>`* - Clean specific category IDs for precise control
+
+#### Enhanced Configuration
+- `--config <path>` global option to use custom configuration files
+- Per-tool granular settings with category-specific policies
+- Global cache policies for automatic cache management:
+  - Auto-clean caches older than specified days
+  - Preserve recently-used caches
+  - Preserve project-specific caches
+  - Preserve critical priority caches
+- Tool-specific selection criteria in configuration
+
+### Bug Fixes
+- fixed `list --sizes` now properly displays cache sizes inline with the list
+- fixed `clean --dry-run` now correctly shows what would be cleaned with sizes
+- fixed `config --list` now shows actual configuration values instead of help text
+- fixed Interactive mode properly detects non-TTY environments and provides helpful alternatives
+- fixed Version updated to 0.0.2 as requested
+
+### 🔧 Technical Improvements
+- `BaseCleaner` abstract class for consistent cache management across all cleaners
+- `NpmEnhancedCleaner` example implementation with detailed categorization
+- Type system enhanced with new interfaces for categories and selection criteria
+- Better separation of concerns with modular cleaner architecture
+
+
+---
+
+
+## [0.0.1b] - 2025-01-18
+
+### Major Features Added
 
 #### 🧙‍♂️ Interactive Configuration Wizard
-- **NEW**: Complete interactive configuration wizard with step-by-step setup
+- Complete interactive configuration wizard with step-by-step setup
 - **Step 1**: Output preferences (verbose output, colored output)
 - **Step 2**: Safety settings (confirmation requirements)  
 - **Step 3**: Tool configuration organized by categories:
@@ -23,14 +74,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Launch with: `squeaky config --interactive` or `squeaky config -i`
 
 #### ⚡ Quick Configuration Commands
-- **NEW**: `squeaky config --get <key>` - Get specific configuration values
-- **NEW**: `squeaky config --set <key=value>` - Set configuration values quickly
-- **NEW**: `squeaky config --enable <tool>` - Enable specific cache cleaners
-- **NEW**: `squeaky config --disable <tool>` - Disable specific cache cleaners
-- **NEW**: `squeaky config --path` - Show configuration file location
+- `squeaky config --get <key>` - Get specific configuration values
+- `squeaky config --set <key=value>` - Set configuration values quickly
+- `squeaky config --enable <tool>` - Enable specific cache cleaners
+- `squeaky config --disable <tool>` - Disable specific cache cleaners
+- `squeaky config --path` - Show configuration file location
 - **ENHANCED**: `squeaky config --list` - List all available configuration options
 
-### 🔧 Improvements
+### Improvements
 
 #### Configuration Management
 - **IMPROVED**: Better default behavior - `squeaky config` shows current configuration
@@ -44,12 +95,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ENHANCED**: Color-coded output for enabled/disabled tools in configuration display
 - **ENHANCED**: Clear indication of configuration file existence and location
 
-### 🐛 Bug Fixes
+### Bug Fixes
 
 #### CLI Interface
-- **FIXED**: `squeaky config -i` flag now properly launches interactive wizard
-- **FIXED**: Configuration command now properly handles all option combinations
-- **FIXED**: Help documentation now accurately reflects available options
+- fixed `squeaky config -i` flag now properly launches interactive wizard
+- fixed Configuration command now properly handles all option combinations
+- fixed Help documentation now accurately reflects available options
 
 ### 📖 Documentation
 
@@ -59,24 +110,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ADDED**: Examples of all new CLI configuration commands
 - **IMPROVED**: Better organization of configuration documentation
 
-### 🔄 Migration Guide
-
-#### From v1.x to v2.0
-- **No breaking changes** - All existing functionality remains the same
-- **Enhanced**: Configuration is now more powerful and user-friendly
-- **Recommended**: Run `squeaky config --interactive` to explore new configuration options
-- **Note**: Configuration file format remains compatible
-
-### ⚠️ Breaking Changes
-- None - This release maintains full backward compatibility
-
 ---
 
-## [1.0.0] - 2025-08-17
+## [0.0.1] - 2025-08-17
 
-### ✨ Initial Release
+### Initial Release
 
-**Squeaky Clean 1.0.0** is a comprehensive developer cache cleaning tool that helps you reclaim disk space by intelligently clearing caches from your development environment.
+**Squeaky Clean 0.0.1** is a comprehensive developer cache cleaning tool that helps you reclaim disk space by intelligently clearing caches from your development environment.
 
 ### 🚀 Features
 
@@ -185,4 +225,4 @@ npx squeaky-clean clean --all
 
 ---
 
-**Full Changelog**: [View on GitHub](https://github.com/justinchen/squeaky-clean/releases/tag/v1.0.0)
+**Full Changelog**: [View on GitHub](https://github.com/justinchen/squeaky-clean/releases)

@@ -108,15 +108,48 @@ squeaky sizes
 
 ```bash
 squeaky list
+# With sizes inline
+squeaky list --sizes
+```
+
+#### 🎯 Granular Cache Management
+
+```bash
+# View detailed cache categories
+squeaky categories --tool npm
+squeaky categories --verbose  # Show all tools with details
+
+# Clean caches older than 7 days
+squeaky clean --older-than 7d
+
+# Clean caches larger than 100MB
+squeaky clean --larger-than 100MB
+
+# Clean only low priority caches (preserve critical/important)
+squeaky clean --priority low
+
+# Clean archived/experimental caches
+squeaky clean --use-case archived
+
+# Combine multiple criteria
+squeaky clean --older-than 14d --priority low --larger-than 50MB
+
+# Clean specific categories by ID
+squeaky categories --tool npm  # First, list categories to get IDs
+squeaky clean --categories npm-logs,npm-metrics
+
+# Use custom config file
+squeaky clean --config my-config.json --dry-run
 ```
 
 ### Available Commands
 
 | Command | Description | Aliases |
 |---------|-------------|---------|
-| `clean` | Clean development caches | - |
+| `clean` | Clean development caches with granular control | - |
 | `list` | List available caches and their status | `ls` |
 | `sizes` | Show cache sizes without clearing | - |
+| `categories` | Show detailed cache categories with usage patterns | `cats` |
 | `config` | Manage configuration | - |
 | `doctor` | Check system and diagnose issues | - |
 | `auto` | Configure automatic cleaning | - |
@@ -133,15 +166,31 @@ squeaky list
 - `-f, --force` - Skip confirmation prompts
 - `-s, --sizes` - Show cache sizes before cleaning
 
+**🎯 Granular Selection Options:**
+- `--older-than <age>` - Clean caches older than specified age (e.g., `7d`, `2w`, `1m`)
+- `--newer-than <age>` - Clean caches newer than specified age
+- `--larger-than <size>` - Clean caches larger than specified size (e.g., `100MB`, `1GB`)
+- `--smaller-than <size>` - Clean caches smaller than specified size
+- `--use-case <case>` - Target specific use cases (`development`, `testing`, `production`, `experimental`, `archived`)
+- `--priority <level>` - Clean only specified priority (`critical`, `important`, `normal`, `low`)
+- `--categories <ids>` - Clean specific category IDs (comma-separated)
+
+#### `categories` Options
+
+- `-t, --tool <tool>` - Show categories for specific tool
+- `--type <type>` - Filter by cache type
+- `-v, --verbose` - Show detailed information
+
 #### `list` Options
 
-- `-s, --sizes` - Include cache sizes (slower)
+- `-s, --sizes` - Include cache sizes inline with the list
 - `-t, --type <type>` - Filter by cache type
 
 #### Global Options
 
 - `-v, --verbose` - Enable verbose output
 - `--no-color` - Disable colored output
+- `--config <path>` - Use custom configuration file
 - `--version` - Show version number
 - `-h, --help` - Display help
 
