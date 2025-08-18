@@ -165,3 +165,7 @@ lib/
 
 # Development & project tracking docs
 docs-dev/
+# Demo and test configs
+demo-*.js
+test-*.json
+.claude-flow/metrics/
