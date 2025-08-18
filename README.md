@@ -1,5 +1,5 @@
+# <p style="text-align:center;">🧼 Squeaky Clean ✨</p>
 <div align="center">
-# 🧼 Squeaky Clean ✨
 
 [![npm version](https://img.shields.io/npm/v/squeaky-clean.svg)](https://www.npmjs.com/package/squeaky-clean)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
