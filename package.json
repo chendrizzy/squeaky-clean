@@ -1,6 +1,6 @@
 {
   "name": "squeaky-clean",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "✨ The ultimate developer cache cleaner with interactive configuration wizard! Smart, safe, and configurable cache management for 25+ development tools.",
   "main": "dist/cli.js",
   "bin": {

@@ -9,7 +9,7 @@ const program = new Command();
 // Package info (this would normally be imported from package.json)
 const packageInfo = {
   name: 'squeaky-clean',
-  version: '0.1.0',
+  version: '0.2.0',
   description: '✨ Make your dev environment squeaky clean!',
 };
 
