@@ -95,9 +95,49 @@ jobs:
           # Test that new config works
           node dist/cli.js list --config test-config/migrated.json
 
+  security:
+    name: Security Checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run npm audit
+        run: |
+          npm audit --audit-level=moderate || true
+          npm audit --production --audit-level=high
+      
+      - name: License check
+        run: |
+          npx license-checker --production --onlyAllow "MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;CC0-1.0;CC-BY-3.0;CC-BY-4.0;Unlicense" || true
+      
+      - name: Check for security best practices
+        run: |
+          # Check for potential security issues in code
+          if grep -r "eval(" src/ --include="*.ts" --include="*.js"; then
+            echo "Warning: Found eval() usage which could be a security risk"
+          fi
+          
+          if grep -r "child_process" src/ --include="*.ts" --include="*.js" | grep -v "execSync\|spawn\|exec" | grep -v "^[[:space:]]*//\|^[[:space:]]*\*"; then
+            echo "Note: Using child_process - ensure commands are properly sanitized"
+          fi
+
   release:
     name: Release
-    needs: [test, config-migration-test]
+    needs: [test, config-migration-test, security]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     

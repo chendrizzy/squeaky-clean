@@ -1,0 +1,119 @@
+name: Dependency Updates
+
+on:
+  schedule:
+    # Run every Monday at 3am UTC
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-dependencies:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+      
+      - name: Update dependencies
+        id: update
+        run: |
+          # Create a new branch
+          BRANCH_NAME="deps/update-$(date +%Y%m%d)"
+          git checkout -b "$BRANCH_NAME"
+          
+          # Update dependencies
+          npm update --save
+          
+          # Check if there are changes
+          if git diff --quiet package.json package-lock.json; then
+            echo "No dependency updates available"
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_updates=true" >> $GITHUB_OUTPUT
+            echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Run tests
+        if: steps.update.outputs.has_updates == 'true'
+        run: |
+          npm ci
+          npm run build
+          npm test
+      
+      - name: Run security audit
+        if: steps.update.outputs.has_updates == 'true'
+        run: |
+          npm audit --audit-level=high || true
+      
+      - name: Commit and push changes
+        if: steps.update.outputs.has_updates == 'true'
+        run: |
+          git add package.json package-lock.json
+          git commit -m "chore(deps): update dependencies [skip ci]"
+          git push origin "${{ steps.update.outputs.branch }}"
+      
+      - name: Create Pull Request
+        if: steps.update.outputs.has_updates == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the list of updated packages
+          UPDATES=$(git diff HEAD~1 package.json | grep '^+' | grep -v '+++' | grep '"' | sed 's/.*"\([^"]*\)".*/\1/' | paste -sd, -)
+          
+          PR_BODY="## 📦 Dependency Updates
+
+          This PR updates the following dependencies:
+          - Updated packages: $UPDATES
+
+          ### Checks
+          - ✅ All tests passing
+          - ✅ Security audit completed
+          - ✅ Build successful
+
+          ### Review
+          Please review the changes and merge if everything looks good.
+
+          ---
+          *This PR was automatically created by the dependency update workflow.*"
+
+          gh pr create \
+            --title "chore(deps): Update dependencies" \
+            --body "$PR_BODY" \
+            --base main \
+            --head "${{ steps.update.outputs.branch }}" \
+            --label "dependencies,automated"
+
+  auto-merge-dependabot:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    
+    steps:
+      - name: Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Auto-merge Dependabot PRs for patch and minor updates
+        if: steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge --auto --squash "${{ github.event.pull_request.html_url }}"

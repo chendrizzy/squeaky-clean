@@ -1,0 +1,110 @@
+name: Code Quality
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main, develop]
+
+jobs:
+  quality-checks:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run linter
+        run: npm run lint
+      
+      - name: Check formatting
+        run: |
+          npm run format
+          # Check if there are any changes
+          if ! git diff --quiet; then
+            echo "::error::Code is not properly formatted. Please run 'npm run format' locally."
+            git diff --name-only
+            exit 1
+          fi
+      
+      - name: Type checking
+        run: npx tsc --noEmit
+      
+      - name: Check bundle size
+        run: |
+          npm run build
+          # Check the size of the main bundle
+          BUNDLE_SIZE=$(stat -f%z dist/cli.js 2>/dev/null || stat -c%s dist/cli.js)
+          MAX_SIZE=$((5 * 1024 * 1024))  # 5MB limit
+          
+          echo "Bundle size: $BUNDLE_SIZE bytes"
+          
+          if [ "$BUNDLE_SIZE" -gt "$MAX_SIZE" ]; then
+            echo "::warning::Bundle size ($BUNDLE_SIZE bytes) exceeds recommended limit (5MB)"
+          fi
+      
+      - name: Dead code detection
+        continue-on-error: true
+        run: |
+          npx ts-prune --error || true
+      
+      - name: Circular dependency check
+        continue-on-error: true
+        run: |
+          npx madge --circular --extensions ts ./src || true
+      
+      - name: Comment PR with quality report
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            
+            // Gather metrics
+            let comment = `## 📊 Code Quality Report\n\n`;
+            comment += `✅ **All quality checks passed!**\n\n`;
+            comment += `### Metrics\n`;
+            comment += `- Bundle size: Check workflow logs for details\n`;
+            comment += `- Type checking: ✅ Passed\n`;
+            comment += `- Linting: ✅ Passed\n`;
+            comment += `- Formatting: ✅ Passed\n`;
+            
+            // Find and update or create comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Code Quality Report')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }

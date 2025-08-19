@@ -39,7 +39,7 @@ describe('DockerCleaner', () => {
 
       const available = await cleaner.isAvailable();
       expect(available).toBe(true);
-      expect(vi.mocked(execa)).toHaveBeenCalledWith('docker', ['version', '--format', '{{.Server.Version}}']);
+      expect(vi.mocked(execa)).toHaveBeenCalledWith('docker', ['version', '--format', '{{.Server.Version}}'], { timeout: 10000 });
     });
 
     it('should return true when Docker is installed but server not running', async () => {

@@ -28,6 +28,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
       
       - name: Configure Git
         run: |
@@ -46,23 +47,53 @@ jobs:
             COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s")
           fi
           
-          # Check for version bump indicators in commit messages
-          VERSION_TYPE="patch"
+          # More strict version bump detection for 0.x.x versions
+          VERSION_TYPE="patch"  # Default to patch for most changes
           
-          # Check for major version indicators
-          if echo "$COMMITS" | grep -qE "BREAKING CHANGE:|!:"; then
-            VERSION_TYPE="major"
-          # Check for minor version indicators
-          elif echo "$COMMITS" | grep -qE "^feat(\(.*\))?:"; then
-            VERSION_TYPE="minor"
+          # Get current version
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          MAJOR_VERSION=$(echo $CURRENT_VERSION | cut -d. -f1)
+          
+          echo "Current version: $CURRENT_VERSION (major: $MAJOR_VERSION)"
+          
+          # For 0.x.x versions, be very strict about minor bumps
+          if [ "$MAJOR_VERSION" = "0" ]; then
+            # Only bump minor for significant new features with explicit markers
+            if echo "$COMMITS" | grep -qE "^feat!(\(.*\))?:|MINOR CHANGE:|FEATURE RELEASE:"; then
+              VERSION_TYPE="minor"
+              echo "Found explicit minor version indicator"
+            # Major bumps only for breaking changes (will become 1.0.0)
+            elif echo "$COMMITS" | grep -qE "BREAKING CHANGE:|MAJOR CHANGE:"; then
+              VERSION_TYPE="major"
+              echo "Found breaking change indicator"
+            # Everything else is a patch
+            else
+              # Even regular feat: commits are patches in 0.x.x
+              VERSION_TYPE="patch"
+              echo "Defaulting to patch for 0.x.x version"
+            fi
+          else
+            # For 1.x.x and above, use standard conventional commits
+            if echo "$COMMITS" | grep -qE "BREAKING CHANGE:|!:"; then
+              VERSION_TYPE="major"
+            elif echo "$COMMITS" | grep -qE "^feat(\(.*\))?:"; then
+              VERSION_TYPE="minor"
+            fi
           fi
           
           echo "version_type=$VERSION_TYPE" >> $GITHUB_OUTPUT
           
+          # Log the decision for debugging
+          echo "Commits analyzed:"
+          echo "$COMMITS" | head -10
+          echo "---"
+          echo "Version bump type: $VERSION_TYPE"
+          
           # Check if we should skip (e.g., if last commit was a version bump)
           LAST_COMMIT=$(git log -1 --pretty=format:"%s")
-          if echo "$LAST_COMMIT" | grep -qE "^chore\(release\):"; then
+          if echo "$LAST_COMMIT" | grep -qE "^chore\(release\):|\[skip ci\]"; then
             echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Skipping: Last commit was a release or has [skip ci]"
           else
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
@@ -78,8 +109,24 @@ jobs:
           NEW_VERSION=$(node -p "require('./package.json').version")
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           
-          # Update version in src/cli.ts
-          sed -i "s/version: '[^']*'/version: '$NEW_VERSION'/" src/cli.ts
+          # Update version in src/cli.ts if it exists
+          if [ -f "src/cli.ts" ]; then
+            sed -i "s/version: '[^']*'/version: '$NEW_VERSION'/" src/cli.ts
+          fi
+          
+          echo "Bumped version to: $NEW_VERSION"
+      
+      - name: Install dependencies
+        if: steps.check_commits.outputs.skip == 'false'
+        run: npm ci
+      
+      - name: Build project
+        if: steps.check_commits.outputs.skip == 'false'
+        run: npm run build
+      
+      - name: Run tests
+        if: steps.check_commits.outputs.skip == 'false'
+        run: npm test
       
       - name: Commit version bump
         if: steps.check_commits.outputs.skip == 'false'

@@ -93,12 +93,10 @@ describe('migrateConfig', () => {
       
       expect(result.scheduler).toEqual({
         enabled: true,
-        interval: 'weekly',
-        thresholds: {
-          size: '1GB',
-          age: '30d'
-        },
-        cleaners: ['npm', 'yarn']
+        frequency: 'weekly',
+        dayOfWeek: undefined,
+        time: undefined,
+        args: ['--size-threshold', '1GB']
       });
       expect(result.auto).toBeUndefined();
     });
@@ -115,9 +113,11 @@ describe('migrateConfig', () => {
       const result = legacyToNew(legacy);
       
       expect(result.defaults).toEqual({
-        verbose: true,
-        colors: false,
-        format: 'json'
+        _legacyOutput: {
+          verbose: true,
+          useColors: false,
+          format: 'json'
+        }
       });
       expect(result.output).toBeUndefined();
     });

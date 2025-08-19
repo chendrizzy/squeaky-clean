@@ -1,0 +1,72 @@
+name: Reusable Setup
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: '20'
+      install-deps:
+        description: 'Whether to install dependencies'
+        required: false
+        type: boolean
+        default: true
+      build-project:
+        description: 'Whether to build the project'
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      cache-hit:
+        description: 'Whether npm cache was hit'
+        value: ${{ jobs.setup.outputs.cache-hit }}
+      node-version:
+        description: 'Node.js version used'
+        value: ${{ jobs.setup.outputs.node-version }}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      cache-hit: ${{ steps.cache.outputs.cache-hit }}
+      node-version: ${{ steps.node.outputs.version }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        id: node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'npm'
+      
+      - name: Get Node.js version
+        run: |
+          echo "version=$(node -v)" >> $GITHUB_OUTPUT
+      
+      - name: Cache dependencies
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            node_modules
+            dist
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}-
+            ${{ runner.os }}-node-
+      
+      - name: Install dependencies
+        if: inputs.install-deps && steps.cache.outputs.cache-hit != 'true'
+        run: npm ci
+      
+      - name: Build project
+        if: inputs.build-project
+        run: npm run build

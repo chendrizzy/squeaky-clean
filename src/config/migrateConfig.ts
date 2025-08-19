@@ -29,13 +29,20 @@ export function isLegacyShape(json: any): boolean {
 export function legacyToNew(json: LegacyConfig): NewConfig {
   const out: NewConfig = {};
 
-  // 1) tools -> cleaners
-  if (json.tools && typeof json.tools === "object") {
+  // Check if there are already new-style keys, give them precedence
+  const hasCleaners = (json as any).cleaners && typeof (json as any).cleaners === "object";
+  const hasScheduler = (json as any).scheduler && typeof (json as any).scheduler === "object";
+  const hasDefaults = (json as any).defaults && typeof (json as any).defaults === "object";
+
+  // 1) tools -> cleaners (only if cleaners doesn't already exist)
+  if (json.tools && typeof json.tools === "object" && !hasCleaners) {
     out.cleaners = { ...(json.tools as object) } as Record<string, any>;
+  } else if (hasCleaners) {
+    out.cleaners = (json as any).cleaners;
   }
 
-  // 2) auto -> scheduler
-  if (json.auto && typeof json.auto === "object") {
+  // 2) auto -> scheduler (only if scheduler doesn't already exist)
+  if (json.auto && typeof json.auto === "object" && !hasScheduler) {
     out.scheduler = {
       enabled: json.auto.enabled,
       frequency: json.auto.schedule as any,
@@ -47,16 +54,20 @@ export function legacyToNew(json: LegacyConfig): NewConfig {
     if (json.auto.sizeThreshold && out.scheduler) {
       out.scheduler.args = [...(out.scheduler.args ?? []), "--size-threshold", String(json.auto.sizeThreshold)];
     }
+  } else if (hasScheduler) {
+    out.scheduler = (json as any).scheduler;
   }
 
-  // 3) output -> defaults (map what reasonably translates)
-  if (json.output && typeof json.output === "object") {
+  // 3) output -> defaults (only if defaults doesn't already exist)
+  if (json.output && typeof json.output === "object" && !hasDefaults) {
     out.defaults = {
       // dryRun remains user-controlled; don't infer from verbose/useColors
       // Carry nothing by default—these were UI prefs. If you prefer, you can stash them:
       // keep legacy UI hints
       _legacyOutput: json.output
     } as any;
+  } else if (hasDefaults) {
+    out.defaults = (json as any).defaults;
   }
 
   // 4) passthrough: extends/plugins/profiles if already present
@@ -66,7 +77,7 @@ export function legacyToNew(json: LegacyConfig): NewConfig {
 
   // 5) bring forward unknown top-level keys as-is (non-invasive)
   for (const [k, v] of Object.entries(json)) {
-    if (["tools","auto","output","extends","plugins","profiles"].includes(k)) continue;
+    if (["tools","auto","output","extends","plugins","profiles","cleaners","scheduler","defaults"].includes(k)) continue;
     if (!(k in out)) (out as any)[k] = v;
   }
 

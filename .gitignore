@@ -160,7 +160,8 @@ lib/
 *.orig
 
 # Claude stuff
-.claude-flow/
+.claude-flow/*
+.claude-flow/metrics/*
 .swarm/
 
 # Development & project tracking docs
@@ -168,4 +169,7 @@ docs-dev/
 # Demo and test configs
 demo-*.js
 test-*.json
-.claude-flow/metrics/
+
+/CLAUDE.md
+/.claude-flow/metrics/performance.json
+/.claude-flow/metrics/task-metrics.json
