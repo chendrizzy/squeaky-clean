@@ -65,6 +65,7 @@ program
   .option('-a, --all', 'clean all configured caches')
   .option('-t, --types <types>', 'comma-separated list of cache types (package-manager,build-tool,browser,ide,system)')
   .option('-e, --exclude <tools>', 'comma-separated list of tools to exclude')
+  .option('--include <tools>', 'comma-separated list of tools to include (overrides --all and --exclude)') // New option
   .option('-d, --dry-run', 'show what would be cleaned without actually cleaning')
   .option('-f, --force', 'skip confirmation prompts')
   .option('-s, --sizes', 'show cache sizes before cleaning')
@@ -75,6 +76,7 @@ program
   .option('--use-case <case>', 'clean specific use cases (development,testing,production,experimental,archived)')
   .option('--priority <level>', 'clean only specified priority (critical,important,normal,low)')
   .option('--categories <ids>', 'clean specific category IDs (comma-separated)')
+  .option('--sub-caches <cleaner:category,...>', 'clean specific sub-caches within a cleaner (e.g., xcode:DerivedData,npm:logs)')
   .action(async (options) => {
     try {
       printHeader('Cache Cleaning');
@@ -163,6 +165,20 @@ const configCmd = program
       await configCommand(options);
     } catch (error) {
       printError(`Failed to manage config: ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+  });
+
+// Emojis command - manage emoji output
+program
+  .command('emojis <mode>')
+  .description('manage emoji output in the console (on, off, minimal)')
+  .action(async (mode) => {
+    try {
+      const { emojisCommand } = await import('./commands/emojis');
+      await emojisCommand(mode);
+    } catch (error) {
+      printError(`Failed to set emoji mode: ${error instanceof Error ? error.message : error}`);
       process.exit(1);
     }
   });

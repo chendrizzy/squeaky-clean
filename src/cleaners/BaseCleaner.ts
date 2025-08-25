@@ -1,8 +1,10 @@
 import { CleanerModule, CacheInfo, CacheCategory, ClearResult, CacheType, CacheSelectionCriteria } from '../types';
 import { existsSync, statSync } from 'fs';
-import { basename } from 'path';
+import { basename, resolve, relative } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { minimatch } from 'minimatch';
+import { printVerbose } from '../utils/cli';
 
 const execAsync = promisify(exec);
 
@@ -45,9 +47,54 @@ export abstract class BaseCleaner implements CleanerModule {
   }
 
   /**
+   * Check if a path is protected
+   */
+  protected isProtectedPath(path: string, protectedPaths: string[] = []): boolean {
+    if (!protectedPaths.length) return false;
+    
+    const normalizedPath = resolve(path);
+    
+    for (const protectedPattern of protectedPaths) {
+      // Support both exact paths and glob patterns
+      if (protectedPattern.includes('*') || protectedPattern.includes('?')) {
+        // It's a glob pattern
+        if (minimatch(normalizedPath, protectedPattern)) {
+          printVerbose(`Path ${path} is protected by pattern: ${protectedPattern}`);
+          return true;
+        }
+      } else {
+        // It's an exact path or directory
+        const normalizedProtected = resolve(protectedPattern);
+        if (normalizedPath === normalizedProtected || normalizedPath.startsWith(normalizedProtected + '/')) {
+          printVerbose(`Path ${path} is protected: ${protectedPattern}`);
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * Filter paths to exclude protected ones
+   */
+  protected filterProtectedPaths(paths: string[], protectedPaths: string[] = []): string[] {
+    if (!protectedPaths.length) return paths;
+    
+    const filtered = paths.filter(path => !this.isProtectedPath(path, protectedPaths));
+    
+    const skippedCount = paths.length - filtered.length;
+    if (skippedCount > 0) {
+      printVerbose(`Skipped ${skippedCount} protected path(s)`);
+    }
+    
+    return filtered;
+  }
+
+  /**
    * Clear cache with selection criteria
    */
-  async clear(dryRun?: boolean, criteria?: CacheSelectionCriteria): Promise<ClearResult> {
+  async clear(dryRun?: boolean, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths?: string[]): Promise<ClearResult> {
     const categories = await this.getCacheCategories();
     const filteredCategories = this.filterCategories(categories, criteria);
     
@@ -56,9 +103,16 @@ export abstract class BaseCleaner implements CleanerModule {
     let clearedCategories: string[] = [];
 
     for (const category of filteredCategories) {
-      totalSizeBefore += category.size || 0;
-      clearedPaths.push(...category.paths);
-      clearedCategories.push(category.id);
+      // Filter out protected paths from this category
+      const allowedPaths = this.filterProtectedPaths(category.paths, protectedPaths);
+      
+      if (allowedPaths.length > 0) {
+        totalSizeBefore += category.size || 0;
+        clearedPaths.push(...allowedPaths);
+        clearedCategories.push(category.id);
+      } else if (category.paths.length > 0) {
+        printVerbose(`Skipping category ${category.id} - all paths are protected`);
+      }
     }
 
     if (!dryRun) {
@@ -81,7 +135,7 @@ export abstract class BaseCleaner implements CleanerModule {
   /**
    * Clear specific categories
    */
-  async clearByCategory(categoryIds: string[], dryRun?: boolean): Promise<ClearResult> {
+  async clearByCategory(categoryIds: string[], dryRun?: boolean, cacheInfo?: CacheInfo, protectedPaths?: string[]): Promise<ClearResult> {
     const categories = await this.getCacheCategories();
     const selectedCategories = categories.filter(c => categoryIds.includes(c.id));
     
@@ -90,9 +144,16 @@ export abstract class BaseCleaner implements CleanerModule {
     let clearedCategories: string[] = [];
 
     for (const category of selectedCategories) {
-      totalSizeBefore += category.size || 0;
-      clearedPaths.push(...category.paths);
-      clearedCategories.push(category.id);
+      // Filter out protected paths from this category
+      const allowedPaths = this.filterProtectedPaths(category.paths, protectedPaths);
+      
+      if (allowedPaths.length > 0) {
+        totalSizeBefore += category.size || 0;
+        clearedPaths.push(...allowedPaths);
+        clearedCategories.push(category.id);
+      } else if (category.paths.length > 0) {
+        printVerbose(`Skipping category ${category.id} - all paths are protected`);
+      }
     }
 
     if (!dryRun) {

@@ -5,6 +5,7 @@ import { printVerbose, symbols } from '../utils/cli';
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
+import minimatch from 'minimatch';
 
 const cleaner: CleanerModule = {
   name: 'nix',
@@ -106,16 +107,38 @@ const cleaner: CleanerModule = {
     };
   },
 
-  async clear(dryRun?: boolean): Promise<ClearResult> {
-    const cacheInfo = await this.getCacheInfo();
-    const sizeBefore = cacheInfo.size || 0;
+  async clear(dryRun?: boolean, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
+    const info = cacheInfo || await this.getCacheInfo();
+    const sizeBefore = info.size || 0;
     const clearedPaths: string[] = [];
 
-    if (!cacheInfo.isInstalled) {
+    if (!info.isInstalled) {
       return {
         name: this.name,
         success: false,
         error: 'Nix is not installed',
+        clearedPaths: [],
+        sizeBefore: 0,
+        sizeAfter: 0,
+      };
+    }
+
+    // Check if any of the paths are protected
+    const pathsToClear = info.paths.filter(cachePath => {
+      const isProtected = protectedPaths.some(protectedPattern => 
+        minimatch(cachePath, protectedPattern, { dot: true })
+      );
+      if (isProtected) {
+        printVerbose(`Skipping protected path: ${cachePath}`);
+      }
+      return !isProtected;
+    });
+
+    if (pathsToClear.length === 0 && !dryRun) { // If all paths are protected and not a dry run
+      printVerbose('All Nix cache paths are protected. Nothing to clear.');
+      return {
+        name: this.name,
+        success: true,
         clearedPaths: [],
         sizeBefore: 0,
         sizeAfter: 0,
@@ -143,7 +166,7 @@ const cleaner: CleanerModule = {
         return {
           name: this.name,
           success: true,
-          clearedPaths: cacheInfo.paths,
+          clearedPaths: pathsToClear, // Only report paths that would be cleared
           sizeBefore,
           sizeAfter: sizeBefore,
         };
@@ -155,7 +178,9 @@ const cleaner: CleanerModule = {
       try {
         // Delete old generations and collect garbage
         execSync('nix-collect-garbage -d', { stdio: 'inherit' });
-        clearedPaths.push('/nix/store');
+        if (pathsToClear.includes('/nix/store')) { // Only push if it was not protected
+          clearedPaths.push('/nix/store');
+        }
         
         // Also clean build cache if using nix 2.0+
         try {
@@ -166,7 +191,7 @@ const cleaner: CleanerModule = {
         
         // Clean user cache
         const nixCache = path.join(os.homedir(), '.cache', 'nix');
-        if (fs.existsSync(nixCache)) {
+        if (fs.existsSync(nixCache) && pathsToClear.includes(nixCache)) { // Only clear if not protected
           try {
             fs.rmSync(nixCache, { recursive: true, force: true });
             clearedPaths.push(nixCache);
@@ -180,16 +205,12 @@ const cleaner: CleanerModule = {
         printVerbose(`${symbols.warning} Partial Nix cleanup: ${error}`);
       }
 
-      // Get size after
-      const afterInfo = await this.getCacheInfo();
-      const sizeAfter = afterInfo.size || 0;
-
       return {
         name: this.name,
         success: true,
         clearedPaths,
         sizeBefore,
-        sizeAfter,
+        sizeAfter: 0, // Set to 0 as we don't want to rescan
       };
     } catch (error) {
       return {

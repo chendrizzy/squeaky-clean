@@ -31,9 +31,9 @@ export function formatSizeWithColor(bytes: number): string {
   
   if (bytes === 0) {
     return colorize(formatted, 'muted');
-  } else if (bytes < 1024 * 1024) { // < 1MB
+  } else if (bytes < 50 * 1024 * 1024) { // < 50MB
     return colorize(formatted, 'success');
-  } else if (bytes < 1024 * 1024 * 100) { // < 100MB
+  } else if (bytes < 500 * 1024 * 1024) { // < 500MB
     return colorize(formatted, 'warning');
   } else {
     return colorize(formatted, 'error');
@@ -41,30 +41,42 @@ export function formatSizeWithColor(bytes: number): string {
 }
 
 export function printHeader(text: string): void {
+  const mode = config.getEmojiMode();
+  const prefix = mode === 'on' ? '🧼 ' : '';
   console.log();
-  console.log(colorize(`🧼 ${text}`, 'bold'));
-  console.log(colorize('─'.repeat(text.length + 3), 'dim'));
+  console.log(colorize(`${prefix}${text}`, 'bold'));
+  console.log(colorize('─'.repeat(text.length + prefix.length + 1), 'dim'));
 }
 
 export function printSuccess(text: string): void {
-  console.log(colorize('✅', 'success') + ' ' + text);
+  const mode = config.getEmojiMode();
+  const prefix = (mode === 'on' || mode === 'minimal') ? colorize('✅', 'success') + ' ' : '';
+  console.log(prefix + text);
 }
 
 export function printError(text: string): void {
-  console.log(colorize('❌', 'error') + ' ' + text);
+  const mode = config.getEmojiMode();
+  const prefix = (mode === 'on' || mode === 'minimal') ? colorize('❌', 'error') + ' ' : '';
+  console.log(prefix + text);
 }
 
 export function printWarning(text: string): void {
-  console.log(colorize('⚠️ ', 'warning') + text);
+  const mode = config.getEmojiMode();
+  const prefix = (mode === 'on' || mode === 'minimal') ? colorize('⚠️ ', 'warning') : '';
+  console.log(prefix + text);
 }
 
 export function printInfo(text: string): void {
-  console.log(colorize('ℹ️ ', 'info') + text);
+  const mode = config.getEmojiMode();
+  const prefix = (mode === 'on' || mode === 'minimal') ? colorize('ℹ️ ', 'info') : '';
+  console.log(prefix + text);
 }
 
 export function printVerbose(text: string): void {
   if (config.isVerbose()) {
-    console.log(colorize('  🔍 ' + text, 'dim'));
+    const mode = config.getEmojiMode();
+    const prefix = mode === 'on' ? '  🔍 ' : '  ';
+    console.log(colorize(prefix + text, 'dim'));
   }
 }
 
@@ -124,5 +136,7 @@ export const symbols = {
 
 // Special message for completion
 export function printCleanComplete(message: string): void {
-  console.log(colorize(`✨ ${message} 🫧`, 'success'));
+  const mode = config.getEmojiMode();
+  const prefix = mode === 'on' ? '✨ ' : '';
+  console.log(colorize(`${prefix}${message}`, 'success'));
 }

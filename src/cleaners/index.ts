@@ -1,6 +1,7 @@
 import { CleanerModule, CacheInfo, ClearResult, CacheType } from '../types';
 import { config } from '../config';
 import { printVerbose, symbols } from '../utils/cli';
+import minimatch from 'minimatch';
 
 // Import all cleaner modules
 // Package managers
@@ -18,6 +19,8 @@ import viteCleaner from './vite';
 import nxCleaner from './nx';
 import turboCleaner from './turbo';
 import flutterCleaner from './flutter';
+import nodeGypCleaner from './nodeGyp';
+import goBuildCleaner from './goBuild';
 
 // IDEs
 import xcodeCleaner from './xcode';
@@ -55,6 +58,8 @@ export class CacheManager {
     this.cleaners.set('nx', nxCleaner);
     this.cleaners.set('turbo', turboCleaner);
     this.cleaners.set('flutter', flutterCleaner);
+    this.cleaners.set('node-gyp', nodeGypCleaner);
+    this.cleaners.set('go-build', goBuildCleaner);
     
     // IDEs and development tools
     this.cleaners.set('xcode', xcodeCleaner);
@@ -107,6 +112,7 @@ export class CacheManager {
   async getAllCacheInfo(): Promise<CacheInfo[]> {
     const enabledCleaners = this.getEnabledCleaners();
     const results: CacheInfo[] = [];
+    const protectedPaths = config.getProtectedPaths(); // Get protected paths
 
     printVerbose(`${symbols.soap} Scanning ${enabledCleaners.length} enabled cache types...`);
 
@@ -114,7 +120,22 @@ export class CacheManager {
       try {
         printVerbose(`Checking ${cleaner.name} caches...`);
         const info = await cleaner.getCacheInfo();
-        results.push(info);
+        
+        // Check if any of the cache's paths are protected
+        const isProtected = info.paths.some(cachePath => 
+          protectedPaths.some(protectedPattern => 
+            minimatch(cachePath, protectedPattern, { dot: true })
+          )
+        );
+
+        if (isProtected) {
+          printVerbose(`Skipping protected cache: ${cleaner.name}`);
+          // Optionally, you could add a flag to CacheInfo to indicate it's protected
+          // info.isProtected = true;
+          // results.push(info); // Still add it, but mark it
+        } else {
+          results.push(info);
+        }
       } catch (error) {
         printVerbose(`Error getting cache info for ${cleaner.name}: ${error}`);
         // Add empty result for failed cleaners
@@ -139,13 +160,24 @@ export class CacheManager {
     dryRun?: boolean;
     types?: CacheType[];
     exclude?: string[];
+    include?: string[];
+    subCachesToClear?: Map<string, string[]>; // New option
   } = {}): Promise<ClearResult[]> {
     let cleaners = this.getEnabledCleaners();
+    const allCacheInfos = await this.getAllCacheInfo(); // Get all cache info once
+    const protectedPaths = config.getProtectedPaths(); // Get protected paths
 
     // Filter by types if specified
     if (options.types && options.types.length > 0) {
       cleaners = cleaners.filter(cleaner => 
         options.types!.includes(cleaner.type)
+      );
+    }
+
+    // Include specific tools if specified (this takes precedence over exclude)
+    if (options.include && options.include.length > 0) {
+      cleaners = cleaners.filter(cleaner => 
+        options.include!.includes(cleaner.name)
       );
     }
 
@@ -163,7 +195,21 @@ export class CacheManager {
     for (const cleaner of cleaners) {
       try {
         printVerbose(`${symbols.soap} Processing ${cleaner.name}...`);
-        const result = await cleaner.clear(options.dryRun);
+        const cacheInfoForCleaner = allCacheInfos.find(info => info.name === cleaner.name); // Find corresponding info
+
+        let result: ClearResult;
+        if (options.subCachesToClear && options.subCachesToClear.has(cleaner.name)) {
+          const categoryIds = options.subCachesToClear.get(cleaner.name)!;
+          if (cleaner.clearByCategory) {
+            result = await cleaner.clearByCategory(categoryIds, options.dryRun, cacheInfoForCleaner, protectedPaths);
+          } else {
+            // Fallback if clearByCategory is not implemented for this cleaner
+            printVerbose(`Warning: ${cleaner.name} does not support granular clearing by category. Clearing all.`);
+            result = await cleaner.clear(options.dryRun, undefined, cacheInfoForCleaner, protectedPaths);
+          }
+        } else {
+          result = await cleaner.clear(options.dryRun, undefined, cacheInfoForCleaner, protectedPaths);
+        }
         results.push(result);
         
         if (result.success && !options.dryRun) {
@@ -186,7 +232,6 @@ export class CacheManager {
     }
 
     return results;
-  }
 
   /**
    * Get total cache sizes by type

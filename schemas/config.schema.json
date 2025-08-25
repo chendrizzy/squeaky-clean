@@ -8,8 +8,20 @@
     "version": {
       "description": "Config version. Increment when breaking fields change.",
       "type": "string",
-      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[\\w.-]+)?(?:\\+[\\w.-]+)?$",
+      "pattern": "^(0|[1-9]\d*)\\.(0|[1-9]\d*)\\.(0|[1-9]\d*)(?:-[\\w.-]+)?(?:\\+[\\w.-]+)?$",
       "default": "0.1.0"
+    },
+    "emojis": {
+      "description": "Configure emoji usage in the output.",
+      "type": "string",
+      "enum": ["on", "off", "minimal"],
+      "default": "on"
+    },
+    "protectedPaths": {
+      "description": "List of glob patterns for paths that should never be cleaned.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
     },
     "extends": {
       "description": "Path(s) or package id(s) of base configs to merge in (earlier entries merge first).",

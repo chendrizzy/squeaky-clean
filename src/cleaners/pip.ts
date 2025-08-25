@@ -264,10 +264,10 @@ class PipCleaner implements CleanerModule {
     };
   }
 
-  async clear(dryRun = false): Promise<ClearResult> {
-    const cacheInfo = await this.getCacheInfo();
+  async clear(dryRun = false, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo): Promise<ClearResult> {
+    const info = cacheInfo || await this.getCacheInfo();
     
-    if (!cacheInfo.isInstalled) {
+    if (!info.isInstalled) {
       return {
         name: this.name,
         success: false,
@@ -278,7 +278,7 @@ class PipCleaner implements CleanerModule {
       };
     }
 
-    const sizeBefore = cacheInfo.size || 0;
+    const sizeBefore = info.size || 0;
     const clearedPaths: string[] = [];
     let errors: string[] = [];
 
@@ -287,7 +287,7 @@ class PipCleaner implements CleanerModule {
       await this.runPipCachePurge();
     }
 
-    for (const cachePath of cacheInfo.paths) {
+    for (const cachePath of info.paths) {
       try {
         if (dryRun) {
           printVerbose(`${symbols.soap} Would clear: ${cachePath}`);
@@ -304,27 +304,11 @@ class PipCleaner implements CleanerModule {
       }
     }
 
-    // Calculate size after clearing
-    let sizeAfter = 0;
-    if (!dryRun) {
-      for (const cachePath of cacheInfo.paths) {
-        try {
-          if (await pathExists(cachePath)) {
-            sizeAfter += await getDirectorySize(cachePath, true);
-          }
-        } catch {
-          // Ignore errors when calculating final size
-        }
-      }
-    } else {
-      sizeAfter = sizeBefore; // No actual clearing in dry run
-    }
-
     return {
       name: this.name,
       success: errors.length === 0,
       sizeBefore,
-      sizeAfter,
+      sizeAfter: 0, // Set to 0 as we don't want to rescan
       error: errors.length > 0 ? errors.join('; ') : undefined,
       clearedPaths,
     };

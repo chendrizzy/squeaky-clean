@@ -68,6 +68,12 @@ export interface ToolGranularSettings {
 }
 
 export interface UserConfig {
+  // Profile settings
+  activeProfile?: string;
+  
+  // Protected paths that should never be cleaned
+  protectedPaths?: string[];
+  
   // Cache type preferences
   enabledCaches: {
     packageManagers: boolean;
@@ -144,6 +150,15 @@ export interface UserConfig {
     format?: 'json' | 'text';
     showCategories?: boolean; // new
     showRecency?: boolean; // new
+    emojis?: 'on' | 'off' | 'minimal'; // emoji support
+  };
+  
+  // Scheduling settings
+  scheduler?: {
+    enabled: boolean;
+    schedule?: string; // cron expression
+    lastRun?: string; // ISO date string
+    nextRun?: string; // ISO date string
   };
 }
 
@@ -154,8 +169,8 @@ export interface CleanerModule {
   isAvailable: () => Promise<boolean>;
   getCacheInfo: () => Promise<CacheInfo>;
   getCacheCategories?: () => Promise<CacheCategory[]>;
-  clear: (dryRun?: boolean, criteria?: CacheSelectionCriteria) => Promise<ClearResult>;
-  clearByCategory?: (categoryIds: string[], dryRun?: boolean) => Promise<ClearResult>;
+  clear: (dryRun?: boolean, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths?: string[]) => Promise<ClearResult>;
+  clearByCategory?: (categoryIds: string[], dryRun?: boolean, cacheInfo?: CacheInfo, protectedPaths?: string[]) => Promise<ClearResult>;
 }
 
 export interface CommandOptions {

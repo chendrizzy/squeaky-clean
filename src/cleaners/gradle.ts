@@ -5,6 +5,7 @@ import execa from 'execa';
 import { CacheInfo, ClearResult, CleanerModule } from '../types';
 import { getDirectorySize, pathExists, safeRmrf } from '../utils/fs';
 import { printVerbose } from '../utils/cli';
+import minimatch from 'minimatch';
 
 export class GradleCleaner implements CleanerModule {
   name = 'gradle';
@@ -179,14 +180,14 @@ export class GradleCleaner implements CleanerModule {
     };
   }
 
-  async clear(dryRun = false): Promise<ClearResult> {
-    const cacheInfo = await this.getCacheInfo();
+  async clear(dryRun = false, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
+    const info = cacheInfo || await this.getCacheInfo();
     const clearedPaths: string[] = [];
-    const sizeBefore = cacheInfo.size || 0;
+    const sizeBefore = info.size || 0;
     let success = true;
     let error: string | undefined;
 
-    if (!cacheInfo.isInstalled) {
+    if (!info.isInstalled) {
       return {
         name: this.name,
         success: false,
@@ -197,7 +198,7 @@ export class GradleCleaner implements CleanerModule {
       };
     }
 
-    if (cacheInfo.paths.length === 0) {
+    if (info.paths.length === 0) {
       printVerbose('No Gradle cache directories found');
       return {
         name: this.name,
@@ -210,13 +211,13 @@ export class GradleCleaner implements CleanerModule {
 
     try {
       if (dryRun) {
-        printVerbose(`[DRY RUN] Would clear ${cacheInfo.paths.length} Gradle cache locations:`);
+        printVerbose(`[DRY RUN] Would clear ${info.paths.length} Gradle cache locations:`);
         const pathsWithInfo = this.getCachePaths();
-        for (const cachePath of cacheInfo.paths) {
-          const info = pathsWithInfo.find(p => p.path === cachePath);
-          printVerbose(`  • ${info?.category || 'Unknown'}: ${cachePath}`);
-          if (info?.description) {
-            printVerbose(`    ${info.description}`);
+        for (const cachePath of info.paths) {
+          const pathInfo = pathsWithInfo.find(p => p.path === cachePath);
+          printVerbose(`  • ${pathInfo?.category || 'Unknown'}: ${cachePath}`);
+          if (pathInfo?.description) {
+            printVerbose(`    ${pathInfo.description}`);
           }
         }
         printVerbose('Would also try to stop Gradle daemons gracefully');
@@ -225,7 +226,7 @@ export class GradleCleaner implements CleanerModule {
           success: true,
           sizeBefore,
           sizeAfter: sizeBefore,
-          clearedPaths: cacheInfo.paths,
+          clearedPaths: info.paths,
         };
       }
 
@@ -255,9 +256,9 @@ export class GradleCleaner implements CleanerModule {
       ];
 
       const categorizedPaths = new Map<string, string[]>();
-      for (const cachePath of cacheInfo.paths) {
-        const info = pathsWithInfo.find(p => p.path === cachePath);
-        const category = info?.category || 'Other';
+      for (const cachePath of info.paths) {
+        const pathInfo = pathsWithInfo.find(p => p.path === cachePath);
+        const category = pathInfo?.category || 'Other';
         
         if (!categorizedPaths.has(category)) {
           categorizedPaths.set(category, []);
@@ -273,13 +274,23 @@ export class GradleCleaner implements CleanerModule {
         printVerbose(`Clearing ${category} caches...`);
         
         for (const cachePath of paths) {
+          // Check if the path is protected
+          const isProtected = protectedPaths.some(protectedPattern => 
+            minimatch(cachePath, protectedPattern, { dot: true })
+          );
+
+          if (isProtected) {
+            printVerbose(`Skipping protected path: ${cachePath}`);
+            continue; // Skip this path
+          }
+
           try {
             if (await pathExists(cachePath)) {
-              const info = pathsWithInfo.find(p => p.path === cachePath);
+              const pathInfo = pathsWithInfo.find(p => p.path === cachePath);
               
               printVerbose(`Clearing ${category}: ${cachePath}`);
-              if (info?.description) {
-                printVerbose(`  Purpose: ${info.description}`);
+              if (pathInfo?.description) {
+                printVerbose(`  Purpose: ${pathInfo.description}`);
               }
               
               await safeRmrf(cachePath);
@@ -296,8 +307,18 @@ export class GradleCleaner implements CleanerModule {
       }
 
       // Handle any remaining uncategorized paths
-      const remainingPaths = cacheInfo.paths.filter(p => !clearedPaths.includes(p));
+      const remainingPaths = info.paths.filter(p => !clearedPaths.includes(p));
       for (const cachePath of remainingPaths) {
+        // Check if the path is protected
+        const isProtected = protectedPaths.some(protectedPattern => 
+          minimatch(cachePath, protectedPattern, { dot: true })
+        );
+
+        if (isProtected) {
+          printVerbose(`Skipping protected path: ${cachePath}`);
+          continue; // Skip this path
+        }
+
         try {
           if (await pathExists(cachePath)) {
             printVerbose(`Clearing remaining cache: ${cachePath}`);
@@ -313,20 +334,15 @@ export class GradleCleaner implements CleanerModule {
         }
       }
 
-      // Calculate size after clearing
-      const newCacheInfo = await this.getCacheInfo();
-      const sizeAfter = newCacheInfo.size || 0;
-      const savedMB = ((sizeBefore - sizeAfter) / (1024 * 1024)).toFixed(1);
-      
-      if (sizeBefore > sizeAfter) {
-        printVerbose(`Freed ${savedMB} MB of Gradle cache data`);
+      if (sizeBefore > 0) {
+        printVerbose(`Freed space from Gradle cache data`);
       }
 
       return {
         name: this.name,
         success,
         sizeBefore,
-        sizeAfter,
+        sizeAfter: 0, // Set to 0 as we don't want to rescan
         error,
         clearedPaths,
       };
@@ -337,7 +353,7 @@ export class GradleCleaner implements CleanerModule {
         sizeBefore,
         sizeAfter: sizeBefore,
         error: clearError instanceof Error ? clearError.message : String(clearError),
-        clearedPaths,
+        clearedPaths: [],
       };
     }
   }

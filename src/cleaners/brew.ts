@@ -3,6 +3,7 @@ import { getCacheSize } from '../utils/fs';
 import { execSync } from 'child_process';
 import { printVerbose, symbols } from '../utils/cli';
 import os from 'os';
+import minimatch from 'minimatch';
 
 const cleaner: CleanerModule = {
   name: 'brew',
@@ -97,16 +98,38 @@ const cleaner: CleanerModule = {
     };
   },
 
-  async clear(dryRun?: boolean): Promise<ClearResult> {
-    const cacheInfo = await this.getCacheInfo();
-    const sizeBefore = cacheInfo.size || 0;
+  async clear(dryRun?: boolean, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
+    const info = cacheInfo || await this.getCacheInfo();
+    const sizeBefore = info.size || 0;
     const clearedPaths: string[] = [];
 
-    if (!cacheInfo.isInstalled) {
+    if (!info.isInstalled) {
       return {
         name: this.name,
         success: false,
         error: 'Homebrew is not installed',
+        clearedPaths: [],
+        sizeBefore: 0,
+        sizeAfter: 0,
+      };
+    }
+
+    // Check if any of the paths are protected
+    const pathsToClear = info.paths.filter(cachePath => {
+      const isProtected = protectedPaths.some(protectedPattern => 
+        minimatch(cachePath, protectedPattern, { dot: true })
+      );
+      if (isProtected) {
+        printVerbose(`Skipping protected path: ${cachePath}`);
+      }
+      return !isProtected;
+    });
+
+    if (pathsToClear.length === 0 && !dryRun) { // If all paths are protected and not a dry run
+      printVerbose('All Homebrew cache paths are protected. Nothing to clear.');
+      return {
+        name: this.name,
+        success: true,
         clearedPaths: [],
         sizeBefore: 0,
         sizeAfter: 0,
@@ -134,7 +157,7 @@ const cleaner: CleanerModule = {
         return {
           name: this.name,
           success: true,
-          clearedPaths: cacheInfo.paths,
+          clearedPaths: pathsToClear, // Only report paths that would be cleared
           sizeBefore,
           sizeAfter: sizeBefore,
         };
@@ -146,7 +169,7 @@ const cleaner: CleanerModule = {
       try {
         // Clean up old versions and cache
         execSync('brew cleanup -s', { stdio: 'inherit' });
-        clearedPaths.push(...cacheInfo.paths);
+        clearedPaths.push(...pathsToClear); // Only push paths that were actually cleared
         
         // Also prune old downloads
         execSync('brew cleanup --prune=all', { stdio: 'ignore' });
@@ -156,16 +179,12 @@ const cleaner: CleanerModule = {
         printVerbose(`${symbols.warning} Partial Homebrew cleanup: ${error}`);
       }
 
-      // Get size after
-      const afterInfo = await this.getCacheInfo();
-      const sizeAfter = afterInfo.size || 0;
-
       return {
         name: this.name,
         success: true,
         clearedPaths,
         sizeBefore,
-        sizeAfter,
+        sizeAfter: 0, // Set to 0 as we don't want to rescan
       };
     } catch (error) {
       return {

@@ -228,7 +228,7 @@ export const interactiveCommand = new Command('interactive')
         if (!selectedCaches.includes(name)) return;
 
         const emoji = result.success ? '✅' : '❌';
-        const freed = result.sizeBefore - result.sizeAfter;
+        const freed = result.sizeBefore;
         totalFreed += freed;
 
         if (result.success) {
@@ -274,7 +274,7 @@ export const interactiveCommand = new Command('interactive')
           realResults.forEach((result: any) => {
             const name = result.name;
             if (selectedCaches.includes(name) && result.success) {
-              realFreed += result.sizeBefore - result.sizeAfter;
+              realFreed += result.sizeBefore;
             }
           });
 

@@ -1,14 +1,16 @@
-import { CleanerModule, CacheInfo, ClearResult } from '../types';
+import { BaseCleaner } from './BaseCleaner';
+import { CacheInfo, CacheCategory, ClearResult, CacheType } from '../types';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { pathExists, getDirectorySize, safeRmrf } from '../utils/fs';
 import { printVerbose, symbols } from '../utils/cli';
+import minimatch from 'minimatch';
 
-export class JetBrainsCleaner implements CleanerModule {
+export class JetBrainsCleaner extends BaseCleaner {
   name = 'jetbrains';
-  type = 'ide' as const;
-  description = 'JetBrains IDEs (WebStorm, IntelliJ, PhpStorm, etc.) caches and logs';
+  type: CacheType = 'ide';
+  description = 'JetBrains IDEs (WebStorm, IntelliJ, PhpStorm, etc.) comprehensive cache cleaning';
 
   private jetbrainsProducts = [
     'WebStorm',
@@ -20,8 +22,29 @@ export class JetBrainsCleaner implements CleanerModule {
     'DataGrip',
     'Rider',
     'GoLand',
-    'AndroidStudio', // Separate from our Android Studio cleaner for system caches
+    'AndroidStudio',
+    'AppCode',
+    'DataSpell',
+    'RustRover',
+    'Aqua',
+    'Fleet',
+    'Space',
+    'Toolbox', // JetBrains Toolbox App
   ];
+  
+  // Cache categories for different JetBrains cache types
+  private cacheTypes = {
+    system: ['system', 'caches', 'index'],
+    logs: ['log', 'logs'],
+    plugins: ['plugins', 'pluginVerifier'],
+    gradle: ['gradle', '.gradle'],
+    maven: ['.m2', 'maven'],
+    compiledClasses: ['compile-server', 'compileServer'],
+    localHistory: ['LocalHistory'],
+    tasks: ['tasks'],
+    webServers: ['webServers'],
+    vcs: ['vcs-log', 'vcs-users'],
+  };
 
   private async findJetBrainsInstallations(): Promise<{ product: string; path: string }[]> {
     const installations: { product: string; path: string }[] = [];
@@ -342,10 +365,10 @@ export class JetBrainsCleaner implements CleanerModule {
     };
   }
 
-  async clear(dryRun = false): Promise<ClearResult> {
-    const cacheInfo = await this.getCacheInfo();
+  async clear(dryRun = false, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
+    const info = cacheInfo || await this.getCacheInfo();
     
-    if (!cacheInfo.isInstalled) {
+    if (!info.isInstalled) {
       return {
         name: this.name,
         success: false,
@@ -356,11 +379,21 @@ export class JetBrainsCleaner implements CleanerModule {
       };
     }
 
-    const sizeBefore = cacheInfo.size || 0;
+    const sizeBefore = info.size || 0;
     const clearedPaths: string[] = [];
     let errors: string[] = [];
 
-    for (const cachePath of cacheInfo.paths) {
+    for (const cachePath of info.paths) {
+      // Check if the path is protected
+      const isProtected = protectedPaths.some(protectedPattern => 
+        minimatch(cachePath, protectedPattern, { dot: true })
+      );
+
+      if (isProtected) {
+        printVerbose(`Skipping protected path: ${cachePath}`);
+        continue; // Skip this path
+      }
+
       try {
         if (dryRun) {
           printVerbose(`${symbols.soap} Would clear: ${cachePath}`);
@@ -393,27 +426,11 @@ export class JetBrainsCleaner implements CleanerModule {
       }
     }
 
-    // Calculate size after clearing
-    let sizeAfter = 0;
-    if (!dryRun) {
-      for (const cachePath of cacheInfo.paths) {
-        try {
-          if (await pathExists(cachePath)) {
-            sizeAfter += await getDirectorySize(cachePath, true);
-          }
-        } catch {
-          // Ignore errors when calculating final size
-        }
-      }
-    } else {
-      sizeAfter = sizeBefore; // No actual clearing in dry run
-    }
-
     return {
       name: this.name,
       success: errors.length === 0,
       sizeBefore,
-      sizeAfter,
+      sizeAfter: 0, // Set to 0 as we don't want to rescan
       error: errors.length > 0 ? errors.join('; ') : undefined,
       clearedPaths,
     };

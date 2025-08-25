@@ -51,11 +51,13 @@ export const defaultConfig: UserConfig = {
   },
   
   customPaths: [],
+  protectedPaths: [], // New property
   
   output: {
     verbose: false,
     showSizes: true,
     useColors: true,
+    emojis: 'on',
   },
 };
 
@@ -126,12 +128,17 @@ class ConfigManager {
           type: 'array',
           items: { type: 'string' },
         },
+        protectedPaths: { // New property
+          type: 'array',
+          items: { type: 'string' },
+        },
         output: {
           type: 'object',
           properties: {
             verbose: { type: 'boolean' },
             showSizes: { type: 'boolean' },
             useColors: { type: 'boolean' },
+            emojis: { type: 'string', enum: ['on', 'off', 'minimal'] },
           },
         },
       },
@@ -222,9 +229,20 @@ class ConfigManager {
     return config.output?.verbose ?? defaultConfig.output.verbose;
   }
 
+  getEmojiMode(): 'on' | 'off' | 'minimal' {
+    const config = this.get();
+    const output = config.output as any;
+    return output?.emojis ?? defaultConfig.output.emojis;
+  }
+
   getCustomPaths(): string[] {
     const config = this.get();
     return config.customPaths ?? defaultConfig.customPaths;
+  }
+
+  getProtectedPaths(): string[] {
+    const config = this.get();
+    return config.protectedPaths ?? [];
   }
 }
 

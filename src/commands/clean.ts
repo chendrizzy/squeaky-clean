@@ -22,6 +22,27 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
       (Array.isArray(options.exclude) ? options.exclude.join(',') : options.exclude)
         .split(',').map(t => t.trim()) : undefined;
 
+    // Parse include list if specified
+    const include: string[] | undefined = options.include ?
+      (Array.isArray(options.include) ? options.include.join(',') : options.include)
+        .split(',').map(t => t.trim()) : undefined;
+
+    // Parse sub-caches if specified
+    let subCachesToClear: Map<string, string[]> | undefined;
+    if (options.subCaches) {
+      subCachesToClear = new Map<string, string[]>();
+      const pairs = (Array.isArray(options.subCaches) ? options.subCaches.join(',') : options.subCaches).split(',');
+      for (const pair of pairs) {
+        const [cleanerName, categoryId] = pair.trim().split(':');
+        if (cleanerName && categoryId) {
+          if (!subCachesToClear.has(cleanerName)) {
+            subCachesToClear.set(cleanerName, []);
+          }
+          subCachesToClear.get(cleanerName)!.push(categoryId);
+        }
+      }
+    }
+
     // Check if user wants confirmation and we're not in force mode
     if (!options.dryRun && !options.force && config.shouldRequireConfirmation()) {
       printWarning('This will permanently delete cache files. Use --dry-run to preview or --force to skip confirmation.');
@@ -49,7 +70,9 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
       results = await cacheManager.cleanAllCaches({
         dryRun: options.dryRun,
         types,
-        exclude
+        exclude,
+        include,
+        subCachesToClear // Pass sub-caches option
       });
       cleanSpinner.stop();
     } catch (error) {

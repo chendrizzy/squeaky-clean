@@ -1,6 +1,7 @@
 import execa from 'execa';
 import { CacheInfo, ClearResult, CleanerModule } from '../types';
 import { printVerbose } from '../utils/cli';
+import minimatch from 'minimatch';
 
 export class DockerCleaner implements CleanerModule {
   name = 'docker';
@@ -165,14 +166,14 @@ export class DockerCleaner implements CleanerModule {
     }
   }
 
-  async clear(dryRun = false): Promise<ClearResult> {
-    const cacheInfo = await this.getCacheInfo();
-    const sizeBefore = cacheInfo.size || 0;
+  async clear(dryRun = false, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
+    const info = cacheInfo || await this.getCacheInfo();
+    const sizeBefore = info.size || 0;
     let success = true;
     let error: string | undefined;
     const clearedItems: string[] = [];
 
-    if (!cacheInfo.isInstalled) {
+    if (!info.isInstalled) {
       return {
         name: this.name,
         success: false,
@@ -191,6 +192,25 @@ export class DockerCleaner implements CleanerModule {
         clearedPaths: [],
         sizeBefore: 0,
         sizeAfter: 0,
+      };
+    }
+
+    // Check if Docker system is protected
+    const isDockerSystemProtected = protectedPaths.some(protectedPattern => 
+      minimatch('Docker System', protectedPattern, { dot: true }) || // Check against conceptual name
+      minimatch('/var/lib/docker', protectedPattern, { dot: true }) || // Common Docker root
+      minimatch('/var/lib/docker/*', protectedPattern, { dot: true }) // Common Docker root
+    );
+
+    if (isDockerSystemProtected) {
+      printVerbose(`Skipping protected Docker system cleanup.`);
+      return {
+        name: this.name,
+        success: true,
+        clearedPaths: [],
+        sizeBefore,
+        sizeAfter: sizeBefore, // No change
+        error: 'Docker system is protected',
       };
     }
 
@@ -247,20 +267,15 @@ export class DockerCleaner implements CleanerModule {
         success = false;
       }
 
-      // Get new size info
-      const newCacheInfo = await this.getCacheInfo();
-      const sizeAfter = newCacheInfo.size || 0;
-      const savedMB = ((sizeBefore - sizeAfter) / (1024 * 1024)).toFixed(1);
-      
-      if (sizeBefore > sizeAfter) {
-        printVerbose(`Freed ${savedMB} MB of Docker data`);
+      if (sizeBefore > 0) {
+        printVerbose(`Freed space from Docker data`);
       }
 
       return {
         name: this.name,
         success,
         sizeBefore,
-        sizeAfter,
+        sizeAfter: 0, // Set to 0 as we don't want to rescan
         error,
         clearedPaths: clearedItems,
       };

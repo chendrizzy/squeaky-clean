@@ -7,6 +7,7 @@ import { pathExists } from '../utils/fs';
 import { printVerbose } from '../utils/cli';
 import { BaseCleaner } from './BaseCleaner';
 import { statSync, existsSync } from 'fs';
+import minimatch from 'minimatch';
 
 export class NpmEnhancedCleaner extends BaseCleaner {
   name = 'npm';
@@ -282,8 +283,9 @@ export class NpmEnhancedCleaner extends BaseCleaner {
     };
   }
 
-  async clear(dryRun = false, criteria?: CacheSelectionCriteria): Promise<ClearResult> {
-    const categories = await this.getCacheCategories();
+  async clear(dryRun = false, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
+    const info = cacheInfo || await this.getCacheInfo();
+    const categories = info.categories || [];
     const filteredCategories = this.filterCategories(categories, criteria);
     
     let totalSizeBefore = 0;
@@ -294,12 +296,23 @@ export class NpmEnhancedCleaner extends BaseCleaner {
     for (const category of filteredCategories) {
       totalSizeBefore += category.size || 0;
       
+      // Filter paths within the category based on protectedPaths
+      const pathsToClearInCategory = category.paths.filter(cachePath => {
+        const isProtected = protectedPaths.some(protectedPattern => 
+          minimatch(cachePath, protectedPattern, { dot: true })
+        );
+        if (isProtected) {
+          printVerbose(`Skipping protected path in category ${category.name}: ${cachePath}`);
+        }
+        return !isProtected;
+      });
+
       if (dryRun) {
-        printVerbose(`[DRY RUN] Would clear ${category.name}: ${category.paths.join(', ')}`);
+        printVerbose(`[DRY RUN] Would clear ${category.name}: ${pathsToClearInCategory.join(', ')}`);
         totalSizeAfter += category.size || 0; // No change in dry run
       } else {
         try {
-          for (const path of category.paths) {
+          for (const path of pathsToClearInCategory) { // Iterate over filtered paths
             await this.clearPath(path);
             clearedPaths.push(path);
           }
@@ -320,6 +333,14 @@ export class NpmEnhancedCleaner extends BaseCleaner {
       clearedPaths,
       clearedCategories: clearedCategoryIds
     };
+  }
+
+  async clearByCategory(categoryIds: string[], dryRun = false, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
+    // Use the existing clear method, but filter by categoryIds
+    const criteria: CacheSelectionCriteria = {
+      categories: categoryIds,
+    };
+    return this.clear(dryRun, criteria, cacheInfo, protectedPaths);
   }
 
   // Static method to create instance

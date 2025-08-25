@@ -5,6 +5,7 @@ import execa from 'execa';
 import { CacheInfo, ClearResult, CleanerModule } from '../types';
 import { getDirectorySize, getEstimatedDirectorySize, pathExists, safeRmrf } from '../utils/fs';
 import { printVerbose } from '../utils/cli';
+import minimatch from 'minimatch';
 
 export class NpmCleaner implements CleanerModule {
   name = 'npm';
@@ -103,14 +104,14 @@ export class NpmCleaner implements CleanerModule {
     };
   }
 
-  async clear(dryRun = false): Promise<ClearResult> {
-    const cacheInfo = await this.getCacheInfo();
+  async clear(dryRun = false, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
+    const info = cacheInfo || await this.getCacheInfo();
     const clearedPaths: string[] = [];
-    const sizeBefore = cacheInfo.size || 0;
+    const sizeBefore = info.size || 0;
     let success = true;
     let error: string | undefined;
 
-    if (!cacheInfo.isInstalled) {
+    if (!info.isInstalled) {
       return {
         name: this.name,
         success: false,
@@ -121,7 +122,7 @@ export class NpmCleaner implements CleanerModule {
       };
     }
 
-    if (cacheInfo.paths.length === 0) {
+    if (info.paths.length === 0) {
       printVerbose('No npm cache directories found');
       return {
         name: this.name,
@@ -134,13 +135,13 @@ export class NpmCleaner implements CleanerModule {
 
     try {
       if (dryRun) {
-        printVerbose(`[DRY RUN] Would clear npm cache paths: ${cacheInfo.paths.join(', ')}`);
+        printVerbose(`[DRY RUN] Would clear npm cache paths: ${info.paths.join(', ')}`);
         return {
           name: this.name,
           success: true,
           sizeBefore,
           sizeAfter: sizeBefore, // No change in dry run
-          clearedPaths: cacheInfo.paths,
+          clearedPaths: info.paths,
         };
       }
 
@@ -155,7 +156,17 @@ export class NpmCleaner implements CleanerModule {
       }
 
       // Manually clear cache directories
-      for (const cachePath of cacheInfo.paths) {
+      for (const cachePath of info.paths) {
+        // Check if the path is protected
+        const isProtected = protectedPaths.some(protectedPattern => 
+          minimatch(cachePath, protectedPattern, { dot: true })
+        );
+
+        if (isProtected) {
+          printVerbose(`Skipping protected path: ${cachePath}`);
+          continue; // Skip this path
+        }
+
         try {
           if (await pathExists(cachePath)) {
             printVerbose(`Clearing directory: ${cachePath}`);
@@ -171,15 +182,11 @@ export class NpmCleaner implements CleanerModule {
         }
       }
 
-      // Calculate size after clearing
-      const newCacheInfo = await this.getCacheInfo();
-      const sizeAfter = newCacheInfo.size || 0;
-
       return {
         name: this.name,
         success,
         sizeBefore,
-        sizeAfter,
+        sizeAfter: 0, // Set to 0 as we don't want to rescan
         error,
         clearedPaths,
       };
