@@ -1,5 +1,6 @@
 import { CleanerModule, CacheInfo, CacheCategory, ClearResult, CacheType, CacheSelectionCriteria } from '../types';
 import { existsSync, statSync } from 'fs';
+import { rm } from 'fs/promises';
 import { basename, resolve, relative } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -242,12 +243,12 @@ export abstract class BaseCleaner implements CleanerModule {
     if (!existsSync(path)) return;
 
     try {
-      const stat = statSync(path);
-      if (stat.isDirectory()) {
-        await execAsync(`rm -rf "${path}"`);
-      } else {
-        await execAsync(`rm -f "${path}"`);
-      }
+      // Use native Node.js fs operations for better security
+      // This eliminates any potential for command injection
+      await rm(path, { 
+        recursive: true,  // Handles directories recursively
+        force: true       // Ignores errors if file doesn't exist
+      });
     } catch (error) {
       console.error(`Failed to clear ${path}:`, error);
     }

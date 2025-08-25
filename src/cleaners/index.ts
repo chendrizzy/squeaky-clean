@@ -232,6 +232,7 @@ export class CacheManager {
     }
 
     return results;
+  }
 
   /**
    * Get total cache sizes by type
