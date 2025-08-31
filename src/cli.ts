@@ -2,15 +2,15 @@
 
 import { Command } from 'commander';
 import { config } from './config';
-import { printHeader, printError } from './utils/cli';
+import { printHeader, printError, showBootPristine } from './utils/cli';
 
 const program = new Command();
 
-// Package info (this would normally be imported from package.json)
+// (would normally be imported from package.json)
 const packageInfo = {
   name: 'squeaky-clean',
   version: '0.1.0',
-  description: '✨ Make your dev environment squeaky clean!',
+  description: 'Make your dev environment squeaky clean! ✨',
 };
 
 program
@@ -24,10 +24,11 @@ program
 // Global options
 program
   .option('-v, --verbose', 'enable verbose output')
-  .option('--no-color', 'disable colored output')
+  .option('-p', 'pristine mode', false)
   .option('-q, --quiet', 'suppress non-essential output')
-  .option('--json', 'output results in JSON format')
   .option('--config <path>', 'use custom config file')
+  .option('--json', 'output results in JSON format')
+  .option('--no-color', 'disable colored output')
   .hook('preAction', (thisCommand) => {
     const options = thisCommand.opts();
     
@@ -305,10 +306,20 @@ program.configureOutput({
   writeErr: (str) => printError(str),
 });
 
-// Parse arguments
-program.parse();
-
-// If no command provided, show help
-if (!process.argv.slice(2).length) {
-  program.outputHelp();
-}
+// potentially show pristine boot
+(async () => {
+  // Check if pristine flag is present
+  const hasPristineFlag = process.argv.includes('-p');
+  
+  // if no command, pristine then help
+  if (!process.argv.slice(2).length || (process.argv.slice(2).length === 1 && hasPristineFlag)) {
+    await showBootPristine(hasPristineFlag);
+    program.outputHelp();
+  } else if (hasPristineFlag) {
+    // always pristine if flag is present
+    await showBootPristine(true);
+    program.parse();
+  } else {
+    program.parse();
+  }
+})();

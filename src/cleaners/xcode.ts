@@ -2,10 +2,9 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 import execa from 'execa';
-import { CacheInfo, ClearResult, CleanerModule } from '../types';
+import { CacheInfo, ClearResult, CleanerModule, CacheSelectionCriteria } from '../types';
 import { getDirectorySize, pathExists, safeRmrf } from '../utils/fs';
 import { printVerbose } from '../utils/cli';
-import minimatch from 'minimatch';
 
 export class XcodeCleaner implements CleanerModule {
   name = 'xcode';
@@ -215,7 +214,7 @@ export class XcodeCleaner implements CleanerModule {
     };
   }
 
-  async clear(dryRun = false, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo): Promise<ClearResult> {
+  async clear(dryRun = false, _criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo): Promise<ClearResult> {
     const info = cacheInfo || await this.getCacheInfo();
     const clearedPaths: string[] = [];
     const sizeBefore = info.size || 0;

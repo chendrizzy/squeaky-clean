@@ -1,5 +1,5 @@
 import { CleanerModule, CacheType } from '../types';
-import { BaseCleaner } from './BaseCleaner';
+
 import { printVerbose } from '../utils/cli';
 
 /**

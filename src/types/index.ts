@@ -180,6 +180,8 @@ export interface CommandOptions {
   force?: boolean;
   types?: string[];
   exclude?: string[];
+  include?: string[]; // Added missing include property
+  subCaches?: string[]; // Added missing subCaches property
   // Granular selection options
   olderThan?: string; // e.g., "7d", "2w", "1m"
   newerThan?: string;

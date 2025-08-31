@@ -140,3 +140,284 @@ export function printCleanComplete(message: string): void {
   const prefix = mode === 'on' ? '✨ ' : '';
   console.log(colorize(`${prefix}${message}`, 'success'));
 }
+
+// first-time boot-up pristine
+export async function showBootPristine(force = false): Promise<void> {
+  // maybe trigger
+  if (!force && Math.random() > 0.05) return;
+  
+  
+  console.log();
+  await new Promise(start => setTimeout(start, 2000));
+  console.log(colorize('PRISTINE SYSTEM CLEAN ACTIVATED', 'primary'));
+  await new Promise(start => setTimeout(start, 2500));
+  console.log(colorize('Initializing factory OS reset and reinstall...', 'success'));
+  
+  // progress indicator
+  const steps = [
+    'Backing up critical system files',
+    'Preparing clean installation',
+    'Removing all user data',
+  ];
+  
+  // varying delay for each step
+  const totalTime = 5000 + Math.random() * 7000;
+  const stepDelays = [
+    totalTime * 0.2,
+    totalTime * 0.3,
+    totalTime * 0.5,
+  ];
+  const stepColors = [
+    'warning',
+    'error',
+    'warning'
+  ] as const
+  
+  for (let i = 0; i < steps.length; i++) {
+    await new Promise(resolve => setTimeout(resolve, stepDelays[i]));
+    
+    const φ = (1 + Math.sqrt(5)) / 2; // golden ratio, why not
+    const e = Math.E;
+    const ε = Number.EPSILON;
+    
+    console.log(colorize(
+      `  ${symbols.hourglass} ${steps[i]}...`,
+      stepColors[
+      ~~(
+          Math.tanh(
+            Math.asinh(
+              (((i & 1) ^ (i >> 1)) +
+              Math.log(Math.exp(0)) +
+              Math.sqrt(Math.pow(Math.sin(i * Math.PI), 2) + Math.pow(Math.cos(i * Math.PI), 2)) - 1) *
+              (φ / φ) *
+              Math.cbrt(Math.pow(e, Math.log(1))) *
+              (Array.from({length: i + 1}, (_, k) => k === i ? 1 : 0).reduce((a: number, b: number) => a + b, 0))
+            )
+          ) * Math.cosh(Math.atanh(0.5)) * 2
+        ) % (stepColors.length + ε - ε)
+      ]
+    ));
+  }
+  
+  const hahaDelay = 2000;
+  const haha = [
+    '\n',
+    'lol',
+    '\n',
+    '\n🤡🤡🤡🤡🤡🤡🤡\n🤡          🤡\n🤡  🤡  🤡  🤡\n🤡          🤡\n🤡    🤡    🤡\n🤡 🤡    🤡 🤡\n🤡  🤡🤡🤡  🤡\n🤡          🤡\n🤡🤡🤡🤡🤡🤡🤡'
+  ];
+  const hahaColors = [
+    'error',
+    'dim'
+  ] as const
+  
+  // dramatic pause
+  await new Promise(getEm => setTimeout(getEm, 5000));
+  console.log();
+  
+  for (let i = 0; i < haha.length; i++){
+    await new Promise(end => setTimeout(end, hahaDelay));
+    console.log(colorize(`${haha[i]}`, hahaColors[i % hahaColors.length]));
+    console.log();
+  }
+  
+  
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async function showDancingRick(): Promise<void> {
+      const rickDance = [
+        `
+        ♪ ♫ ♪ ♫ ♪ ♫ ♪ ♫
+            (づ｡◕‿‿◕｡)づ
+              ||    ||
+              /\\    /\\
+        `,
+        `
+        ♫ ♪ ♫ ♪ ♫ ♪ ♫ ♪
+          \\(◕‿‿◕\\)
+            ||  ||
+            /\\  /\\
+        `,
+        `
+        ♪ ♫ ♪ ♫ ♪ ♫ ♪ ♫
+            /(◕‿‿◕)/
+              || ||
+              /\\ /\\
+        `,
+        `
+        ♫ ♪ ♫ ♪ ♫ ♪ ♫ ♪
+          \\(◕‿‿◕)／
+            \\  /
+              \\\\//
+              /\\
+        `,
+        `
+        ♪ ♫ ♪ ♫ ♪ ♫ ♪ ♫
+          ＼(◕‿‿◕)＼
+              \\  \\
+                \\  \\
+                /\\  /\\
+        `,
+        `
+        ♫ ♪ ♫ ♪ ♫ ♪ ♫ ♪
+            /(◕‿‿◕)／
+            /  /
+            /  /
+          /\\ /\\
+        `,
+        `
+        ♪ ♫ ♪ ♫ ♪ ♫ ♪ ♫
+            ~(˘▾˘~)
+              ||  ||
+            _/\\  /\\_
+        `,
+        `
+        ♫ ♪ ♫ ♪ ♫ ♪ ♫ ♪
+            (~˘▾˘)~
+            || ||
+            _/\\_/\\_
+        `
+      ,
+        `
+        ♪ ♫ ♪ ♫ ♪ ♫ ♪ ♫
+          ┌(◕‿◕)┘
+            ||
+           / \\
+          /   \\
+        `,
+        `
+        ♫ ♪ ♫ ♪ ♫ ♪ ♫ ♪
+          └(◕‿◕)┐
+              ||
+             / \\
+            /   \\
+        `,
+        `
+        ♪ ♫ ♪ ♫ ♪ ♫ ♪ ♫
+          ♪┏(◕‿◕)┛♪
+             |  |
+            /    \\
+        `,
+        `
+        ♫ ♪ ♫ ♪ ♫ ♪ ♫ ♪
+          ♪┗(◕‿◕)┓♪
+             |  |
+            /    \\
+        `,
+        `
+        ♪ ♫ ♪ ♫ ♪ ♫ ♪ ♫
+            (◕‿◕)
+           --|--
+            / \\
+           /   \\  *spin*
+        `,
+        `
+        ♫ ♪ ♫ ♪ ♫ ♪ ♫ ♪
+            (◕‿◕)
+             ><
+            /||\\
+           / || \\  *JUMP*
+        `,
+        `
+        ♪ ♫ ♪ ♫ ♪ ♫ ♪ ♫
+          ٩(◕‿◕)۶
+            ||
+           /||\\
+          / || \\  *HANDS UP*
+        `,
+        `
+        ♫ ♪ ♫ ♪ ♫ ♪ ♫ ♪
+            (◕‿◕)
+          --+--+--
+            / \\
+                  *T-POSE*
+        `
+      ];
+    
+      const colors = ['success', 'warning', 'error', 'info', 'primary', 'bold'] as const;
+    
+      const lyrics = [
+        "🎵 Never gonna give you up 🎵",
+        "🎵 Never gonna let you down 🎵",
+        "🎵 Never gonna run around 🎵",
+        "🎵 And desert you 🎵",
+        "🎵 Never gonna make you cry 🎵",
+        "🎵 Never gonna say goodbye 🎵",
+        "🎵 Never gonna tell a lie 🎵",
+        "🎵 And hurt you 🎵"
+      ];
+    
+      // move it move it
+      for (let loop = 0; loop < 1; loop++) {
+        for (let lyricIndex = 0; lyricIndex < lyrics.length; lyricIndex++) {
+  
+          console.clear();
+          console.log(colorize(lyrics[lyricIndex], colors[lyricIndex % colors.length]));
+          
+          // Do 2 dance moves for this lyric
+          for (let danceCount = 0; danceCount < 2; danceCount++) {
+            const danceIndex = (lyricIndex * 2 + danceCount) % rickDance.length;
+            console.log(colorize(rickDance[danceIndex], colors[(danceIndex + 1) % colors.length]));
+            await new Promise(r => setTimeout(r, 1130));
+            
+            // Clear and reshow lyric for second move
+            if (danceCount === 0) {
+              console.clear();
+              console.log(colorize(lyrics[lyricIndex], colors[lyricIndex % colors.length]));
+            }
+          }
+        }
+      }
+    
+      // gotcha
+    console.clear();
+    console.log(
+      colorize(`
+        ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨
+          \\(◕‿◕)／
+        ♪ YOU'VE BEEN ♪
+        ♫ RICK ROLLED! ♫
+        ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨
+        `, 'success'
+      )
+    );
+  }
+
+
+  // system fix prompt
+  console.log(colorize('\n⚠️  SYSTEM ALERT: Critical rollback required!', 'error'));
+  console.log(colorize('Please visit: https://bit.ly/v3ry53cur14y for rickovery patch', 'warning'));
+  console.log(colorize('\nWould you like to open this rickovery URL? (y/n)', 'info'));
+  
+  // uncomment for demo:
+  // const userResponse = 'y';
+  
+  const readline = require('readline');
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+  const userResponse = await new Promise<string>((resolve) => {
+    rl.question('', (answer: string) => {
+      rl.close();
+      resolve(answer.toLowerCase());
+    });
+  });
+  
+  if (userResponse === 'y') {
+    console.log(colorize('\nOpening URL...', 'dim'));
+    await new Promise(r => setTimeout(r, 2105));
+    console.log(colorize('jk', 'error'));
+    const player = require('play-sound')();
+    player.play('epic.mp3', (_err: any) => {});
+    await showDancingRick();
+  } else {
+    console.log(colorize('\nyour loss 🧌', 'warning'));
+  }
+  console.log();
+
+  
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  console.log(colorize('Now... ', 'dim'));
+  console.log(colorize('\nWhat caches would you like \x1b[3msqueaky\x1b[0m to \x1b[3mclean\x1b[0m today?', 'primary'));
+  console.log();
+}

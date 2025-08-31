@@ -7,7 +7,7 @@ import { pathExists } from '../utils/fs';
 import { printVerbose } from '../utils/cli';
 import { BaseCleaner } from './BaseCleaner';
 import { statSync, existsSync } from 'fs';
-import minimatch from 'minimatch';
+import { minimatch } from 'minimatch';
 
 export class NpmEnhancedCleaner extends BaseCleaner {
   name = 'npm';
@@ -283,10 +283,10 @@ export class NpmEnhancedCleaner extends BaseCleaner {
     };
   }
 
-  async clear(dryRun = false, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
+  async clear(dryRun = false, _criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
     const info = cacheInfo || await this.getCacheInfo();
     const categories = info.categories || [];
-    const filteredCategories = this.filterCategories(categories, criteria);
+    const filteredCategories = this.filterCategories(categories, _criteria);
     
     let totalSizeBefore = 0;
     let totalSizeAfter = 0;

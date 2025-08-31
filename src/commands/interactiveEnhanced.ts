@@ -1,13 +1,13 @@
 import { Command } from 'commander';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
-import { cacheManager } from '../cleaners';
-import { formatSizeWithColor, printInfo, printError, printHeader, printVerbose } from '../utils/cli';
+
+import { formatSizeWithColor, printInfo, printError, printHeader } from '../utils/cli';
 import { config } from '../config';
 import { CacheType, CacheCategory } from '../types';
 import { profileManager } from '../profiles';
 import { cleanerRegistry } from '../cleaners/CleanerRegistry';
-import path from 'path';
+
 
 interface InteractiveOptions {
   verbose?: boolean;

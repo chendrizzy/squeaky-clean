@@ -1,10 +1,10 @@
-import { CleanerModule, CacheInfo, ClearResult } from '../types';
+import { CleanerModule, CacheInfo, ClearResult, CacheSelectionCriteria } from '../types';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { pathExists, getDirectorySize, safeRmrf } from '../utils/fs';
 import { printVerbose, symbols } from '../utils/cli';
-import minimatch from 'minimatch';
+import { minimatch } from 'minimatch';
 
 export class AndroidStudioCleaner implements CleanerModule {
   name = 'androidstudio';
@@ -305,7 +305,7 @@ export class AndroidStudioCleaner implements CleanerModule {
     };
   }
 
-  async clear(dryRun = false, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
+  async clear(dryRun = false, _criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
     const info = cacheInfo || await this.getCacheInfo();
     
     if (!info.isInstalled) {

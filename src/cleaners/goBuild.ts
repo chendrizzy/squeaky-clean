@@ -139,26 +139,15 @@ export class GoBuildCleaner extends BaseCleaner {
       
       const baseName = path.basename(cachePath);
       let categoryName = 'Go Cache';
-      let priority: CacheCategory['priority'] = 'normal';
-      let useCase: CacheCategory['useCase'] = 'development';
-      
-      // Categorize by type
+            // Categorize by type
       if (cachePath.includes('pkg/mod')) {
         categoryName = 'Go Module Cache';
-        priority = 'important'; // Module cache is expensive to rebuild
-        useCase = 'development';
       } else if (cachePath.includes('go-build')) {
         categoryName = 'Go Build Cache';
-        priority = 'normal'; // Build cache can be regenerated
-        useCase = 'development';
       } else if (cachePath.includes('sumdb')) {
         categoryName = 'Go Checksum Database';
-        priority = 'low'; // Can be redownloaded
-        useCase = 'development';
       } else if (cachePath.includes('/tmp/') || cachePath.includes(os.tmpdir())) {
         categoryName = 'Temporary Build Files';
-        priority = 'low';
-        useCase = 'development';
       }
       
       try {

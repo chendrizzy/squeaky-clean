@@ -3,12 +3,9 @@ import { CacheInfo, CacheCategory, CacheType } from '../types';
 import { existsSync, statSync } from 'fs';
 import path from 'path';
 import os from 'os';
-import { exec, execSync } from 'child_process';
-import { promisify } from 'util';
+import { execSync } from 'child_process';
 import { printVerbose } from '../utils/cli';
 import { getCacheSize } from '../utils/fs';
-
-const execAsync = promisify(exec);
 
 export class HomebrewEnhancedCleaner extends BaseCleaner {
   name = 'homebrew';
@@ -164,15 +161,10 @@ export class HomebrewEnhancedCleaner extends BaseCleaner {
       if (!existsSync(cachePath)) continue;
       
       let categoryName = 'Homebrew Cache';
-      let priority: CacheCategory['priority'] = 'normal';
-      let useCase: CacheCategory['useCase'] = 'development';
-      
-      // Determine category based on path
+            // Determine category based on path
       for (const [key, config] of Object.entries(categoryMap)) {
         if (cachePath.toLowerCase().includes(key.toLowerCase())) {
           categoryName = config.name;
-          priority = config.priority;
-          useCase = config.useCase;
           break;
         }
       }

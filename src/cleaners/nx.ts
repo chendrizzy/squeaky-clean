@@ -1,4 +1,4 @@
-import { CleanerModule, CacheInfo, ClearResult } from '../types';
+import { CleanerModule, CacheInfo, ClearResult, CacheSelectionCriteria } from '../types';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -221,7 +221,7 @@ export class NxCleaner implements CleanerModule {
     };
   }
 
-  async clear(dryRun = false, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo): Promise<ClearResult> {
+  async clear(dryRun = false, _criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo): Promise<ClearResult> {
     const info = cacheInfo || await this.getCacheInfo();
     
     if (!info.isInstalled) {

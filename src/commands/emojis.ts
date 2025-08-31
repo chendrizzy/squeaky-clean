@@ -19,7 +19,7 @@ export async function emojisCommand(mode: string | undefined): Promise<void> {
     ...currentConfig,
     output: {
       ...currentConfig.output,
-      emojis: mode,
+      emojis: mode as 'on' | 'off' | 'minimal',
     },
   };
 

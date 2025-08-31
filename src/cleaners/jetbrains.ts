@@ -1,11 +1,11 @@
 import { BaseCleaner } from './BaseCleaner';
-import { CacheInfo, CacheCategory, ClearResult, CacheType } from '../types';
+import { CacheInfo, ClearResult, CacheType, CacheSelectionCriteria } from '../types';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { pathExists, getDirectorySize, safeRmrf } from '../utils/fs';
 import { printVerbose, symbols } from '../utils/cli';
-import minimatch from 'minimatch';
+import { minimatch } from 'minimatch';
 
 export class JetBrainsCleaner extends BaseCleaner {
   name = 'jetbrains';
@@ -33,18 +33,7 @@ export class JetBrainsCleaner extends BaseCleaner {
   ];
   
   // Cache categories for different JetBrains cache types
-  private cacheTypes = {
-    system: ['system', 'caches', 'index'],
-    logs: ['log', 'logs'],
-    plugins: ['plugins', 'pluginVerifier'],
-    gradle: ['gradle', '.gradle'],
-    maven: ['.m2', 'maven'],
-    compiledClasses: ['compile-server', 'compileServer'],
-    localHistory: ['LocalHistory'],
-    tasks: ['tasks'],
-    webServers: ['webServers'],
-    vcs: ['vcs-log', 'vcs-users'],
-  };
+  
 
   private async findJetBrainsInstallations(): Promise<{ product: string; path: string }[]> {
     const installations: { product: string; path: string }[] = [];
@@ -365,7 +354,7 @@ export class JetBrainsCleaner extends BaseCleaner {
     };
   }
 
-  async clear(dryRun = false, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
+  async clear(dryRun = false, _criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
     const info = cacheInfo || await this.getCacheInfo();
     
     if (!info.isInstalled) {

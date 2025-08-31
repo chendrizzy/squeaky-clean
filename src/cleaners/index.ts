@@ -1,7 +1,7 @@
 import { CleanerModule, CacheInfo, ClearResult, CacheType } from '../types';
 import { config } from '../config';
 import { printVerbose, symbols } from '../utils/cli';
-import minimatch from 'minimatch';
+import { minimatch } from 'minimatch';
 
 // Import all cleaner modules
 // Package managers

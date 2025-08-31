@@ -1,7 +1,7 @@
 import { CleanerModule, CacheInfo, CacheCategory, ClearResult, CacheType, CacheSelectionCriteria } from '../types';
 import { existsSync, statSync } from 'fs';
 import { rm } from 'fs/promises';
-import { basename, resolve, relative } from 'path';
+import { basename, resolve } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { minimatch } from 'minimatch';
@@ -95,7 +95,7 @@ export abstract class BaseCleaner implements CleanerModule {
   /**
    * Clear cache with selection criteria
    */
-  async clear(dryRun?: boolean, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths?: string[]): Promise<ClearResult> {
+  async clear(dryRun?: boolean, criteria?: CacheSelectionCriteria, _cacheInfo?: CacheInfo, protectedPaths?: string[]): Promise<ClearResult> {
     const categories = await this.getCacheCategories();
     const filteredCategories = this.filterCategories(categories, criteria);
     
@@ -136,7 +136,7 @@ export abstract class BaseCleaner implements CleanerModule {
   /**
    * Clear specific categories
    */
-  async clearByCategory(categoryIds: string[], dryRun?: boolean, cacheInfo?: CacheInfo, protectedPaths?: string[]): Promise<ClearResult> {
+  async clearByCategory(categoryIds: string[], dryRun?: boolean, _cacheInfo?: CacheInfo, protectedPaths?: string[]): Promise<ClearResult> {
     const categories = await this.getCacheCategories();
     const selectedCategories = categories.filter(c => categoryIds.includes(c.id));
     

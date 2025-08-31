@@ -120,20 +120,13 @@ export class NodeGypCleaner extends BaseCleaner {
       
       const baseName = path.basename(cachePath);
       let categoryName = 'Build Cache';
-      let priority: CacheCategory['priority'] = 'normal';
-      let useCase: CacheCategory['useCase'] = 'development';
-      
-      // Categorize by type
+            // Categorize by type
       if (cachePath.includes('.node-gyp')) {
         categoryName = 'Node.js Headers Cache';
-        priority = 'low'; // These can be redownloaded
       } else if (cachePath.includes('build') || cachePath.includes('Release') || cachePath.includes('Debug')) {
         categoryName = 'Build Artifacts';
-        priority = this.isRecentlyUsed(cachePath, 3) ? 'important' : 'normal';
-        useCase = cachePath.includes('Debug') ? 'development' : 'production';
       } else if (cachePath.includes('_cacache')) {
         categoryName = 'NPM Binary Cache';
-        priority = 'low';
       }
       
       try {

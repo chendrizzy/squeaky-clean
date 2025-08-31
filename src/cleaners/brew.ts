@@ -1,9 +1,9 @@
-import { CleanerModule, CacheInfo, ClearResult, CacheType } from '../types';
+import { CleanerModule, CacheInfo, ClearResult, CacheType, CacheSelectionCriteria } from '../types';
 import { getCacheSize } from '../utils/fs';
 import { execSync } from 'child_process';
 import { printVerbose, symbols } from '../utils/cli';
 import os from 'os';
-import minimatch from 'minimatch';
+import { minimatch } from 'minimatch';
 
 const cleaner: CleanerModule = {
   name: 'brew',
@@ -98,7 +98,7 @@ const cleaner: CleanerModule = {
     };
   },
 
-  async clear(dryRun?: boolean, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
+  async clear(dryRun?: boolean, _criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
     const info = cacheInfo || await this.getCacheInfo();
     const sizeBefore = info.size || 0;
     const clearedPaths: string[] = [];

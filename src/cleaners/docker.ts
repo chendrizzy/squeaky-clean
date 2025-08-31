@@ -1,7 +1,7 @@
 import execa from 'execa';
-import { CacheInfo, ClearResult, CleanerModule } from '../types';
+import { CacheInfo, ClearResult, CleanerModule, CacheSelectionCriteria } from '../types';
 import { printVerbose } from '../utils/cli';
-import minimatch from 'minimatch';
+import { minimatch } from 'minimatch';
 
 export class DockerCleaner implements CleanerModule {
   name = 'docker';
@@ -166,7 +166,7 @@ export class DockerCleaner implements CleanerModule {
     }
   }
 
-  async clear(dryRun = false, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
+  async clear(dryRun = false, _criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
     const info = cacheInfo || await this.getCacheInfo();
     const sizeBefore = info.size || 0;
     let success = true;
