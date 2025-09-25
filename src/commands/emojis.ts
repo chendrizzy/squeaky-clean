@@ -1,5 +1,5 @@
-import { config } from '../config';
-import { printSuccess, printError, printInfo } from '../utils/cli';
+import { config } from "../config";
+import { printSuccess, printError, printInfo } from "../utils/cli";
 
 export async function emojisCommand(mode: string | undefined): Promise<void> {
   if (!mode) {
@@ -9,7 +9,7 @@ export async function emojisCommand(mode: string | undefined): Promise<void> {
     return;
   }
 
-  if (mode !== 'on' && mode !== 'off' && mode !== 'minimal') {
+  if (mode !== "on" && mode !== "off" && mode !== "minimal") {
     printError(`Invalid mode: ${mode}. Please use 'on', 'off', or 'minimal'.`);
     return;
   }
@@ -19,7 +19,7 @@ export async function emojisCommand(mode: string | undefined): Promise<void> {
     ...currentConfig,
     output: {
       ...currentConfig.output,
-      emojis: mode as 'on' | 'off' | 'minimal',
+      emojis: mode as "on" | "off" | "minimal",
     },
   };
 

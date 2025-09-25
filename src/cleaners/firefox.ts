@@ -1,39 +1,50 @@
-import { CleanerModule, CacheInfo, ClearResult, CacheSelectionCriteria } from '../types';
-import { promises as fs } from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { pathExists, getDirectorySize, safeRmrf } from '../utils/fs';
-import { printVerbose, symbols } from '../utils/cli';
-import { minimatch } from 'minimatch';
+import {
+  CleanerModule,
+  CacheInfo,
+  ClearResult,
+  CacheSelectionCriteria,
+} from "../types";
+import { promises as fs } from "fs";
+import * as path from "path";
+import * as os from "os";
+import { pathExists, getDirectorySize, safeRmrf } from "../utils/fs";
+import { printVerbose, symbols } from "../utils/cli";
+import { minimatch } from "minimatch";
 
 class FirefoxCleaner implements CleanerModule {
-  name = 'firefox';
-  type = 'browser' as const;
-  description = 'Firefox cache, temporary files, and developer profile data';
+  name = "firefox";
+  type = "browser" as const;
+  description = "Firefox cache, temporary files, and developer profile data";
 
   private async findFirefoxInstallation(): Promise<string | null> {
     const platform = os.platform();
-    
-    if (platform === 'darwin') {
+
+    if (platform === "darwin") {
       // macOS
       const macPaths = [
-        '/Applications/Firefox.app',
-        '/Applications/Firefox Developer Edition.app',
+        "/Applications/Firefox.app",
+        "/Applications/Firefox Developer Edition.app",
       ];
-      
+
       for (const firefoxPath of macPaths) {
         if (await pathExists(firefoxPath)) {
           return firefoxPath;
         }
       }
-    } else if (platform === 'win32') {
+    } else if (platform === "win32") {
       // Windows
       const windowsPaths = [
-        'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
-        'C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe',
-        path.join(os.homedir(), 'AppData', 'Local', 'Mozilla Firefox', 'firefox.exe'),
+        "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+        "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe",
+        path.join(
+          os.homedir(),
+          "AppData",
+          "Local",
+          "Mozilla Firefox",
+          "firefox.exe",
+        ),
       ];
-      
+
       for (const firefoxPath of windowsPaths) {
         if (await pathExists(firefoxPath)) {
           return firefoxPath;
@@ -42,19 +53,19 @@ class FirefoxCleaner implements CleanerModule {
     } else {
       // Linux
       const linuxPaths = [
-        '/usr/bin/firefox',
-        '/usr/local/bin/firefox',
-        '/snap/bin/firefox',
-        '/opt/firefox/firefox',
+        "/usr/bin/firefox",
+        "/usr/local/bin/firefox",
+        "/snap/bin/firefox",
+        "/opt/firefox/firefox",
       ];
-      
+
       for (const firefoxPath of linuxPaths) {
         if (await pathExists(firefoxPath)) {
           return firefoxPath;
         }
       }
     }
-    
+
     return null;
   }
 
@@ -62,15 +73,15 @@ class FirefoxCleaner implements CleanerModule {
     const paths: string[] = [];
     const homeDir = os.homedir();
     const platform = os.platform();
-    
+
     // Platform-specific Firefox cache paths
-    if (platform === 'darwin') {
+    if (platform === "darwin") {
       // macOS Firefox paths
       const macBasePaths = [
-        path.join(homeDir, 'Library', 'Caches', 'Firefox'),
-        path.join(homeDir, 'Library', 'Application Support', 'Firefox'),
+        path.join(homeDir, "Library", "Caches", "Firefox"),
+        path.join(homeDir, "Library", "Application Support", "Firefox"),
       ];
-      
+
       for (const basePath of macBasePaths) {
         if (await pathExists(basePath)) {
           // Look for profile directories
@@ -78,13 +89,13 @@ class FirefoxCleaner implements CleanerModule {
           paths.push(...profilePaths);
         }
       }
-    } else if (platform === 'win32') {
+    } else if (platform === "win32") {
       // Windows Firefox paths
       const windowsBasePaths = [
-        path.join(homeDir, 'AppData', 'Local', 'Mozilla', 'Firefox'),
-        path.join(homeDir, 'AppData', 'Roaming', 'Mozilla', 'Firefox'),
+        path.join(homeDir, "AppData", "Local", "Mozilla", "Firefox"),
+        path.join(homeDir, "AppData", "Roaming", "Mozilla", "Firefox"),
       ];
-      
+
       for (const basePath of windowsBasePaths) {
         if (await pathExists(basePath)) {
           const profilePaths = await this.findFirefoxProfileCaches(basePath);
@@ -94,10 +105,10 @@ class FirefoxCleaner implements CleanerModule {
     } else {
       // Linux Firefox paths
       const linuxBasePaths = [
-        path.join(homeDir, '.cache', 'mozilla', 'firefox'),
-        path.join(homeDir, '.mozilla', 'firefox'),
+        path.join(homeDir, ".cache", "mozilla", "firefox"),
+        path.join(homeDir, ".mozilla", "firefox"),
       ];
-      
+
       for (const basePath of linuxBasePaths) {
         if (await pathExists(basePath)) {
           const profilePaths = await this.findFirefoxProfileCaches(basePath);
@@ -111,38 +122,38 @@ class FirefoxCleaner implements CleanerModule {
 
   private async findFirefoxProfileCaches(basePath: string): Promise<string[]> {
     const cachePaths: string[] = [];
-    
+
     try {
       const entries = await fs.readdir(basePath, { withFileTypes: true });
-      
+
       for (const entry of entries) {
         if (entry.isDirectory()) {
           const profilePath = path.join(basePath, entry.name);
-          
+
           // Common Firefox cache subdirectories
           const cacheSubdirs = [
-            'cache2',
-            'OfflineCache',
-            'startupCache',
-            'thumbnails',
-            'safebrowsing',
-            'shader-cache',
-            'crashes',
-            'minidumps',
-            'saved-telemetry-pings',
-            'datareporting',
+            "cache2",
+            "OfflineCache",
+            "startupCache",
+            "thumbnails",
+            "safebrowsing",
+            "shader-cache",
+            "crashes",
+            "minidumps",
+            "saved-telemetry-pings",
+            "datareporting",
           ];
-          
+
           for (const subdir of cacheSubdirs) {
             const subdirPath = path.join(profilePath, subdir);
             if (await pathExists(subdirPath)) {
               cachePaths.push(subdirPath);
             }
           }
-          
+
           // Also check for specific profile directories (they usually have random names)
-          if (entry.name.includes('.') && entry.name !== 'Profiles') {
-            const profileCachePath = path.join(profilePath, 'cache');
+          if (entry.name.includes(".") && entry.name !== "Profiles") {
+            const profileCachePath = path.join(profilePath, "cache");
             if (await pathExists(profileCachePath)) {
               cachePaths.push(profileCachePath);
             }
@@ -150,7 +161,9 @@ class FirefoxCleaner implements CleanerModule {
         }
       }
     } catch (error) {
-      printVerbose(`Error reading Firefox profile directory ${basePath}: ${error}`);
+      printVerbose(
+        `Error reading Firefox profile directory ${basePath}: ${error}`,
+      );
     }
 
     return cachePaths;
@@ -176,7 +189,7 @@ class FirefoxCleaner implements CleanerModule {
 
   async getCacheInfo(): Promise<CacheInfo> {
     const isInstalled = await this.isAvailable();
-    
+
     if (!isInstalled) {
       return {
         name: this.name,
@@ -197,7 +210,9 @@ class FirefoxCleaner implements CleanerModule {
         const size = await getDirectorySize(cachePath, true); // Use estimated size for large dirs
         totalSize += size;
         validPaths.push(cachePath);
-        printVerbose(`${symbols.folder} ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`);
+        printVerbose(
+          `${symbols.folder} ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`,
+        );
       } catch (error) {
         printVerbose(`Error calculating size for ${cachePath}: ${error}`);
       }
@@ -213,14 +228,19 @@ class FirefoxCleaner implements CleanerModule {
     };
   }
 
-  async clear(dryRun = false, _criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
-    const info = cacheInfo || await this.getCacheInfo();
-    
+  async clear(
+    dryRun = false,
+    _criteria?: CacheSelectionCriteria,
+    cacheInfo?: CacheInfo,
+    protectedPaths: string[] = [],
+  ): Promise<ClearResult> {
+    const info = cacheInfo || (await this.getCacheInfo());
+
     if (!info.isInstalled) {
       return {
         name: this.name,
         success: false,
-        error: 'Firefox is not available',
+        error: "Firefox is not available",
         clearedPaths: [],
         sizeBefore: 0,
         sizeAfter: 0,
@@ -232,12 +252,14 @@ class FirefoxCleaner implements CleanerModule {
     let errors: string[] = [];
 
     // Warning: Firefox should be closed before clearing cache
-    printVerbose(`${symbols.warning} Note: Firefox should be closed before clearing cache for best results`);
+    printVerbose(
+      `${symbols.warning} Note: Firefox should be closed before clearing cache for best results`,
+    );
 
     for (const cachePath of info.paths) {
       // Check if the path is protected
-      const isProtected = protectedPaths.some(protectedPattern => 
-        minimatch(cachePath, protectedPattern, { dot: true })
+      const isProtected = protectedPaths.some((protectedPattern) =>
+        minimatch(cachePath, protectedPattern, { dot: true }),
       );
 
       if (isProtected) {
@@ -266,7 +288,7 @@ class FirefoxCleaner implements CleanerModule {
       success: errors.length === 0,
       sizeBefore,
       sizeAfter: 0, // Set to 0 as we don't want to rescan
-      error: errors.length > 0 ? errors.join('; ') : undefined,
+      error: errors.length > 0 ? errors.join("; ") : undefined,
       clearedPaths,
     };
   }

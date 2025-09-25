@@ -1,21 +1,27 @@
-import { CleanerModule, CacheInfo, ClearResult, CacheType, CacheSelectionCriteria } from '../types';
-import { getCacheSize } from '../utils/fs';
-import { execSync } from 'child_process';
-import { printVerbose, symbols } from '../utils/cli';
-import os from 'os';
-import path from 'path';
-import fs from 'fs';
-import { minimatch } from 'minimatch';
+import {
+  CleanerModule,
+  CacheInfo,
+  ClearResult,
+  CacheType,
+  CacheSelectionCriteria,
+} from "../types";
+import { getCacheSize } from "../utils/fs";
+import { execSync } from "child_process";
+import { printVerbose, symbols } from "../utils/cli";
+import os from "os";
+import path from "path";
+import fs from "fs";
+import { minimatch } from "minimatch";
 
 const cleaner: CleanerModule = {
-  name: 'nix',
-  type: 'package-manager' as CacheType,
-  description: 'Nix package manager store and garbage collection',
+  name: "nix",
+  type: "package-manager" as CacheType,
+  description: "Nix package manager store and garbage collection",
 
   async isAvailable(): Promise<boolean> {
     // Check if nix is installed
     try {
-      execSync('which nix-collect-garbage', { stdio: 'ignore' });
+      execSync("which nix-collect-garbage", { stdio: "ignore" });
       return true;
     } catch {
       return false;
@@ -26,7 +32,7 @@ const cleaner: CleanerModule = {
     // Check if nix is installed
     let isInstalled = false;
     try {
-      execSync('which nix-collect-garbage', { stdio: 'ignore' });
+      execSync("which nix-collect-garbage", { stdio: "ignore" });
       isInstalled = true;
     } catch {
       return {
@@ -44,26 +50,28 @@ const cleaner: CleanerModule = {
 
     try {
       // Check /nix/store size
-      const nixStore = '/nix/store';
+      const nixStore = "/nix/store";
       if (fs.existsSync(nixStore)) {
         paths.push(nixStore);
-        
+
         // Get garbage collectible size using dry-run
         try {
-          const gcDryRun = execSync('nix-collect-garbage --dry-run 2>&1', { encoding: 'utf8' });
+          const gcDryRun = execSync("nix-collect-garbage --dry-run 2>&1", {
+            encoding: "utf8",
+          });
           // Parse output for size info
-          const lines = gcDryRun.split('\n');
+          const lines = gcDryRun.split("\n");
           for (const line of lines) {
             // Look for lines mentioning freed space
             const sizeMatch = line.match(/(\d+(?:\.\d+)?)\s*(MiB|GiB|KiB)/);
             if (sizeMatch) {
               const size = parseFloat(sizeMatch[1]);
               const unit = sizeMatch[2];
-              if (unit === 'GiB') {
+              if (unit === "GiB") {
                 totalSize += size * 1024 * 1024 * 1024;
-              } else if (unit === 'MiB') {
+              } else if (unit === "MiB") {
                 totalSize += size * 1024 * 1024;
-              } else if (unit === 'KiB') {
+              } else if (unit === "KiB") {
                 totalSize += size * 1024;
               }
             }
@@ -82,13 +90,13 @@ const cleaner: CleanerModule = {
       }
 
       // Check user profile generations
-      const userProfile = path.join(os.homedir(), '.nix-profile');
+      const userProfile = path.join(os.homedir(), ".nix-profile");
       if (fs.existsSync(userProfile)) {
         paths.push(userProfile);
       }
 
       // Check nix cache
-      const nixCache = path.join(os.homedir(), '.cache', 'nix');
+      const nixCache = path.join(os.homedir(), ".cache", "nix");
       if (fs.existsSync(nixCache)) {
         paths.push(nixCache);
         totalSize += await getCacheSize(nixCache);
@@ -107,8 +115,13 @@ const cleaner: CleanerModule = {
     };
   },
 
-  async clear(dryRun?: boolean, _criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths: string[] = []): Promise<ClearResult> {
-    const info = cacheInfo || await this.getCacheInfo();
+  async clear(
+    dryRun?: boolean,
+    _criteria?: CacheSelectionCriteria,
+    cacheInfo?: CacheInfo,
+    protectedPaths: string[] = [],
+  ): Promise<ClearResult> {
+    const info = cacheInfo || (await this.getCacheInfo());
     const sizeBefore = info.size || 0;
     const clearedPaths: string[] = [];
 
@@ -116,7 +129,7 @@ const cleaner: CleanerModule = {
       return {
         name: this.name,
         success: false,
-        error: 'Nix is not installed',
+        error: "Nix is not installed",
         clearedPaths: [],
         sizeBefore: 0,
         sizeAfter: 0,
@@ -124,9 +137,9 @@ const cleaner: CleanerModule = {
     }
 
     // Check if any of the paths are protected
-    const pathsToClear = info.paths.filter(cachePath => {
-      const isProtected = protectedPaths.some(protectedPattern => 
-        minimatch(cachePath, protectedPattern, { dot: true })
+    const pathsToClear = info.paths.filter((cachePath) => {
+      const isProtected = protectedPaths.some((protectedPattern) =>
+        minimatch(cachePath, protectedPattern, { dot: true }),
       );
       if (isProtected) {
         printVerbose(`Skipping protected path: ${cachePath}`);
@@ -134,8 +147,9 @@ const cleaner: CleanerModule = {
       return !isProtected;
     });
 
-    if (pathsToClear.length === 0 && !dryRun) { // If all paths are protected and not a dry run
-      printVerbose('All Nix cache paths are protected. Nothing to clear.');
+    if (pathsToClear.length === 0 && !dryRun) {
+      // If all paths are protected and not a dry run
+      printVerbose("All Nix cache paths are protected. Nothing to clear.");
       return {
         name: this.name,
         success: true,
@@ -147,13 +161,19 @@ const cleaner: CleanerModule = {
 
     try {
       if (dryRun) {
-        printVerbose(`${symbols.info} [DRY RUN] Would run: nix-collect-garbage -d`);
-        printVerbose(`${symbols.info} [DRY RUN] Would delete old generations and collect garbage`);
-        
+        printVerbose(
+          `${symbols.info} [DRY RUN] Would run: nix-collect-garbage -d`,
+        );
+        printVerbose(
+          `${symbols.info} [DRY RUN] Would delete old generations and collect garbage`,
+        );
+
         // Show what would be cleaned
         try {
-          const gcDryRun = execSync('nix-collect-garbage --dry-run 2>&1', { encoding: 'utf8' });
-          const lines = gcDryRun.split('\n').slice(0, 10); // Show first 10 lines
+          const gcDryRun = execSync("nix-collect-garbage --dry-run 2>&1", {
+            encoding: "utf8",
+          });
+          const lines = gcDryRun.split("\n").slice(0, 10); // Show first 10 lines
           for (const line of lines) {
             if (line.trim()) {
               printVerbose(`  ${line.trim()}`);
@@ -162,7 +182,7 @@ const cleaner: CleanerModule = {
         } catch {
           // Ignore dry-run errors
         }
-        
+
         return {
           name: this.name,
           success: true,
@@ -174,24 +194,26 @@ const cleaner: CleanerModule = {
 
       // Run actual garbage collection
       printVerbose(`${symbols.soap} Running Nix garbage collection...`);
-      
+
       try {
         // Delete old generations and collect garbage
-        execSync('nix-collect-garbage -d', { stdio: 'inherit' });
-        if (pathsToClear.includes('/nix/store')) { // Only push if it was not protected
-          clearedPaths.push('/nix/store');
+        execSync("nix-collect-garbage -d", { stdio: "inherit" });
+        if (pathsToClear.includes("/nix/store")) {
+          // Only push if it was not protected
+          clearedPaths.push("/nix/store");
         }
-        
+
         // Also clean build cache if using nix 2.0+
         try {
-          execSync('nix store gc', { stdio: 'ignore' });
+          execSync("nix store gc", { stdio: "ignore" });
         } catch {
           // Ignore if using older nix version
         }
-        
+
         // Clean user cache
-        const nixCache = path.join(os.homedir(), '.cache', 'nix');
-        if (fs.existsSync(nixCache) && pathsToClear.includes(nixCache)) { // Only clear if not protected
+        const nixCache = path.join(os.homedir(), ".cache", "nix");
+        if (fs.existsSync(nixCache) && pathsToClear.includes(nixCache)) {
+          // Only clear if not protected
           try {
             fs.rmSync(nixCache, { recursive: true, force: true });
             clearedPaths.push(nixCache);
@@ -199,7 +221,7 @@ const cleaner: CleanerModule = {
             // Ignore cache clear errors
           }
         }
-        
+
         printVerbose(`${symbols.bubbles} Nix garbage collection completed`);
       } catch (error) {
         printVerbose(`${symbols.warning} Partial Nix cleanup: ${error}`);

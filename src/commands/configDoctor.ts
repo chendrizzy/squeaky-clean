@@ -2,13 +2,17 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { isLegacyShape, legacyToNew, writeBackupAndSave } from "../config/migrateConfig.js";
+import {
+  isLegacyShape,
+  legacyToNew,
+  writeBackupAndSave,
+} from "../config/migrateConfig.js";
 
 export interface DoctorOptions {
-  input?: string;      // path to config (default: ~/.squeaky-clean/config.json)
-  output?: string;     // if set, write converted config here instead of overwriting input
-  dryRun?: boolean;    // show conversion without writing
-  quiet?: boolean;     // minimal output
+  input?: string; // path to config (default: ~/.squeaky-clean/config.json)
+  output?: string; // if set, write converted config here instead of overwriting input
+  dryRun?: boolean; // show conversion without writing
+  quiet?: boolean; // minimal output
 }
 
 function log(msg: string, quiet?: boolean) {
@@ -16,7 +20,13 @@ function log(msg: string, quiet?: boolean) {
 }
 
 export async function runConfigDoctor(opts: DoctorOptions = {}) {
-  const cfgPath = opts.input || path.join(process.env.HOME || process.env.USERPROFILE || ".", ".squeaky-clean", "config.json");
+  const cfgPath =
+    opts.input ||
+    path.join(
+      process.env.HOME || process.env.USERPROFILE || ".",
+      ".squeaky-clean",
+      "config.json",
+    );
 
   if (!fs.existsSync(cfgPath)) {
     throw new Error(`Config not found at ${cfgPath}`);
@@ -24,7 +34,10 @@ export async function runConfigDoctor(opts: DoctorOptions = {}) {
 
   const raw = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
   if (!isLegacyShape(raw)) {
-    log("No legacy keys detected. Your config already uses the new schema.", opts.quiet);
+    log(
+      "No legacy keys detected. Your config already uses the new schema.",
+      opts.quiet,
+    );
     return { changed: false, input: cfgPath };
   }
 
@@ -33,7 +46,13 @@ export async function runConfigDoctor(opts: DoctorOptions = {}) {
   if (opts.dryRun) {
     log("=== Dry Run: Converted config (not written) ===", opts.quiet);
     console.log(JSON.stringify(converted, null, 2));
-    return { changed: true, input: cfgPath, output: undefined, backup: undefined, dryRun: true };
+    return {
+      changed: true,
+      input: cfgPath,
+      output: undefined,
+      backup: undefined,
+      dryRun: true,
+    };
   }
 
   const outPath = opts.output || cfgPath;
@@ -47,9 +66,19 @@ export async function runConfigDoctor(opts: DoctorOptions = {}) {
   } else {
     // to a new file: don’t overwrite input
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
-    fs.writeFileSync(outPath, JSON.stringify(converted, null, 2) + "\n", "utf8");
+    fs.writeFileSync(
+      outPath,
+      JSON.stringify(converted, null, 2) + "\n",
+      "utf8",
+    );
     log(`Wrote migrated config to: ${outPath}`, opts.quiet);
   }
 
-  return { changed: true, input: cfgPath, output: outPath, backup, dryRun: false };
+  return {
+    changed: true,
+    input: cfgPath,
+    output: outPath,
+    backup,
+    dryRun: false,
+  };
 }

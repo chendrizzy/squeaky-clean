@@ -7,8 +7,13 @@ export interface CacheCategory {
   size?: number;
   lastAccessed?: Date;
   lastModified?: Date;
-  priority: 'critical' | 'important' | 'normal' | 'low';
-  useCase: 'development' | 'testing' | 'production' | 'experimental' | 'archived';
+  priority: "critical" | "important" | "normal" | "low";
+  useCase:
+    | "development"
+    | "testing"
+    | "production"
+    | "experimental"
+    | "archived";
   isProjectSpecific?: boolean;
   projectPath?: string;
   ageInDays?: number;
@@ -29,7 +34,13 @@ export interface CacheInfo {
   newestCache?: Date;
 }
 
-export type CacheType = 'package-manager' | 'build-tool' | 'browser' | 'ide' | 'system' | 'other';
+export type CacheType =
+  | "package-manager"
+  | "build-tool"
+  | "browser"
+  | "ide"
+  | "system"
+  | "other";
 
 // Cache selection criteria
 export interface CacheSelectionCriteria {
@@ -37,8 +48,10 @@ export interface CacheSelectionCriteria {
   newerThanDays?: number;
   largerThanMB?: number;
   smallerThanMB?: number;
-  useCases?: Array<'development' | 'testing' | 'production' | 'experimental' | 'archived'>;
-  priorities?: Array<'critical' | 'important' | 'normal' | 'low'>;
+  useCases?: Array<
+    "development" | "testing" | "production" | "experimental" | "archived"
+  >;
+  priorities?: Array<"critical" | "important" | "normal" | "low">;
   projectSpecific?: boolean;
   categories?: string[];
 }
@@ -70,10 +83,10 @@ export interface ToolGranularSettings {
 export interface UserConfig {
   // Profile settings
   activeProfile?: string;
-  
+
   // Protected paths that should never be cleaned
   protectedPaths?: string[];
-  
+
   // Cache type preferences
   enabledCaches: {
     packageManagers: boolean;
@@ -82,7 +95,7 @@ export interface UserConfig {
     ides: boolean;
     system: boolean;
   };
-  
+
   // Specific tool preferences (backward compatible)
   tools: {
     // Package managers
@@ -91,44 +104,49 @@ export interface UserConfig {
     pnpm: boolean;
     bun: boolean;
     pip: boolean;
-    
+
     // Build tools
     webpack: boolean;
     vite: boolean;
     nx: boolean;
     turbo: boolean;
     flutter: boolean;
-    
+
     // Browsers
     chrome: boolean;
     firefox: boolean;
-    
+
     // IDEs
     vscode: boolean;
     xcode: boolean;
     androidstudio: boolean;
     jetbrains: boolean;
-    
+
     // System tools
     docker: boolean;
     gradle: boolean;
     maven: boolean;
   };
-  
+
   // Granular tool settings (new)
   toolSettings?: {
     [toolName: string]: ToolGranularSettings;
   };
-  
+
   // Global cache policies (new)
   cachePolicies?: {
     autoCleanOlderThan?: number; // days
     preserveRecentlyUsed?: number; // days
     preserveProjectSpecific?: boolean;
     preserveCriticalPriority?: boolean;
-    defaultUseCase?: 'development' | 'testing' | 'production' | 'experimental' | 'archived';
+    defaultUseCase?:
+      | "development"
+      | "testing"
+      | "production"
+      | "experimental"
+      | "archived";
   };
-  
+
   // Safety settings
   safety: {
     requireConfirmation: boolean;
@@ -137,22 +155,22 @@ export interface UserConfig {
     excludeSystemCritical: boolean;
     preserveActiveDevelopment?: boolean; // new
   };
-  
+
   // Custom paths
   customPaths: string[];
-  
+
   // Output preferences
   output: {
     verbose: boolean;
     showSizes: boolean;
     useColors: boolean;
     quiet?: boolean;
-    format?: 'json' | 'text';
+    format?: "json" | "text";
     showCategories?: boolean; // new
     showRecency?: boolean; // new
-    emojis?: 'on' | 'off' | 'minimal'; // emoji support
+    emojis?: "on" | "off" | "minimal"; // emoji support
   };
-  
+
   // Scheduling settings
   scheduler?: {
     enabled: boolean;
@@ -169,8 +187,18 @@ export interface CleanerModule {
   isAvailable: () => Promise<boolean>;
   getCacheInfo: () => Promise<CacheInfo>;
   getCacheCategories?: () => Promise<CacheCategory[]>;
-  clear: (dryRun?: boolean, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo, protectedPaths?: string[]) => Promise<ClearResult>;
-  clearByCategory?: (categoryIds: string[], dryRun?: boolean, cacheInfo?: CacheInfo, protectedPaths?: string[]) => Promise<ClearResult>;
+  clear: (
+    dryRun?: boolean,
+    criteria?: CacheSelectionCriteria,
+    cacheInfo?: CacheInfo,
+    protectedPaths?: string[],
+  ) => Promise<ClearResult>;
+  clearByCategory?: (
+    categoryIds: string[],
+    dryRun?: boolean,
+    cacheInfo?: CacheInfo,
+    protectedPaths?: string[],
+  ) => Promise<ClearResult>;
 }
 
 export interface CommandOptions {

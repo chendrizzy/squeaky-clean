@@ -1,34 +1,39 @@
-import { CleanerModule, CacheInfo, ClearResult, CacheSelectionCriteria } from '../types';
-import { promises as fs } from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { pathExists, getDirectorySize, safeRmrf } from '../utils/fs';
-import { printVerbose, symbols } from '../utils/cli';
+import {
+  CleanerModule,
+  CacheInfo,
+  ClearResult,
+  CacheSelectionCriteria,
+} from "../types";
+import { promises as fs } from "fs";
+import * as path from "path";
+import * as os from "os";
+import { pathExists, getDirectorySize, safeRmrf } from "../utils/fs";
+import { printVerbose, symbols } from "../utils/cli";
 
 export class WebpackCleaner implements CleanerModule {
-  name = 'webpack';
-  type = 'build-tool' as const;
-  description = 'Webpack build caches and temporary files';
+  name = "webpack";
+  type = "build-tool" as const;
+  description = "Webpack build caches and temporary files";
 
   private async findWebpackCaches(): Promise<string[]> {
     const caches: string[] = [];
     const homeDir = os.homedir();
-    
+
     // Common project directories to search
     const searchDirs = [
-      path.join(homeDir, 'Projects'),
-      path.join(homeDir, 'Development'),
-      path.join(homeDir, 'dev'),
-      path.join(homeDir, 'workspace'),
-      path.join(homeDir, 'Documents'),
+      path.join(homeDir, "Projects"),
+      path.join(homeDir, "Development"),
+      path.join(homeDir, "dev"),
+      path.join(homeDir, "workspace"),
+      path.join(homeDir, "Documents"),
       process.cwd(), // Current directory
     ];
 
     // Also check for global webpack caches
     const globalCachePaths = [
-      path.join(homeDir, '.webpack'),
-      path.join(homeDir, '.cache', 'webpack'),
-      path.join(homeDir, 'node_modules', '.cache', 'webpack'),
+      path.join(homeDir, ".webpack"),
+      path.join(homeDir, ".cache", "webpack"),
+      path.join(homeDir, "node_modules", ".cache", "webpack"),
     ];
 
     for (const globalPath of globalCachePaths) {
@@ -41,7 +46,10 @@ export class WebpackCleaner implements CleanerModule {
     for (const searchDir of searchDirs) {
       if (await pathExists(searchDir)) {
         try {
-          const projectCaches = await this.findWebpackCachesRecursively(searchDir, 3);
+          const projectCaches = await this.findWebpackCachesRecursively(
+            searchDir,
+            3,
+          );
           caches.push(...projectCaches);
         } catch (error) {
           printVerbose(`Error searching ${searchDir}: ${error}`);
@@ -52,24 +60,31 @@ export class WebpackCleaner implements CleanerModule {
     return [...new Set(caches)]; // Remove duplicates
   }
 
-  private async findWebpackCachesRecursively(dir: string, maxDepth: number): Promise<string[]> {
+  private async findWebpackCachesRecursively(
+    dir: string,
+    maxDepth: number,
+  ): Promise<string[]> {
     if (maxDepth <= 0) return [];
 
     const webpackCaches: string[] = [];
-    
+
     try {
       const entries = await fs.readdir(dir, { withFileTypes: true });
-      
+
       for (const entry of entries) {
-        if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+        if (
+          entry.isDirectory() &&
+          !entry.name.startsWith(".") &&
+          entry.name !== "node_modules"
+        ) {
           const fullPath = path.join(dir, entry.name);
-          
+
           // Check for webpack cache directories
           const cacheLocations = [
-            path.join(fullPath, 'node_modules', '.cache', 'webpack'),
-            path.join(fullPath, '.webpack-cache'),
-            path.join(fullPath, 'webpack-cache'),
-            path.join(fullPath, '.cache', 'webpack'),
+            path.join(fullPath, "node_modules", ".cache", "webpack"),
+            path.join(fullPath, ".webpack-cache"),
+            path.join(fullPath, "webpack-cache"),
+            path.join(fullPath, ".cache", "webpack"),
           ];
 
           for (const cacheLocation of cacheLocations) {
@@ -77,9 +92,12 @@ export class WebpackCleaner implements CleanerModule {
               webpackCaches.push(cacheLocation);
             }
           }
-          
+
           // Recursively search subdirectories
-          const subCaches = await this.findWebpackCachesRecursively(fullPath, maxDepth - 1);
+          const subCaches = await this.findWebpackCachesRecursively(
+            fullPath,
+            maxDepth - 1,
+          );
           webpackCaches.push(...subCaches);
         }
       }
@@ -92,19 +110,19 @@ export class WebpackCleaner implements CleanerModule {
 
   private async hasWebpackProjects(): Promise<boolean> {
     const homeDir = os.homedir();
-    
+
     // Check current directory first
-    const currentDirPackageJson = path.join(process.cwd(), 'package.json');
+    const currentDirPackageJson = path.join(process.cwd(), "package.json");
     if (await this.isWebpackProject(currentDirPackageJson)) {
       return true;
     }
 
     // Search common project directories
     const searchDirs = [
-      path.join(homeDir, 'Projects'),
-      path.join(homeDir, 'Development'),
-      path.join(homeDir, 'dev'),
-      path.join(homeDir, 'workspace'),
+      path.join(homeDir, "Projects"),
+      path.join(homeDir, "Development"),
+      path.join(homeDir, "dev"),
+      path.join(homeDir, "workspace"),
     ];
 
     for (const searchDir of searchDirs) {
@@ -121,21 +139,24 @@ export class WebpackCleaner implements CleanerModule {
     return false;
   }
 
-  private async searchForWebpackProjects(dir: string, maxDepth: number): Promise<boolean> {
+  private async searchForWebpackProjects(
+    dir: string,
+    maxDepth: number,
+  ): Promise<boolean> {
     if (maxDepth <= 0) return false;
 
     try {
       const entries = await fs.readdir(dir, { withFileTypes: true });
-      
+
       for (const entry of entries) {
-        if (entry.isDirectory() && !entry.name.startsWith('.')) {
+        if (entry.isDirectory() && !entry.name.startsWith(".")) {
           const fullPath = path.join(dir, entry.name);
-          const packageJsonPath = path.join(fullPath, 'package.json');
-          
+          const packageJsonPath = path.join(fullPath, "package.json");
+
           if (await this.isWebpackProject(packageJsonPath)) {
             return true;
           }
-          
+
           // Recursively search
           if (await this.searchForWebpackProjects(fullPath, maxDepth - 1)) {
             return true;
@@ -152,13 +173,16 @@ export class WebpackCleaner implements CleanerModule {
   private async isWebpackProject(packageJsonPath: string): Promise<boolean> {
     try {
       if (!(await pathExists(packageJsonPath))) return false;
-      
-      const content = await fs.readFile(packageJsonPath, 'utf-8');
+
+      const content = await fs.readFile(packageJsonPath, "utf-8");
       const packageJson = JSON.parse(content);
-      
+
       // Check for webpack in dependencies or devDependencies
-      const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
-      return 'webpack' in deps || 'webpack-cli' in deps;
+      const deps = {
+        ...packageJson.dependencies,
+        ...packageJson.devDependencies,
+      };
+      return "webpack" in deps || "webpack-cli" in deps;
     } catch {
       return false;
     }
@@ -168,7 +192,7 @@ export class WebpackCleaner implements CleanerModule {
     // Check if webpack caches exist or if there are webpack projects
     const caches = await this.findWebpackCaches();
     const hasProjects = await this.hasWebpackProjects();
-    
+
     return caches.length > 0 || hasProjects;
   }
 
@@ -182,7 +206,9 @@ export class WebpackCleaner implements CleanerModule {
         const size = await getDirectorySize(cachePath);
         totalSize += size;
         validPaths.push(cachePath);
-        printVerbose(`${symbols.folder} ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`);
+        printVerbose(
+          `${symbols.folder} ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`,
+        );
       } catch (error) {
         printVerbose(`Error calculating size for ${cachePath}: ${error}`);
       }
@@ -198,14 +224,18 @@ export class WebpackCleaner implements CleanerModule {
     };
   }
 
-  async clear(dryRun = false, _criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo): Promise<ClearResult> {
-    const info = cacheInfo || await this.getCacheInfo();
-    
+  async clear(
+    dryRun = false,
+    _criteria?: CacheSelectionCriteria,
+    cacheInfo?: CacheInfo,
+  ): Promise<ClearResult> {
+    const info = cacheInfo || (await this.getCacheInfo());
+
     if (!info.isInstalled) {
       return {
         name: this.name,
         success: false,
-        error: 'No webpack caches found',
+        error: "No webpack caches found",
         clearedPaths: [],
         sizeBefore: 0,
         sizeAfter: 0,
@@ -238,7 +268,7 @@ export class WebpackCleaner implements CleanerModule {
       success: errors.length === 0,
       sizeBefore,
       sizeAfter: 0, // Set to 0 as we don't want to rescan
-      error: errors.length > 0 ? errors.join('; ') : undefined,
+      error: errors.length > 0 ? errors.join("; ") : undefined,
       clearedPaths,
     };
   }

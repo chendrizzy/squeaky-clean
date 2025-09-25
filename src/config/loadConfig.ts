@@ -18,7 +18,9 @@ export async function loadJson(filePath: string): Promise<any> {
 
 export function expandEnv(str: string): string {
   // Supports ${VAR} and tilde
-  const tilde = str.startsWith("~") ? str.replace(/^~(?=\/|$)/, process.env.HOME || "~") : str;
+  const tilde = str.startsWith("~")
+    ? str.replace(/^~(?=\/|$)/, process.env.HOME || "~")
+    : str;
   return tilde.replace(/\$\{([^}]+)\}/g, (_, key) => process.env[key] ?? "");
 }
 
@@ -34,8 +36,15 @@ export function deepMerge<T>(base: T, next: Partial<T>): T {
   return (next as T) ?? base;
 }
 
-async function resolveMaybePackage(idOrPath: string, cwd: string): Promise<string> {
-  if (idOrPath.startsWith(".") || idOrPath.startsWith("/") || idOrPath.startsWith("~")) {
+async function resolveMaybePackage(
+  idOrPath: string,
+  cwd: string,
+): Promise<string> {
+  if (
+    idOrPath.startsWith(".") ||
+    idOrPath.startsWith("/") ||
+    idOrPath.startsWith("~")
+  ) {
     const expanded = expandEnv(idOrPath);
     return path.isAbsolute(expanded) ? expanded : path.join(cwd, expanded);
   }
@@ -46,7 +55,7 @@ async function resolveMaybePackage(idOrPath: string, cwd: string): Promise<strin
 
 export async function resolveExtendsChain(
   entries: string | string[] | undefined,
-  fromPath: string
+  fromPath: string,
 ): Promise<any[]> {
   if (!entries) return [];
   const cwd = path.dirname(fromPath);
@@ -60,7 +69,9 @@ export async function resolveExtendsChain(
   return resolved;
 }
 
-export async function loadAndValidateConfig(configPath: string): Promise<SqueakyConfig> {
+export async function loadAndValidateConfig(
+  configPath: string,
+): Promise<SqueakyConfig> {
   const schemaPath = path.join(process.cwd(), "schemas/config.schema.json");
   const schema = await loadJson(schemaPath);
   const validate = ajv.compile(schema);
@@ -88,7 +99,9 @@ export async function loadAndValidateConfig(configPath: string): Promise<Squeaky
   // Validate final object
   const ok = validate(merged);
   if (!ok) {
-    const errors = (validate.errors as DefinedError[]).map(e => `${e.instancePath} ${e.message}`).join("\n");
+    const errors = (validate.errors as DefinedError[])
+      .map((e) => `${e.instancePath} ${e.message}`)
+      .join("\n");
     const err = new Error(`Invalid config: \n${errors}`);
     (err as any).errors = validate.errors;
     throw err;

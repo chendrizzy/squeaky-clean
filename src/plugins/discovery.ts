@@ -30,7 +30,10 @@ function listNodeModulesRoots(): string[] {
   return Array.from(roots);
 }
 
-export function discoverPlugins(prefixes: string[] = ["squeaky-cleaner-"], scopes: string[] = []): PluginInfo[] {
+export function discoverPlugins(
+  prefixes: string[] = ["squeaky-cleaner-"],
+  scopes: string[] = [],
+): PluginInfo[] {
   const roots = listNodeModulesRoots();
   const found: PluginInfo[] = [];
 
@@ -43,13 +46,13 @@ export function discoverPlugins(prefixes: string[] = ["squeaky-cleaner-"], scope
         const scopeDir = path.join(root, entry);
         if (!fs.existsSync(scopeDir)) continue;
         for (const pkg of fs.readdirSync(scopeDir)) {
-          if (prefixes.some(p => pkg.startsWith(p))) {
+          if (prefixes.some((p) => pkg.startsWith(p))) {
             const pkgPath = path.join(scopeDir, pkg);
             found.push({ name: `${entry}/${pkg}`, path: pkgPath });
           }
         }
       } else {
-        if (prefixes.some(p => entry.startsWith(p))) {
+        if (prefixes.some((p) => entry.startsWith(p))) {
           const pkgPath = path.join(root, entry);
           found.push({ name: entry, path: pkgPath });
         }
@@ -58,6 +61,6 @@ export function discoverPlugins(prefixes: string[] = ["squeaky-cleaner-"], scope
   }
 
   // De-dup by name
-  const map = new Map(found.map(p => [p.name, p]));
+  const map = new Map(found.map((p) => [p.name, p]));
   return Array.from(map.values());
 }

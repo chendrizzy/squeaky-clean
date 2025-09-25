@@ -1,63 +1,63 @@
-import Conf from 'conf';
-import { UserConfig } from '../types';
-import fs from 'fs';
-import path from 'path';
+import Conf from "conf";
+import { UserConfig } from "../types";
+import fs from "fs";
+import path from "path";
 
 export const defaultConfig: UserConfig = {
   enabledCaches: {
     packageManagers: true,
     buildTools: true,
     browsers: false, // More conservative default
-    ides: false,     // More conservative default
-    system: false,   // More conservative default
+    ides: false, // More conservative default
+    system: false, // More conservative default
   },
-  
+
   tools: {
     // Package managers
     npm: true,
     yarn: true,
     pnpm: true,
     bun: true,
-    pip: true,      // Python pip caches are generally safe to clear
-    
+    pip: true, // Python pip caches are generally safe to clear
+
     // Build tools
     webpack: true,
     vite: true,
     nx: true,
     turbo: true,
-    flutter: true,  // Flutter caches are safe and can be large
-    
+    flutter: true, // Flutter caches are safe and can be large
+
     // Browsers
-    chrome: false,  // More conservative - browser caches can affect user experience
+    chrome: false, // More conservative - browser caches can affect user experience
     firefox: false,
-    
+
     // IDEs
-    vscode: true,       // VS Code caches are generally safe to clear
-    xcode: true,        // Xcode can accumulate huge caches
+    vscode: true, // VS Code caches are generally safe to clear
+    xcode: true, // Xcode can accumulate huge caches
     androidstudio: true, // Android Studio caches are safe and can be large
-    jetbrains: false,   // More conservative for JetBrains IDEs
-    
+    jetbrains: false, // More conservative for JetBrains IDEs
+
     // System tools
-    docker: false,  // More conservative - Docker cleanup affects containers
-    gradle: true,   // Gradle caches are safe and can be large
-    maven: true,    // Maven caches are safe and can be large
+    docker: false, // More conservative - Docker cleanup affects containers
+    gradle: true, // Gradle caches are safe and can be large
+    maven: true, // Maven caches are safe and can be large
   },
-  
+
   safety: {
     requireConfirmation: true,
     dryRunDefault: false,
     backupBeforeClearing: false,
     excludeSystemCritical: true,
   },
-  
+
   customPaths: [],
   protectedPaths: [], // New property
-  
+
   output: {
     verbose: false,
     showSizes: true,
     useColors: true,
-    emojis: 'on',
+    emojis: "on",
   },
 };
 
@@ -68,77 +68,78 @@ class ConfigManager {
 
   constructor() {
     this.conf = new Conf<UserConfig>({
-      projectName: 'squeaky-clean',
-      projectVersion: '1.0.0',
+      projectName: "squeaky-clean",
+      projectVersion: "1.0.0",
       defaults: defaultConfig,
       schema: {
         enabledCaches: {
-          type: 'object',
+          type: "object",
           properties: {
-            packageManagers: { type: 'boolean' },
-            buildTools: { type: 'boolean' },
-            browsers: { type: 'boolean' },
-            ides: { type: 'boolean' },
-            system: { type: 'boolean' },
+            packageManagers: { type: "boolean" },
+            buildTools: { type: "boolean" },
+            browsers: { type: "boolean" },
+            ides: { type: "boolean" },
+            system: { type: "boolean" },
           },
         },
         tools: {
-          type: 'object',
+          type: "object",
           properties: {
             // Package managers
-            npm: { type: 'boolean' },
-            yarn: { type: 'boolean' },
-            pnpm: { type: 'boolean' },
-            bun: { type: 'boolean' },
-            pip: { type: 'boolean' },
-            
+            npm: { type: "boolean" },
+            yarn: { type: "boolean" },
+            pnpm: { type: "boolean" },
+            bun: { type: "boolean" },
+            pip: { type: "boolean" },
+
             // Build tools
-            webpack: { type: 'boolean' },
-            vite: { type: 'boolean' },
-            nx: { type: 'boolean' },
-            turbo: { type: 'boolean' },
-            flutter: { type: 'boolean' },
-            
+            webpack: { type: "boolean" },
+            vite: { type: "boolean" },
+            nx: { type: "boolean" },
+            turbo: { type: "boolean" },
+            flutter: { type: "boolean" },
+
             // Browsers
-            chrome: { type: 'boolean' },
-            firefox: { type: 'boolean' },
-            
+            chrome: { type: "boolean" },
+            firefox: { type: "boolean" },
+
             // IDEs
-            vscode: { type: 'boolean' },
-            xcode: { type: 'boolean' },
-            androidstudio: { type: 'boolean' },
-            jetbrains: { type: 'boolean' },
-            
+            vscode: { type: "boolean" },
+            xcode: { type: "boolean" },
+            androidstudio: { type: "boolean" },
+            jetbrains: { type: "boolean" },
+
             // System tools
-            docker: { type: 'boolean' },
-            gradle: { type: 'boolean' },
-            maven: { type: 'boolean' },
+            docker: { type: "boolean" },
+            gradle: { type: "boolean" },
+            maven: { type: "boolean" },
           },
         },
         safety: {
-          type: 'object',
+          type: "object",
           properties: {
-            requireConfirmation: { type: 'boolean' },
-            dryRunDefault: { type: 'boolean' },
-            backupBeforeClearing: { type: 'boolean' },
-            excludeSystemCritical: { type: 'boolean' },
+            requireConfirmation: { type: "boolean" },
+            dryRunDefault: { type: "boolean" },
+            backupBeforeClearing: { type: "boolean" },
+            excludeSystemCritical: { type: "boolean" },
           },
         },
         customPaths: {
-          type: 'array',
-          items: { type: 'string' },
+          type: "array",
+          items: { type: "string" },
         },
-        protectedPaths: { // New property
-          type: 'array',
-          items: { type: 'string' },
+        protectedPaths: {
+          // New property
+          type: "array",
+          items: { type: "string" },
         },
         output: {
-          type: 'object',
+          type: "object",
           properties: {
-            verbose: { type: 'boolean' },
-            showSizes: { type: 'boolean' },
-            useColors: { type: 'boolean' },
-            emojis: { type: 'string', enum: ['on', 'off', 'minimal'] },
+            verbose: { type: "boolean" },
+            showSizes: { type: "boolean" },
+            useColors: { type: "boolean" },
+            emojis: { type: "string", enum: ["on", "off", "minimal"] },
           },
         },
       },
@@ -151,8 +152,8 @@ class ConfigManager {
       if (!fs.existsSync(resolvedPath)) {
         throw new Error(`Config file not found: ${resolvedPath}`);
       }
-      
-      const configContent = fs.readFileSync(resolvedPath, 'utf-8');
+
+      const configContent = fs.readFileSync(resolvedPath, "utf-8");
       this.customConfig = JSON.parse(configContent);
       this.customConfigPath = resolvedPath;
     } catch (error) {
@@ -194,19 +195,22 @@ class ConfigManager {
   }
 
   // Specific getters for convenience
-  isToolEnabled(tool: keyof UserConfig['tools']): boolean {
+  isToolEnabled(tool: keyof UserConfig["tools"]): boolean {
     const config = this.get();
     return config.tools?.[tool] ?? defaultConfig.tools[tool];
   }
 
-  isCacheTypeEnabled(type: keyof UserConfig['enabledCaches']): boolean {
+  isCacheTypeEnabled(type: keyof UserConfig["enabledCaches"]): boolean {
     const config = this.get();
     return config.enabledCaches?.[type] ?? defaultConfig.enabledCaches[type];
   }
 
   shouldRequireConfirmation(): boolean {
     const config = this.get();
-    return config.safety?.requireConfirmation ?? defaultConfig.safety.requireConfirmation;
+    return (
+      config.safety?.requireConfirmation ??
+      defaultConfig.safety.requireConfirmation
+    );
   }
 
   shouldUseDryRunDefault(): boolean {
@@ -229,7 +233,7 @@ class ConfigManager {
     return config.output?.verbose ?? defaultConfig.output.verbose;
   }
 
-  getEmojiMode(): 'on' | 'off' | 'minimal' {
+  getEmojiMode(): "on" | "off" | "minimal" {
     const config = this.get();
     const output = config.output as any;
     return output?.emojis ?? defaultConfig.output.emojis;

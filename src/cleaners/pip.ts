@@ -1,44 +1,49 @@
-import { CleanerModule, CacheInfo, ClearResult, CacheSelectionCriteria } from '../types';
-import * as path from 'path';
-import * as os from 'os';
-import { pathExists, getDirectorySize, safeRmrf } from '../utils/fs';
-import execa from 'execa';
-import { printVerbose, symbols } from '../utils/cli';
+import {
+  CleanerModule,
+  CacheInfo,
+  ClearResult,
+  CacheSelectionCriteria,
+} from "../types";
+import * as path from "path";
+import * as os from "os";
+import { pathExists, getDirectorySize, safeRmrf } from "../utils/fs";
+import execa from "execa";
+import { printVerbose, symbols } from "../utils/cli";
 
 class PipCleaner implements CleanerModule {
-  name = 'pip';
-  type = 'package-manager' as const;
-  description = 'Python pip package manager caches and temporary files';
+  name = "pip";
+  type = "package-manager" as const;
+  description = "Python pip package manager caches and temporary files";
 
   private async getPythonVersion(): Promise<string | null> {
     // Try python3 first, then python
-    const pythonCommands = ['python3', 'python'];
-    
+    const pythonCommands = ["python3", "python"];
+
     for (const cmd of pythonCommands) {
       try {
-        const result = await execa(cmd, ['--version']);
+        const result = await execa(cmd, ["--version"]);
         return result.stdout.trim() || result.stderr.trim();
       } catch {
         // Continue to next command
       }
     }
-    
+
     return null;
   }
 
   private async getPipVersion(): Promise<string | null> {
     // Try pip3 first, then pip
-    const pipCommands = ['pip3', 'pip'];
-    
+    const pipCommands = ["pip3", "pip"];
+
     for (const cmd of pipCommands) {
       try {
-        const result = await execa(cmd, ['--version']);
+        const result = await execa(cmd, ["--version"]);
         return result.stdout.trim();
       } catch {
         // Continue to next command
       }
     }
-    
+
     return null;
   }
 
@@ -46,28 +51,28 @@ class PipCleaner implements CleanerModule {
     const paths: string[] = [];
     const homeDir = os.homedir();
     const platform = os.platform();
-    
+
     // Platform-specific pip cache paths
-    if (platform === 'darwin') {
+    if (platform === "darwin") {
       // macOS
       const macPaths = [
-        path.join(homeDir, 'Library', 'Caches', 'pip'),
-        path.join(homeDir, '.cache', 'pip'),
+        path.join(homeDir, "Library", "Caches", "pip"),
+        path.join(homeDir, ".cache", "pip"),
       ];
-      
+
       for (const cachePath of macPaths) {
         if (await pathExists(cachePath)) {
           paths.push(cachePath);
         }
       }
-    } else if (platform === 'win32') {
+    } else if (platform === "win32") {
       // Windows
       const windowsPaths = [
-        path.join(homeDir, 'AppData', 'Local', 'pip', 'cache'),
-        path.join(homeDir, 'AppData', 'Local', 'pip', 'Cache'),
-        path.join(homeDir, 'pip', 'cache'),
+        path.join(homeDir, "AppData", "Local", "pip", "cache"),
+        path.join(homeDir, "AppData", "Local", "pip", "Cache"),
+        path.join(homeDir, "pip", "cache"),
       ];
-      
+
       for (const cachePath of windowsPaths) {
         if (await pathExists(cachePath)) {
           paths.push(cachePath);
@@ -76,11 +81,11 @@ class PipCleaner implements CleanerModule {
     } else {
       // Linux/Unix
       const linuxPaths = [
-        path.join(homeDir, '.cache', 'pip'),
-        path.join(homeDir, '.pip', 'cache'),
-        '/tmp/pip-cache',
+        path.join(homeDir, ".cache", "pip"),
+        path.join(homeDir, ".pip", "cache"),
+        "/tmp/pip-cache",
       ];
-      
+
       for (const cachePath of linuxPaths) {
         if (await pathExists(cachePath)) {
           paths.push(cachePath);
@@ -110,36 +115,36 @@ class PipCleaner implements CleanerModule {
   }
 
   private async getPipCacheDir(): Promise<string | null> {
-    const pipCommands = ['pip3', 'pip'];
-    
+    const pipCommands = ["pip3", "pip"];
+
     for (const cmd of pipCommands) {
       try {
-        const result = await execa(cmd, ['cache', 'dir']);
+        const result = await execa(cmd, ["cache", "dir"]);
         const cacheDir = result.stdout.trim();
-        if (cacheDir && await pathExists(cacheDir)) {
+        if (cacheDir && (await pathExists(cacheDir))) {
           return cacheDir;
         }
       } catch {
         // Command failed, try next
       }
     }
-    
+
     return null;
   }
 
   private async findVirtualEnvCaches(): Promise<string[]> {
     const caches: string[] = [];
     const homeDir = os.homedir();
-    
+
     // Common virtual environment directories
     const venvDirs = [
-      path.join(homeDir, '.virtualenvs'),
-      path.join(homeDir, 'envs'),
-      path.join(homeDir, 'venv'),
-      path.join(homeDir, '.venv'),
-      path.join(homeDir, 'anaconda3', 'envs'),
-      path.join(homeDir, 'miniconda3', 'envs'),
-      path.join(homeDir, '.conda', 'envs'),
+      path.join(homeDir, ".virtualenvs"),
+      path.join(homeDir, "envs"),
+      path.join(homeDir, "venv"),
+      path.join(homeDir, ".venv"),
+      path.join(homeDir, "anaconda3", "envs"),
+      path.join(homeDir, "miniconda3", "envs"),
+      path.join(homeDir, ".conda", "envs"),
     ];
 
     for (const venvDir of venvDirs) {
@@ -158,22 +163,30 @@ class PipCleaner implements CleanerModule {
 
   private async findPipCachesInDir(dir: string): Promise<string[]> {
     const caches: string[] = [];
-    
+
     try {
       const platform = os.platform();
-      
+
       // Look for pip cache subdirectories in virtual environments
       const possibleCachePaths = [];
-      
-      if (platform === 'win32') {
+
+      if (platform === "win32") {
         possibleCachePaths.push(
-          path.join(dir, 'Lib', 'site-packages', 'pip', '_internal', 'cache'),
-          path.join(dir, 'pip', 'cache')
+          path.join(dir, "Lib", "site-packages", "pip", "_internal", "cache"),
+          path.join(dir, "pip", "cache"),
         );
       } else {
         possibleCachePaths.push(
-          path.join(dir, 'lib', 'python*', 'site-packages', 'pip', '_internal', 'cache'),
-          path.join(dir, 'pip', 'cache')
+          path.join(
+            dir,
+            "lib",
+            "python*",
+            "site-packages",
+            "pip",
+            "_internal",
+            "cache",
+          ),
+          path.join(dir, "pip", "cache"),
         );
       }
 
@@ -207,14 +220,14 @@ class PipCleaner implements CleanerModule {
     // Check if pip cache exists
     const homeDir = os.homedir();
     const platform = os.platform();
-    
+
     let defaultCachePath: string;
-    if (platform === 'darwin') {
-      defaultCachePath = path.join(homeDir, 'Library', 'Caches', 'pip');
-    } else if (platform === 'win32') {
-      defaultCachePath = path.join(homeDir, 'AppData', 'Local', 'pip', 'cache');
+    if (platform === "darwin") {
+      defaultCachePath = path.join(homeDir, "Library", "Caches", "pip");
+    } else if (platform === "win32") {
+      defaultCachePath = path.join(homeDir, "AppData", "Local", "pip", "cache");
     } else {
-      defaultCachePath = path.join(homeDir, '.cache', 'pip');
+      defaultCachePath = path.join(homeDir, ".cache", "pip");
     }
 
     if (await pathExists(defaultCachePath)) {
@@ -227,7 +240,7 @@ class PipCleaner implements CleanerModule {
 
   async getCacheInfo(): Promise<CacheInfo> {
     const isInstalled = await this.isAvailable();
-    
+
     if (!isInstalled) {
       return {
         name: this.name,
@@ -248,7 +261,9 @@ class PipCleaner implements CleanerModule {
         const size = await getDirectorySize(cachePath, true); // Use estimated size for large dirs
         totalSize += size;
         validPaths.push(cachePath);
-        printVerbose(`${symbols.folder} ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`);
+        printVerbose(
+          `${symbols.folder} ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`,
+        );
       } catch (error) {
         printVerbose(`Error calculating size for ${cachePath}: ${error}`);
       }
@@ -264,14 +279,18 @@ class PipCleaner implements CleanerModule {
     };
   }
 
-  async clear(dryRun = false, _criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo): Promise<ClearResult> {
-    const info = cacheInfo || await this.getCacheInfo();
-    
+  async clear(
+    dryRun = false,
+    _criteria?: CacheSelectionCriteria,
+    cacheInfo?: CacheInfo,
+  ): Promise<ClearResult> {
+    const info = cacheInfo || (await this.getCacheInfo());
+
     if (!info.isInstalled) {
       return {
         name: this.name,
         success: false,
-        error: 'Python/pip is not available',
+        error: "Python/pip is not available",
         clearedPaths: [],
         sizeBefore: 0,
         sizeAfter: 0,
@@ -309,17 +328,17 @@ class PipCleaner implements CleanerModule {
       success: errors.length === 0,
       sizeBefore,
       sizeAfter: 0, // Set to 0 as we don't want to rescan
-      error: errors.length > 0 ? errors.join('; ') : undefined,
+      error: errors.length > 0 ? errors.join("; ") : undefined,
       clearedPaths,
     };
   }
 
   private async runPipCachePurge(): Promise<void> {
-    const pipCommands = ['pip3', 'pip'];
-    
+    const pipCommands = ["pip3", "pip"];
+
     for (const cmd of pipCommands) {
       try {
-        await execa(cmd, ['cache', 'purge']);
+        await execa(cmd, ["cache", "purge"]);
         printVerbose(`${symbols.soap} Executed: ${cmd} cache purge`);
         return; // Success, don't try other commands
       } catch (error) {

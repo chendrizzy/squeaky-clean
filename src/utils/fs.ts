@@ -1,6 +1,6 @@
-import { promises as fs } from 'fs';
-import path from 'path';
-import { rimraf } from 'rimraf';
+import { promises as fs } from "fs";
+import path from "path";
+import { rimraf } from "rimraf";
 
 export async function pathExists(filePath: string): Promise<boolean> {
   try {
@@ -15,18 +15,24 @@ export async function pathExists(filePath: string): Promise<boolean> {
 const withTimeout = <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
   return Promise.race([
     promise,
-    new Promise<T>((_, reject) => 
-      setTimeout(() => reject(new Error('Timeout')), timeoutMs)
-    )
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error("Timeout")), timeoutMs),
+    ),
   ]);
 };
 
-export async function getDirectorySize(dirPath: string, skipLargeDirectories: boolean = false): Promise<number> {
+export async function getDirectorySize(
+  dirPath: string,
+  skipLargeDirectories: boolean = false,
+): Promise<number> {
   // Wrap the actual calculation with an 8-second timeout to prevent hangs
   try {
-    return await withTimeout(calculateDirectorySize(dirPath, skipLargeDirectories), 8000);
+    return await withTimeout(
+      calculateDirectorySize(dirPath, skipLargeDirectories),
+      8000,
+    );
   } catch (error) {
-    if (error instanceof Error && error.message === 'Timeout') {
+    if (error instanceof Error && error.message === "Timeout") {
       // Use estimated size for directories that take too long
       return getEstimatedDirectorySize(dirPath);
     }
@@ -34,10 +40,13 @@ export async function getDirectorySize(dirPath: string, skipLargeDirectories: bo
   }
 }
 
-async function calculateDirectorySize(dirPath: string, skipLargeDirectories: boolean = false): Promise<number> {
+async function calculateDirectorySize(
+  dirPath: string,
+  skipLargeDirectories: boolean = false,
+): Promise<number> {
   try {
     const stats = await fs.stat(dirPath);
-    
+
     if (!stats.isDirectory()) {
       return stats.size;
     }
@@ -51,26 +60,26 @@ async function calculateDirectorySize(dirPath: string, skipLargeDirectories: boo
     const stack = [dirPath];
     let processedCount = 0;
     const maxItems = 10000; // Limit total items processed to prevent memory issues
-    
+
     while (stack.length > 0 && processedCount < maxItems) {
       const currentDir = stack.pop()!;
-      
+
       try {
         const items = await fs.readdir(currentDir);
-        
+
         for (const item of items) {
           if (processedCount >= maxItems) break;
-          
+
           const itemPath = path.join(currentDir, item);
           try {
             const itemStats = await fs.stat(itemPath);
-            
+
             if (itemStats.isDirectory()) {
               stack.push(itemPath);
             } else {
               totalSize += itemStats.size;
             }
-            
+
             processedCount++;
           } catch {
             // Skip items we can't access (permissions, etc.)
@@ -88,10 +97,12 @@ async function calculateDirectorySize(dirPath: string, skipLargeDirectories: boo
 }
 
 // Fast estimation for large directories to avoid memory issues
-export async function getEstimatedDirectorySize(dirPath: string): Promise<number> {
+export async function getEstimatedDirectorySize(
+  dirPath: string,
+): Promise<number> {
   try {
     const stats = await fs.stat(dirPath);
-    
+
     if (!stats.isDirectory()) {
       return stats.size;
     }
@@ -99,12 +110,12 @@ export async function getEstimatedDirectorySize(dirPath: string): Promise<number
     // Sample a few items to estimate average size
     const items = await fs.readdir(dirPath);
     const sampleSize = Math.min(100, items.length);
-    
+
     if (sampleSize === 0) return 0;
-    
+
     let sampleTotalSize = 0;
     let sampleFileCount = 0;
-    
+
     for (let i = 0; i < sampleSize; i++) {
       const itemPath = path.join(dirPath, items[i]);
       try {
@@ -117,12 +128,12 @@ export async function getEstimatedDirectorySize(dirPath: string): Promise<number
         // Skip items we can't access
       }
     }
-    
+
     if (sampleFileCount === 0) return 0;
-    
+
     const averageFileSize = sampleTotalSize / sampleFileCount;
     const totalFiles = items.length;
-    
+
     return Math.round(averageFileSize * totalFiles);
   } catch {
     return 0;
@@ -137,15 +148,17 @@ export async function safeRmrf(targetPath: string): Promise<void> {
 
     // Safety checks
     const normalizedPath = path.resolve(targetPath);
-    const isInHomeOrTemp = 
-      normalizedPath.includes(path.join(require('os').homedir())) ||
-      normalizedPath.includes(require('os').tmpdir()) ||
-      normalizedPath.includes('node_modules') ||
-      normalizedPath.includes('cache') ||
-      normalizedPath.includes('temp');
+    const isInHomeOrTemp =
+      normalizedPath.includes(path.join(require("os").homedir())) ||
+      normalizedPath.includes(require("os").tmpdir()) ||
+      normalizedPath.includes("node_modules") ||
+      normalizedPath.includes("cache") ||
+      normalizedPath.includes("temp");
 
     if (!isInHomeOrTemp) {
-      throw new Error(`Refusing to delete path outside safe directories: ${normalizedPath}`);
+      throw new Error(
+        `Refusing to delete path outside safe directories: ${normalizedPath}`,
+      );
     }
 
     // Use rimraf for cross-platform reliable deletion
@@ -154,15 +167,19 @@ export async function safeRmrf(targetPath: string): Promise<void> {
       retryDelay: 100,
     });
   } catch (error) {
-    throw new Error(`Failed to delete ${targetPath}: ${error instanceof Error ? error.message : error}`);
+    throw new Error(
+      `Failed to delete ${targetPath}: ${error instanceof Error ? error.message : error}`,
+    );
   }
 }
 
-export async function createDirectoryIfNotExists(dirPath: string): Promise<void> {
+export async function createDirectoryIfNotExists(
+  dirPath: string,
+): Promise<void> {
   try {
     await fs.mkdir(dirPath, { recursive: true });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
       throw error;
     }
   }
@@ -177,7 +194,9 @@ export async function isWritable(dirPath: string): Promise<boolean> {
   }
 }
 
-export async function getDiskSpace(dirPath: string): Promise<{ free: number; total: number } | null> {
+export async function getDiskSpace(
+  dirPath: string,
+): Promise<{ free: number; total: number } | null> {
   try {
     const stats = await fs.statfs(dirPath);
     return {
@@ -190,7 +209,9 @@ export async function getDiskSpace(dirPath: string): Promise<{ free: number; tot
   }
 }
 
-export async function getFileModificationTime(filePath: string): Promise<Date | null> {
+export async function getFileModificationTime(
+  filePath: string,
+): Promise<Date | null> {
   try {
     const stats = await fs.stat(filePath);
     return stats.mtime;
@@ -200,9 +221,12 @@ export async function getFileModificationTime(filePath: string): Promise<Date | 
 }
 
 export function sanitizePath(inputPath: string): string {
-  if (!inputPath) return '.';
+  if (!inputPath) return ".";
   // Normalize path separators to forward slashes and remove invalid characters
-  return path.normalize(inputPath).replace(/\\/g, '/').replace(/[<>:"|?*]/g, '');
+  return path
+    .normalize(inputPath)
+    .replace(/\\/g, "/")
+    .replace(/[<>:"|?*]/g, "");
 }
 
 // Alias for cache size calculation

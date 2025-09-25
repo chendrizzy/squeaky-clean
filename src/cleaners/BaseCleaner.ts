@@ -1,11 +1,18 @@
-import { CleanerModule, CacheInfo, CacheCategory, ClearResult, CacheType, CacheSelectionCriteria } from '../types';
-import { existsSync, statSync } from 'fs';
-import { rm } from 'fs/promises';
-import { basename, resolve } from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import { minimatch } from 'minimatch';
-import { printVerbose } from '../utils/cli';
+import {
+  CleanerModule,
+  CacheInfo,
+  CacheCategory,
+  ClearResult,
+  CacheType,
+  CacheSelectionCriteria,
+} from "../types";
+import { existsSync, statSync } from "fs";
+import { rm } from "fs/promises";
+import { basename, resolve } from "path";
+import { exec } from "child_process";
+import { promisify } from "util";
+import { minimatch } from "minimatch";
+import { printVerbose } from "../utils/cli";
 
 const execAsync = promisify(exec);
 
@@ -36,9 +43,11 @@ export abstract class BaseCleaner implements CleanerModule {
           size: await this.getDirectorySize(path),
           lastModified: stat.mtime,
           lastAccessed: stat.atime,
-          priority: 'normal',
-          useCase: 'development',
-          ageInDays: Math.floor((Date.now() - stat.mtime.getTime()) / (1000 * 60 * 60 * 24))
+          priority: "normal",
+          useCase: "development",
+          ageInDays: Math.floor(
+            (Date.now() - stat.mtime.getTime()) / (1000 * 60 * 60 * 24),
+          ),
         };
         categories.push(category);
       }
@@ -50,69 +59,92 @@ export abstract class BaseCleaner implements CleanerModule {
   /**
    * Check if a path is protected
    */
-  protected isProtectedPath(path: string, protectedPaths: string[] = []): boolean {
+  protected isProtectedPath(
+    path: string,
+    protectedPaths: string[] = [],
+  ): boolean {
     if (!protectedPaths.length) return false;
-    
+
     const normalizedPath = resolve(path);
-    
+
     for (const protectedPattern of protectedPaths) {
       // Support both exact paths and glob patterns
-      if (protectedPattern.includes('*') || protectedPattern.includes('?')) {
+      if (protectedPattern.includes("*") || protectedPattern.includes("?")) {
         // It's a glob pattern
         if (minimatch(normalizedPath, protectedPattern)) {
-          printVerbose(`Path ${path} is protected by pattern: ${protectedPattern}`);
+          printVerbose(
+            `Path ${path} is protected by pattern: ${protectedPattern}`,
+          );
           return true;
         }
       } else {
         // It's an exact path or directory
         const normalizedProtected = resolve(protectedPattern);
-        if (normalizedPath === normalizedProtected || normalizedPath.startsWith(normalizedProtected + '/')) {
+        if (
+          normalizedPath === normalizedProtected ||
+          normalizedPath.startsWith(normalizedProtected + "/")
+        ) {
           printVerbose(`Path ${path} is protected: ${protectedPattern}`);
           return true;
         }
       }
     }
-    
+
     return false;
   }
 
   /**
    * Filter paths to exclude protected ones
    */
-  protected filterProtectedPaths(paths: string[], protectedPaths: string[] = []): string[] {
+  protected filterProtectedPaths(
+    paths: string[],
+    protectedPaths: string[] = [],
+  ): string[] {
     if (!protectedPaths.length) return paths;
-    
-    const filtered = paths.filter(path => !this.isProtectedPath(path, protectedPaths));
-    
+
+    const filtered = paths.filter(
+      (path) => !this.isProtectedPath(path, protectedPaths),
+    );
+
     const skippedCount = paths.length - filtered.length;
     if (skippedCount > 0) {
       printVerbose(`Skipped ${skippedCount} protected path(s)`);
     }
-    
+
     return filtered;
   }
 
   /**
    * Clear cache with selection criteria
    */
-  async clear(dryRun?: boolean, criteria?: CacheSelectionCriteria, _cacheInfo?: CacheInfo, protectedPaths?: string[]): Promise<ClearResult> {
+  async clear(
+    dryRun?: boolean,
+    criteria?: CacheSelectionCriteria,
+    _cacheInfo?: CacheInfo,
+    protectedPaths?: string[],
+  ): Promise<ClearResult> {
     const categories = await this.getCacheCategories();
     const filteredCategories = this.filterCategories(categories, criteria);
-    
+
     let totalSizeBefore = 0;
     let clearedPaths: string[] = [];
     let clearedCategories: string[] = [];
 
     for (const category of filteredCategories) {
       // Filter out protected paths from this category
-      const allowedPaths = this.filterProtectedPaths(category.paths, protectedPaths);
-      
+      const allowedPaths = this.filterProtectedPaths(
+        category.paths,
+        protectedPaths,
+      );
+
       if (allowedPaths.length > 0) {
         totalSizeBefore += category.size || 0;
         clearedPaths.push(...allowedPaths);
         clearedCategories.push(category.id);
       } else if (category.paths.length > 0) {
-        printVerbose(`Skipping category ${category.id} - all paths are protected`);
+        printVerbose(
+          `Skipping category ${category.id} - all paths are protected`,
+        );
       }
     }
 
@@ -129,31 +161,43 @@ export abstract class BaseCleaner implements CleanerModule {
       sizeBefore: totalSizeBefore,
       sizeAfter: dryRun ? totalSizeBefore : 0,
       clearedPaths,
-      clearedCategories
+      clearedCategories,
     };
   }
 
   /**
    * Clear specific categories
    */
-  async clearByCategory(categoryIds: string[], dryRun?: boolean, _cacheInfo?: CacheInfo, protectedPaths?: string[]): Promise<ClearResult> {
+  async clearByCategory(
+    categoryIds: string[],
+    dryRun?: boolean,
+    _cacheInfo?: CacheInfo,
+    protectedPaths?: string[],
+  ): Promise<ClearResult> {
     const categories = await this.getCacheCategories();
-    const selectedCategories = categories.filter(c => categoryIds.includes(c.id));
-    
+    const selectedCategories = categories.filter((c) =>
+      categoryIds.includes(c.id),
+    );
+
     let totalSizeBefore = 0;
     let clearedPaths: string[] = [];
     let clearedCategories: string[] = [];
 
     for (const category of selectedCategories) {
       // Filter out protected paths from this category
-      const allowedPaths = this.filterProtectedPaths(category.paths, protectedPaths);
-      
+      const allowedPaths = this.filterProtectedPaths(
+        category.paths,
+        protectedPaths,
+      );
+
       if (allowedPaths.length > 0) {
         totalSizeBefore += category.size || 0;
         clearedPaths.push(...allowedPaths);
         clearedCategories.push(category.id);
       } else if (category.paths.length > 0) {
-        printVerbose(`Skipping category ${category.id} - all paths are protected`);
+        printVerbose(
+          `Skipping category ${category.id} - all paths are protected`,
+        );
       }
     }
 
@@ -169,22 +213,31 @@ export abstract class BaseCleaner implements CleanerModule {
       sizeBefore: totalSizeBefore,
       sizeAfter: dryRun ? totalSizeBefore : 0,
       clearedPaths,
-      clearedCategories
+      clearedCategories,
     };
   }
 
   /**
    * Filter categories based on criteria
    */
-  protected filterCategories(categories: CacheCategory[], criteria?: CacheSelectionCriteria): CacheCategory[] {
+  protected filterCategories(
+    categories: CacheCategory[],
+    criteria?: CacheSelectionCriteria,
+  ): CacheCategory[] {
     if (!criteria) return categories;
 
-    return categories.filter(category => {
+    return categories.filter((category) => {
       // Age filtering
-      if (criteria.olderThanDays !== undefined && category.ageInDays !== undefined) {
+      if (
+        criteria.olderThanDays !== undefined &&
+        category.ageInDays !== undefined
+      ) {
         if (category.ageInDays < criteria.olderThanDays) return false;
       }
-      if (criteria.newerThanDays !== undefined && category.ageInDays !== undefined) {
+      if (
+        criteria.newerThanDays !== undefined &&
+        category.ageInDays !== undefined
+      ) {
         if (category.ageInDays > criteria.newerThanDays) return false;
       }
 
@@ -208,7 +261,8 @@ export abstract class BaseCleaner implements CleanerModule {
 
       // Project-specific filtering
       if (criteria.projectSpecific !== undefined) {
-        if (category.isProjectSpecific !== criteria.projectSpecific) return false;
+        if (category.isProjectSpecific !== criteria.projectSpecific)
+          return false;
       }
 
       // Category ID filtering
@@ -228,8 +282,10 @@ export abstract class BaseCleaner implements CleanerModule {
 
     try {
       // Use du command for accurate size calculation
-      const { stdout } = await execAsync(`du -sk "${path}" 2>/dev/null || echo "0"`);
-      const sizeKB = parseInt(stdout.split('\t')[0]) || 0;
+      const { stdout } = await execAsync(
+        `du -sk "${path}" 2>/dev/null || echo "0"`,
+      );
+      const sizeKB = parseInt(stdout.split("\t")[0]) || 0;
       return sizeKB * 1024;
     } catch {
       return 0;
@@ -245,9 +301,9 @@ export abstract class BaseCleaner implements CleanerModule {
     try {
       // Use native Node.js fs operations for better security
       // This eliminates any potential for command injection
-      await rm(path, { 
-        recursive: true,  // Handles directories recursively
-        force: true       // Ignores errors if file doesn't exist
+      await rm(path, {
+        recursive: true, // Handles directories recursively
+        force: true, // Ignores errors if file doesn't exist
       });
     } catch (error) {
       console.error(`Failed to clear ${path}:`, error);
@@ -262,7 +318,8 @@ export abstract class BaseCleaner implements CleanerModule {
 
     try {
       const stat = statSync(path);
-      const daysSinceAccess = (Date.now() - stat.atime.getTime()) / (1000 * 60 * 60 * 24);
+      const daysSinceAccess =
+        (Date.now() - stat.atime.getTime()) / (1000 * 60 * 60 * 24);
       return daysSinceAccess < days;
     } catch {
       return false;
@@ -275,43 +332,47 @@ export abstract class BaseCleaner implements CleanerModule {
   protected isProjectSpecific(path: string): boolean {
     // Check if path contains common project indicators
     const projectIndicators = [
-      'node_modules/.cache',
-      'target/debug',
-      'target/release',
-      'build/cache',
-      '.next/cache',
-      '.nuxt/cache',
-      'dist/cache'
+      "node_modules/.cache",
+      "target/debug",
+      "target/release",
+      "build/cache",
+      ".next/cache",
+      ".nuxt/cache",
+      "dist/cache",
     ];
 
-    return projectIndicators.some(indicator => path.includes(indicator));
+    return projectIndicators.some((indicator) => path.includes(indicator));
   }
 
   /**
    * Get cache priority based on path and usage
    */
-  protected getCachePriority(path: string): 'critical' | 'important' | 'normal' | 'low' {
+  protected getCachePriority(
+    path: string,
+  ): "critical" | "important" | "normal" | "low" {
     // Critical: Currently active project caches
-    if (this.isRecentlyUsed(path, 1)) return 'critical';
-    
+    if (this.isRecentlyUsed(path, 1)) return "critical";
+
     // Important: Recently used (within a week)
-    if (this.isRecentlyUsed(path, 7)) return 'important';
-    
+    if (this.isRecentlyUsed(path, 7)) return "important";
+
     // Low: Very old caches
-    if (!this.isRecentlyUsed(path, 30)) return 'low';
-    
+    if (!this.isRecentlyUsed(path, 30)) return "low";
+
     // Normal: Everything else
-    return 'normal';
+    return "normal";
   }
 
   /**
    * Detect use case based on path patterns
    */
-  protected detectUseCase(path: string): 'development' | 'testing' | 'production' | 'experimental' | 'archived' {
-    if (path.includes('test') || path.includes('spec')) return 'testing';
-    if (path.includes('prod') || path.includes('release')) return 'production';
-    if (path.includes('exp') || path.includes('beta')) return 'experimental';
-    if (!this.isRecentlyUsed(path, 90)) return 'archived';
-    return 'development';
+  protected detectUseCase(
+    path: string,
+  ): "development" | "testing" | "production" | "experimental" | "archived" {
+    if (path.includes("test") || path.includes("spec")) return "testing";
+    if (path.includes("prod") || path.includes("release")) return "production";
+    if (path.includes("exp") || path.includes("beta")) return "experimental";
+    if (!this.isRecentlyUsed(path, 90)) return "archived";
+    return "development";
   }
 }

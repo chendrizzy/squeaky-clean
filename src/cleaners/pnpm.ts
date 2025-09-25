@@ -1,18 +1,23 @@
-import { CleanerModule, CacheInfo, ClearResult, CacheSelectionCriteria } from '../types';
-import * as path from 'path';
-import * as os from 'os';
-import { pathExists, getDirectorySize, safeRmrf } from '../utils/fs';
-import execa from 'execa';
-import { printVerbose, symbols } from '../utils/cli';
+import {
+  CleanerModule,
+  CacheInfo,
+  ClearResult,
+  CacheSelectionCriteria,
+} from "../types";
+import * as path from "path";
+import * as os from "os";
+import { pathExists, getDirectorySize, safeRmrf } from "../utils/fs";
+import execa from "execa";
+import { printVerbose, symbols } from "../utils/cli";
 
 class PnpmCleaner implements CleanerModule {
-  name = 'pnpm';
-  type = 'package-manager' as const;
-  description = 'PNPM package manager store and caches';
+  name = "pnpm";
+  type = "package-manager" as const;
+  description = "PNPM package manager store and caches";
 
   private async getPnpmVersion(): Promise<string | null> {
     try {
-      const result = await execa('pnpm', ['--version']);
+      const result = await execa("pnpm", ["--version"]);
       return result.stdout.trim();
     } catch {
       return null;
@@ -22,10 +27,10 @@ class PnpmCleaner implements CleanerModule {
   private async getPnpmCachePaths(): Promise<string[]> {
     const paths: string[] = [];
     const homeDir = os.homedir();
-    
+
     try {
       // Get pnpm store directory
-      const storeResult = await execa('pnpm', ['store', 'path']);
+      const storeResult = await execa("pnpm", ["store", "path"]);
       const storeDir = storeResult.stdout.trim();
       if (await pathExists(storeDir)) {
         paths.push(storeDir);
@@ -33,9 +38,9 @@ class PnpmCleaner implements CleanerModule {
     } catch {
       // Fallback to default pnpm store locations
       const defaultStorePaths = [
-        path.join(homeDir, '.pnpm-store'),
-        path.join(homeDir, 'Library', 'pnpm'), // macOS
-        path.join(homeDir, '.local', 'share', 'pnpm'), // Linux
+        path.join(homeDir, ".pnpm-store"),
+        path.join(homeDir, "Library", "pnpm"), // macOS
+        path.join(homeDir, ".local", "share", "pnpm"), // Linux
       ];
 
       for (const storePath of defaultStorePaths) {
@@ -47,9 +52,9 @@ class PnpmCleaner implements CleanerModule {
 
     // Get additional cache directories
     const additionalPaths = [
-      path.join(homeDir, '.pnpm'),
-      path.join(homeDir, '.cache', 'pnpm'), // Linux/WSL
-      path.join(homeDir, 'AppData', 'Local', 'pnpm'), // Windows
+      path.join(homeDir, ".pnpm"),
+      path.join(homeDir, ".cache", "pnpm"), // Linux/WSL
+      path.join(homeDir, "AppData", "Local", "pnpm"), // Windows
     ];
 
     for (const cachePath of additionalPaths) {
@@ -71,7 +76,7 @@ class PnpmCleaner implements CleanerModule {
 
   async getCacheInfo(): Promise<CacheInfo> {
     const isInstalled = await this.isAvailable();
-    
+
     if (!isInstalled) {
       return {
         name: this.name,
@@ -92,7 +97,9 @@ class PnpmCleaner implements CleanerModule {
         const size = await getDirectorySize(cachePath);
         totalSize += size;
         validPaths.push(cachePath);
-        printVerbose(`${symbols.folder} ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`);
+        printVerbose(
+          `${symbols.folder} ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`,
+        );
       } catch (error) {
         printVerbose(`Error calculating size for ${cachePath}: ${error}`);
       }
@@ -108,14 +115,18 @@ class PnpmCleaner implements CleanerModule {
     };
   }
 
-  async clear(dryRun = false, _criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo): Promise<ClearResult> {
-    const info = cacheInfo || await this.getCacheInfo();
-    
+  async clear(
+    dryRun = false,
+    _criteria?: CacheSelectionCriteria,
+    cacheInfo?: CacheInfo,
+  ): Promise<ClearResult> {
+    const info = cacheInfo || (await this.getCacheInfo());
+
     if (!info.isInstalled) {
       return {
         name: this.name,
         success: false,
-        error: 'PNPM is not installed',
+        error: "PNPM is not installed",
         clearedPaths: [],
         sizeBefore: 0,
         sizeAfter: 0,
@@ -127,9 +138,9 @@ class PnpmCleaner implements CleanerModule {
     let errors: string[] = [];
 
     // Use pnpm store prune command first if available
-    if (!dryRun && await this.isAvailable()) {
+    if (!dryRun && (await this.isAvailable())) {
       try {
-        await execa('pnpm', ['store', 'prune']);
+        await execa("pnpm", ["store", "prune"]);
         printVerbose(`${symbols.soap} Executed: pnpm store prune`);
       } catch (error) {
         printVerbose(`Note: pnpm store prune failed: ${error}`);
@@ -144,23 +155,28 @@ class PnpmCleaner implements CleanerModule {
           clearedPaths.push(cachePath);
         } else {
           printVerbose(`${symbols.soap} Clearing: ${cachePath}`);
-          
+
           // For pnpm store, be more careful and only clear cache subdirectories
-          if (cachePath.includes('pnpm-store') || cachePath.includes('.pnpm-store')) {
+          if (
+            cachePath.includes("pnpm-store") ||
+            cachePath.includes(".pnpm-store")
+          ) {
             // Clear specific subdirectories in the store rather than the entire store
-            const storeSubdirs = ['tmp', 'metadata-cache', 'dlx'];
+            const storeSubdirs = ["tmp", "metadata-cache", "dlx"];
             for (const subdir of storeSubdirs) {
               const subdirPath = path.join(cachePath, subdir);
               if (await pathExists(subdirPath)) {
                 await safeRmrf(subdirPath);
-                printVerbose(`${symbols.soap} Cleared pnpm store subdirectory: ${subdir}`);
+                printVerbose(
+                  `${symbols.soap} Cleared pnpm store subdirectory: ${subdir}`,
+                );
               }
             }
           } else {
             // For other cache directories, clear everything
             await safeRmrf(cachePath);
           }
-          
+
           clearedPaths.push(cachePath);
         }
       } catch (error) {
@@ -175,7 +191,7 @@ class PnpmCleaner implements CleanerModule {
       success: errors.length === 0,
       sizeBefore,
       sizeAfter: 0, // Set to 0 as we don't want to rescan
-      error: errors.length > 0 ? errors.join('; ') : undefined,
+      error: errors.length > 0 ? errors.join("; ") : undefined,
       clearedPaths,
     };
   }

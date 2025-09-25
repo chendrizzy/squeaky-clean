@@ -24,8 +24,8 @@ program
 // Global options
 program
   .option('-v, --verbose', 'enable verbose output')
-  .option('-p', 'pristine mode', false)
   .option('-q, --quiet', 'suppress non-essential output')
+  .option('-p', 'pristine mode', false)
   .option('--config <path>', 'use custom config file')
   .option('--json', 'output results in JSON format')
   .option('--no-color', 'disable colored output')

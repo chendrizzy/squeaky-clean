@@ -1,11 +1,14 @@
-import { vi } from 'vitest';
-import { vol } from 'memfs';
-import * as os from 'os';
-import * as path from 'path';
-import execa from 'execa';
+import { vi } from "vitest";
+import { vol } from "memfs";
+import * as os from "os";
+import * as path from "path";
+import execa from "execa";
 
 // Mock file system helpers
-let mockedFilesystem: Map<string, { exists: boolean; size: number; isDirectory: boolean }> = new Map();
+let mockedFilesystem: Map<
+  string,
+  { exists: boolean; size: number; isDirectory: boolean }
+> = new Map();
 
 // Export the mockedFilesystem for test access
 export const getMockedFilesystem = () => mockedFilesystem;
@@ -20,8 +23,8 @@ export const resetMocks = () => {
 // Mock filesystem utilities
 export const mockFilesystemUtils = () => {
   // Mock pathExists from utils/fs
-  vi.mock('../utils/fs.js', async () => {
-    const actual = await vi.importActual('../utils/fs.js');
+  vi.mock("../utils/fs.js", async () => {
+    const actual = await vi.importActual("../utils/fs.js");
     return {
       ...actual,
       pathExists: vi.fn((path: string) => {
@@ -47,20 +50,23 @@ export const mockFilesystemUtils = () => {
           vol.rmSync(path, { recursive: true, force: true });
         }
         return Promise.resolve();
-      })
+      }),
     };
   });
 };
 
-export const mockPath = (filePath: string, options: { exists?: boolean; size?: number; isDirectory?: boolean } = {}) => {
+export const mockPath = (
+  filePath: string,
+  options: { exists?: boolean; size?: number; isDirectory?: boolean } = {},
+) => {
   const mockData = {
     exists: options.exists ?? true,
     size: options.size ?? 1024 * 1024, // 1MB default
-    isDirectory: options.isDirectory ?? false
+    isDirectory: options.isDirectory ?? false,
   };
-  
+
   mockedFilesystem.set(filePath, mockData);
-  
+
   // Also create in memfs if it should exist
   if (mockData.exists) {
     if (mockData.isDirectory) {
@@ -70,7 +76,7 @@ export const mockPath = (filePath: string, options: { exists?: boolean; size?: n
       if (dir && dir !== filePath) {
         vol.mkdirSync(dir, { recursive: true });
       }
-      vol.writeFileSync(filePath, 'mock file content');
+      vol.writeFileSync(filePath, "mock file content");
     }
   }
 };
@@ -78,32 +84,36 @@ export const mockPath = (filePath: string, options: { exists?: boolean; size?: n
 export const mockDirectoryWithSize = (dirPath: string, size: number) => {
   // Create the directory in memfs first
   vol.mkdirSync(dirPath, { recursive: true });
-  
+
   // Store size info in our mock filesystem map
   const mockData = {
     exists: true,
     size: size,
-    isDirectory: true
+    isDirectory: true,
   };
-  
+
   mockedFilesystem.set(dirPath, mockData);
-  
+
   // Also normalize the path for cross-platform compatibility
-  const normalizedPath = dirPath.replace(/\\/g, '/');
+  const normalizedPath = dirPath.replace(/\\/g, "/");
   if (normalizedPath !== dirPath) {
     mockedFilesystem.set(normalizedPath, mockData);
   }
 };
 
-export const mockFileWithSize = (filePath: string, content: string, size?: number) => {
+export const mockFileWithSize = (
+  filePath: string,
+  content: string,
+  size?: number,
+) => {
   // Create parent directories
-  const dir = filePath.split('/').slice(0, -1).join('/');
+  const dir = filePath.split("/").slice(0, -1).join("/");
   if (dir) {
     vol.mkdirSync(dir, { recursive: true });
   }
-  
+
   vol.writeFileSync(filePath, content);
-  
+
   if (size !== undefined) {
     // Mock stat to return specific size
     const originalStat = vol.statSync.bind(vol);
@@ -117,7 +127,9 @@ export const mockFileWithSize = (filePath: string, content: string, size?: numbe
   }
 };
 
-export const createMockDirectoryStructure = (structure: Record<string, string | null>) => {
+export const createMockDirectoryStructure = (
+  structure: Record<string, string | null>,
+) => {
   vol.fromJSON(structure);
 };
 
@@ -128,12 +140,13 @@ export const mockCommandSuccess = (command: string, output: string) => {
   mockedCommands.set(command, { output });
   const mockedExeca = vi.mocked(execa);
   mockedExeca.mockImplementation((cmd: string, args?: string[]) => {
-    const fullCommand = args ? `${cmd} ${args.join(' ')}` : cmd;
-    const mockData = mockedCommands.get(fullCommand) || mockedCommands.get(command);
+    const fullCommand = args ? `${cmd} ${args.join(" ")}` : cmd;
+    const mockData =
+      mockedCommands.get(fullCommand) || mockedCommands.get(command);
     if (mockData && !mockData.error) {
       return Promise.resolve({
         stdout: mockData.output,
-        stderr: '',
+        stderr: "",
         exitCode: 0,
         failed: false,
         killed: false,
@@ -160,15 +173,16 @@ export const mockCommandSuccess = (command: string, output: string) => {
 };
 
 export const mockCommandError = (command: string, error: string) => {
-  mockedCommands.set(command, { output: '', error });
+  mockedCommands.set(command, { output: "", error });
   const mockedExeca = vi.mocked(execa);
   mockedExeca.mockImplementation((cmd: string, args?: string[]) => {
-    const fullCommand = args ? `${cmd} ${args.join(' ')}` : cmd;
-    const mockData = mockedCommands.get(fullCommand) || mockedCommands.get(command);
+    const fullCommand = args ? `${cmd} ${args.join(" ")}` : cmd;
+    const mockData =
+      mockedCommands.get(fullCommand) || mockedCommands.get(command);
     if (mockData && !mockData.error) {
       return Promise.resolve({
         stdout: mockData.output,
-        stderr: '',
+        stderr: "",
         exitCode: 0,
         failed: false,
         killed: false,
@@ -203,23 +217,23 @@ export const mockHomeDirectory = (homedir: string) => {
   vi.mocked(os.homedir).mockReturnValue(homedir);
 };
 
-// Console mocking utilities  
+// Console mocking utilities
 export const mockConsole = () => {
   const originalConsole = { ...console };
-  
+
   const mocks = {
     log: vi.fn(),
-    warn: vi.fn(), 
+    warn: vi.fn(),
     error: vi.fn(),
     info: vi.fn(),
     debug: vi.fn(),
   };
-  
+
   Object.assign(console, mocks);
-  
+
   return {
     mocks,
-    restore: () => Object.assign(console, originalConsole)
+    restore: () => Object.assign(console, originalConsole),
   };
 };
 
@@ -227,7 +241,7 @@ export const mockConsole = () => {
 export const mockEnvVar = (name: string, value: string) => {
   const originalValue = process.env[name];
   process.env[name] = value;
-  
+
   return () => {
     if (originalValue === undefined) {
       delete process.env[name];
@@ -237,7 +251,11 @@ export const mockEnvVar = (name: string, value: string) => {
   };
 };
 
-export const withEnvVar = async (name: string, value: string, fn: () => Promise<void>) => {
+export const withEnvVar = async (
+  name: string,
+  value: string,
+  fn: () => Promise<void>,
+) => {
   const restore = mockEnvVar(name, value);
   try {
     await fn();
@@ -247,37 +265,41 @@ export const withEnvVar = async (name: string, value: string, fn: () => Promise<
 };
 
 // File system test utilities
-export const createTempProject = (projectType: 'npm' | 'flutter' | 'gradle' | 'generic' = 'generic', files: Record<string, string> = {}) => {
-  const basePath = '/tmp/test-project';
-  
+export const createTempProject = (
+  projectType: "npm" | "flutter" | "gradle" | "generic" = "generic",
+  files: Record<string, string> = {},
+) => {
+  const basePath = "/tmp/test-project";
+
   // Create base structure
   let structure: Record<string, string | null> = {
     [basePath]: null,
-    ...files
+    ...files,
   };
-  
+
   // Add project-specific files
   switch (projectType) {
-    case 'npm':
+    case "npm":
       structure[`${basePath}/package.json`] = JSON.stringify({
-        name: 'test-project',
-        version: '1.0.0',
-        dependencies: {}
+        name: "test-project",
+        version: "1.0.0",
+        dependencies: {},
       });
       structure[`${basePath}/node_modules`] = null;
       break;
-      
-    case 'flutter':
-      structure[`${basePath}/pubspec.yaml`] = 'name: test_app\ndependencies:\n  flutter:\n    sdk: flutter';
+
+    case "flutter":
+      structure[`${basePath}/pubspec.yaml`] =
+        "name: test_app\ndependencies:\n  flutter:\n    sdk: flutter";
       structure[`${basePath}/build`] = null;
       break;
-      
-    case 'gradle':
+
+    case "gradle":
       structure[`${basePath}/build.gradle`] = 'apply plugin: "java"';
       structure[`${basePath}/build`] = null;
       break;
   }
-  
+
   vol.fromJSON(structure);
   return basePath;
 };

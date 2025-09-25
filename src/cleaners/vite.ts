@@ -1,26 +1,31 @@
-import { CleanerModule, CacheInfo, ClearResult, CacheSelectionCriteria } from '../types';
-import { promises as fs } from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { pathExists, getDirectorySize, safeRmrf } from '../utils/fs';
-import { printVerbose, symbols } from '../utils/cli';
+import {
+  CleanerModule,
+  CacheInfo,
+  ClearResult,
+  CacheSelectionCriteria,
+} from "../types";
+import { promises as fs } from "fs";
+import * as path from "path";
+import * as os from "os";
+import { pathExists, getDirectorySize, safeRmrf } from "../utils/fs";
+import { printVerbose, symbols } from "../utils/cli";
 
 export class ViteCleaner implements CleanerModule {
-  name = 'vite';
-  type = 'build-tool' as const;
-  description = 'Vite build tool caches and temporary files';
+  name = "vite";
+  type = "build-tool" as const;
+  description = "Vite build tool caches and temporary files";
 
   private async findViteCaches(): Promise<string[]> {
     const caches: string[] = [];
     const homeDir = os.homedir();
-    
+
     // Common project directories to search
     const searchDirs = [
-      path.join(homeDir, 'Projects'),
-      path.join(homeDir, 'Development'),
-      path.join(homeDir, 'dev'),
-      path.join(homeDir, 'workspace'),
-      path.join(homeDir, 'Documents'),
+      path.join(homeDir, "Projects"),
+      path.join(homeDir, "Development"),
+      path.join(homeDir, "dev"),
+      path.join(homeDir, "workspace"),
+      path.join(homeDir, "Documents"),
       process.cwd(), // Current directory
     ];
 
@@ -28,7 +33,10 @@ export class ViteCleaner implements CleanerModule {
     for (const searchDir of searchDirs) {
       if (await pathExists(searchDir)) {
         try {
-          const projectCaches = await this.findViteCachesRecursively(searchDir, 3);
+          const projectCaches = await this.findViteCachesRecursively(
+            searchDir,
+            3,
+          );
           caches.push(...projectCaches);
         } catch (error) {
           printVerbose(`Error searching ${searchDir}: ${error}`);
@@ -39,30 +47,37 @@ export class ViteCleaner implements CleanerModule {
     return [...new Set(caches)]; // Remove duplicates
   }
 
-  private async findViteCachesRecursively(dir: string, maxDepth: number): Promise<string[]> {
+  private async findViteCachesRecursively(
+    dir: string,
+    maxDepth: number,
+  ): Promise<string[]> {
     if (maxDepth <= 0) return [];
 
     const viteCaches: string[] = [];
-    
+
     try {
       const entries = await fs.readdir(dir, { withFileTypes: true });
-      
+
       for (const entry of entries) {
-        if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+        if (
+          entry.isDirectory() &&
+          !entry.name.startsWith(".") &&
+          entry.name !== "node_modules"
+        ) {
           const fullPath = path.join(dir, entry.name);
-          
+
           // Check for vite cache directories
           const cacheLocations = [
-            path.join(fullPath, 'node_modules', '.vite'),
-            path.join(fullPath, '.vite'),
-            path.join(fullPath, 'dist'), // Vite output directory
+            path.join(fullPath, "node_modules", ".vite"),
+            path.join(fullPath, ".vite"),
+            path.join(fullPath, "dist"), // Vite output directory
           ];
 
           for (const cacheLocation of cacheLocations) {
             if (await pathExists(cacheLocation)) {
               // For dist folders, only include if it's actually a vite project
-              if (cacheLocation.endsWith('dist')) {
-                const packageJsonPath = path.join(fullPath, 'package.json');
+              if (cacheLocation.endsWith("dist")) {
+                const packageJsonPath = path.join(fullPath, "package.json");
                 if (await this.isViteProject(packageJsonPath)) {
                   viteCaches.push(cacheLocation);
                 }
@@ -71,9 +86,12 @@ export class ViteCleaner implements CleanerModule {
               }
             }
           }
-          
+
           // Recursively search subdirectories
-          const subCaches = await this.findViteCachesRecursively(fullPath, maxDepth - 1);
+          const subCaches = await this.findViteCachesRecursively(
+            fullPath,
+            maxDepth - 1,
+          );
           viteCaches.push(...subCaches);
         }
       }
@@ -86,19 +104,19 @@ export class ViteCleaner implements CleanerModule {
 
   private async hasViteProjects(): Promise<boolean> {
     const homeDir = os.homedir();
-    
+
     // Check current directory first
-    const currentDirPackageJson = path.join(process.cwd(), 'package.json');
+    const currentDirPackageJson = path.join(process.cwd(), "package.json");
     if (await this.isViteProject(currentDirPackageJson)) {
       return true;
     }
 
     // Search common project directories
     const searchDirs = [
-      path.join(homeDir, 'Projects'),
-      path.join(homeDir, 'Development'),
-      path.join(homeDir, 'dev'),
-      path.join(homeDir, 'workspace'),
+      path.join(homeDir, "Projects"),
+      path.join(homeDir, "Development"),
+      path.join(homeDir, "dev"),
+      path.join(homeDir, "workspace"),
     ];
 
     for (const searchDir of searchDirs) {
@@ -115,27 +133,30 @@ export class ViteCleaner implements CleanerModule {
     return false;
   }
 
-  private async searchForViteProjects(dir: string, maxDepth: number): Promise<boolean> {
+  private async searchForViteProjects(
+    dir: string,
+    maxDepth: number,
+  ): Promise<boolean> {
     if (maxDepth <= 0) return false;
 
     try {
       const entries = await fs.readdir(dir, { withFileTypes: true });
-      
+
       for (const entry of entries) {
-        if (entry.isDirectory() && !entry.name.startsWith('.')) {
+        if (entry.isDirectory() && !entry.name.startsWith(".")) {
           const fullPath = path.join(dir, entry.name);
-          const packageJsonPath = path.join(fullPath, 'package.json');
-          
+          const packageJsonPath = path.join(fullPath, "package.json");
+
           if (await this.isViteProject(packageJsonPath)) {
             return true;
           }
-          
+
           // Check for vite config files
           const viteConfigFiles = [
-            'vite.config.js',
-            'vite.config.ts',
-            'vite.config.mjs',
-            'vite.config.cjs',
+            "vite.config.js",
+            "vite.config.ts",
+            "vite.config.mjs",
+            "vite.config.cjs",
           ];
 
           for (const configFile of viteConfigFiles) {
@@ -143,7 +164,7 @@ export class ViteCleaner implements CleanerModule {
               return true;
             }
           }
-          
+
           // Recursively search
           if (await this.searchForViteProjects(fullPath, maxDepth - 1)) {
             return true;
@@ -160,13 +181,20 @@ export class ViteCleaner implements CleanerModule {
   private async isViteProject(packageJsonPath: string): Promise<boolean> {
     try {
       if (!(await pathExists(packageJsonPath))) return false;
-      
-      const content = await fs.readFile(packageJsonPath, 'utf-8');
+
+      const content = await fs.readFile(packageJsonPath, "utf-8");
       const packageJson = JSON.parse(content);
-      
+
       // Check for vite in dependencies or devDependencies
-      const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
-      return 'vite' in deps || '@vitejs/plugin-react' in deps || '@vitejs/plugin-vue' in deps;
+      const deps = {
+        ...packageJson.dependencies,
+        ...packageJson.devDependencies,
+      };
+      return (
+        "vite" in deps ||
+        "@vitejs/plugin-react" in deps ||
+        "@vitejs/plugin-vue" in deps
+      );
     } catch {
       return false;
     }
@@ -176,7 +204,7 @@ export class ViteCleaner implements CleanerModule {
     // Check if vite caches exist or if there are vite projects
     const caches = await this.findViteCaches();
     const hasProjects = await this.hasViteProjects();
-    
+
     return caches.length > 0 || hasProjects;
   }
 
@@ -190,7 +218,9 @@ export class ViteCleaner implements CleanerModule {
         const size = await getDirectorySize(cachePath);
         totalSize += size;
         validPaths.push(cachePath);
-        printVerbose(`${symbols.folder} ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`);
+        printVerbose(
+          `${symbols.folder} ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`,
+        );
       } catch (error) {
         printVerbose(`Error calculating size for ${cachePath}: ${error}`);
       }
@@ -206,14 +236,18 @@ export class ViteCleaner implements CleanerModule {
     };
   }
 
-  async clear(dryRun = false, _criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo): Promise<ClearResult> {
-    const info = cacheInfo || await this.getCacheInfo();
-    
+  async clear(
+    dryRun = false,
+    _criteria?: CacheSelectionCriteria,
+    cacheInfo?: CacheInfo,
+  ): Promise<ClearResult> {
+    const info = cacheInfo || (await this.getCacheInfo());
+
     if (!info.isInstalled) {
       return {
         name: this.name,
         success: false,
-        error: 'No Vite caches found',
+        error: "No Vite caches found",
         clearedPaths: [],
         sizeBefore: 0,
         sizeAfter: 0,
@@ -246,7 +280,7 @@ export class ViteCleaner implements CleanerModule {
       success: errors.length === 0,
       sizeBefore,
       sizeAfter: 0, // Set to 0 as we don't want to rescan
-      error: errors.length > 0 ? errors.join('; ') : undefined,
+      error: errors.length > 0 ? errors.join("; ") : undefined,
       clearedPaths,
     };
   }
