@@ -173,3 +173,8 @@ test-*.json
 /CLAUDE.md
 /.claude-flow/metrics/performance.json
 /.claude-flow/metrics/task-metrics.json
+
+# AI Assistant Configuration Directories
+.claude-flow/
+.serena/
+.claude/
