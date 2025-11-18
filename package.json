@@ -65,17 +65,17 @@
   ],
   "author": {
     "name": "Justin Chen",
-    "email": "justin@example.com"
+    "email": "justin.sc.chen@gmail.com"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/justinchen/squeaky-clean.git"
+    "url": "git+https://github.com/chendrizzy/squeaky-clean.git"
   },
   "bugs": {
-    "url": "https://github.com/justinchen/squeaky-clean/issues"
+    "url": "https://github.com/chendrizzy/squeaky-clean/issues"
   },
-  "homepage": "https://github.com/justinchen/squeaky-clean#readme",
+  "homepage": "https://github.com/chendrizzy/squeaky-clean#readme",
   "engines": {
     "node": ">=16.0.0"
   },
@@ -106,14 +106,14 @@
     "@types/node": "^20.10.6",
     "@typescript-eslint/eslint-plugin": "^6.18.0",
     "@typescript-eslint/parser": "^6.18.0",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "^4.0.10",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.1.2",
     "globals": "^16.3.0",
     "memfs": "^4.36.0",
     "prettier": "^3.1.1",
-    "rimraf": "^5.0.5",
+    "rimraf": "^6.1.0",
     "tsx": "^4.6.2",
     "typescript": "^5.3.3",
     "typescript-eslint": "^8.40.0",
