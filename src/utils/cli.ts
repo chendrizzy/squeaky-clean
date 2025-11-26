@@ -34,8 +34,8 @@ export function formatSizeWithColor(bytes: number): string {
   } else if (bytes < 50 * 1024 * 1024) {
     // < 50MB
     return colorize(formatted, "success");
-  } else if (bytes < 500 * 1024 * 1024) {
-    // < 500MB
+  } else if (bytes < 1024 * 1024 * 1024) {
+    // < 1GB
     return colorize(formatted, "warning");
   } else {
     return colorize(formatted, "error");

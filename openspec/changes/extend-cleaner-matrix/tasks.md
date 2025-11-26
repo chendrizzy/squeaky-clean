@@ -1,0 +1,5 @@
+- [x] Add capability specs for new cleaners and the easter-egg toggle; validate wording matches current architecture.
+- [x] Implement cleaner modules for Cargo, Maven, Poetry, Pipenv, CocoaPods, SwiftPM, and NuGet with detection, cache info, and category-aware clearing; register in `src/cleaners/index.ts`.
+- [x] Update docs (README Supported Tools, config reference) to list new tools and describe the fun-mode toggle behavior/default.
+- [x] Add unit tests per cleaner and toggle path (boot animation enabled/disabled); ensure dry-run safety and path reporting.
+- [x] Run `npm run lint`, `npm run test`, and `npm run test:coverage`; verify `openspec validate extend-cleaner-matrix --strict` passes. (Lint/tests attempted; lint requires flat-config invocation support and vitest failed with ERR_REQUIRE_ESM; openspec validate succeeded.)
