@@ -43,7 +43,7 @@ global.console = {
 
 // Global test utilities
 declare global {
-  var testUtils: {
+  const testUtils: {
     mockFs: typeof vol;
     resetMocks: () => void;
     createMockDirectory: (path: string, files?: Record<string, string>) => void;
