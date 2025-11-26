@@ -248,6 +248,18 @@ class ConfigManager {
     const config = this.get();
     return config.protectedPaths ?? [];
   }
+
+  /**
+   * Check if fun mode is enabled via environment variable.
+   * SQUEAKY_FUN_MODE=1 enables, SQUEAKY_FUN_MODE=0 disables.
+   */
+  isFunModeEnabled(): boolean {
+    const envValue = process.env.SQUEAKY_FUN_MODE;
+    if (envValue === "0") return false;
+    if (envValue === "1") return true;
+    // Default to true if not explicitly set
+    return true;
+  }
 }
 
 export const config = new ConfigManager();
