@@ -97,7 +97,8 @@
     "inquirer": "^8.2.5",
     "minimatch": "^10.0.3",
     "ora": "^5.4.1",
-    "play-sound": "^1.1.6"
+    "play-sound": "^1.1.6",
+    "rimraf": "^6.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
@@ -113,7 +114,6 @@
     "globals": "^16.3.0",
     "memfs": "^4.36.0",
     "prettier": "^3.1.1",
-    "rimraf": "^6.1.0",
     "tsx": "^4.6.2",
     "typescript": "^5.3.3",
     "typescript-eslint": "^8.40.0",
