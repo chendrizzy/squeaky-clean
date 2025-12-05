@@ -148,14 +148,27 @@ jobs:
             RELEASE_ARGS+=( --prerelease )
           fi
           
-          # Create the release
-          gh release create "${RELEASE_ARGS[@]}"
-          
-          # Upload assets
+          # Create or update the release (idempotent)
+          if gh release view "$TAG_NAME" &>/dev/null; then
+            echo "Release $TAG_NAME already exists, updating..."
+            gh release edit "$TAG_NAME" --title "Release $TAG_NAME" --notes "${{ steps.changelog.outputs.changelog }}"
+          else
+            echo "Creating release $TAG_NAME..."
+            gh release create "${RELEASE_ARGS[@]}"
+          fi
+
+          # Upload assets (--clobber handles existing files)
           gh release upload "$TAG_NAME" dist/*.tgz dist/*.js README.md LICENSE --clobber || true
       
       - name: Publish to npm with provenance (if not prerelease)
         if: ${{ !contains(steps.manual_version.outputs.version || steps.tag_version.outputs.version, '-') }}
-        run: npm publish --provenance --access public
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view squeaky-clean@$VERSION version &>/dev/null; then
+            echo "Version $VERSION already published to npm, skipping..."
+          else
+            echo "Publishing version $VERSION to npm..."
+            npm publish --provenance --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
