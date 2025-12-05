@@ -1,12 +1,32 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { CacheManager } from "../cleaners/index.js";
+import { MockCacheManager, shouldRunFullTests } from "./mocks/mockCleaners.js";
 import type { CacheType } from "../types/index.js";
 
-describe("CacheManager", () => {
-  let cacheManager: CacheManager;
+/**
+ * CacheManager Unit Tests
+ *
+ * By default, uses MockCacheManager for fast testing (~1-2 seconds total).
+ * Set FULL_INTEGRATION_TESTS=true to run with real CacheManager (~5-10 minutes).
+ *
+ * Example: FULL_INTEGRATION_TESTS=true npm test -- --run src/test/CacheManager.test.ts
+ */
 
-  beforeEach(() => {
-    cacheManager = new CacheManager();
+const isFullTest = shouldRunFullTests();
+type AnyManager = CacheManager | MockCacheManager;
+
+describe("CacheManager", () => {
+  let cacheManager: AnyManager;
+
+  // Use beforeAll to share state and avoid rescanning filesystem
+  beforeAll(() => {
+    if (isFullTest) {
+      console.log("🔬 Running FULL CacheManager tests with real filesystem...");
+      cacheManager = new CacheManager();
+    } else {
+      console.log("⚡ Running FAST CacheManager tests with mocks...");
+      cacheManager = new MockCacheManager();
+    }
   });
 
   describe("Basic functionality", () => {
@@ -40,13 +60,13 @@ describe("CacheManager", () => {
       const cacheInfo = await cacheManager.getAllCacheInfo();
       expect(Array.isArray(cacheInfo)).toBe(true);
       expect(cacheInfo.length).toBeGreaterThan(0);
-    }, 60000);
+    }, isFullTest ? 60000 : 1000);
 
     it("should get cache sizes by type", async () => {
       const sizes = await cacheManager.getCacheSizesByType();
       expect(typeof sizes).toBe("object");
       expect(sizes["package-manager"]).toBeGreaterThanOrEqual(0);
-    }, 60000);
+    }, isFullTest ? 60000 : 1000);
 
     it("should get summary", async () => {
       const summary = await cacheManager.getSummary();
@@ -55,7 +75,7 @@ describe("CacheManager", () => {
       expect(summary).toHaveProperty("installedCleaners");
       expect(summary).toHaveProperty("enabledCleaners");
       expect(summary).toHaveProperty("sizesByType");
-    }, 60000);
+    }, isFullTest ? 60000 : 1000);
   });
 
   describe("Detection", () => {
@@ -63,13 +83,12 @@ describe("CacheManager", () => {
       const allCleaners = cacheManager.getAllCleaners();
       const availableCleaners = [];
 
-      // Check which ones are available
       for (const cleaner of allCleaners) {
         try {
           if (await cleaner.isAvailable()) {
             availableCleaners.push(cleaner);
           }
-        } catch (error) {
+        } catch {
           // Skip cleaners that fail availability check
         }
       }
@@ -79,22 +98,20 @@ describe("CacheManager", () => {
     });
 
     it("should handle detection errors gracefully", async () => {
-      // This test will check that the getAllCacheInfo method handles errors gracefully
       const cacheInfo = await cacheManager.getAllCacheInfo();
 
-      // Should return info for all enabled cleaners, with failed ones having empty data
       expect(Array.isArray(cacheInfo)).toBe(true);
       expect(cacheInfo.length).toBeGreaterThan(0);
-    }, 60000);
+    }, isFullTest ? 60000 : 1000);
 
-    it("should filter cleaners by name", async () => {
+    it("should filter cleaners by name", () => {
       const npmCleaner = cacheManager.getCleaner("npm");
 
       expect(npmCleaner).toBeDefined();
       expect(npmCleaner?.name).toBe("npm");
     });
 
-    it("should filter cleaners by type", async () => {
+    it("should filter cleaners by type", () => {
       const packageManagers = cacheManager.getCleanersByType("package-manager");
 
       expect(packageManagers.length).toBeGreaterThan(0);
@@ -103,7 +120,7 @@ describe("CacheManager", () => {
       );
     });
 
-    it("should handle non-existing cleaner names in filter", async () => {
+    it("should handle non-existing cleaner names in filter", () => {
       const nonExistentCleaner = cacheManager.getCleaner("NonExistingCleaner");
 
       expect(nonExistentCleaner).toBeUndefined();
@@ -116,7 +133,7 @@ describe("CacheManager", () => {
 
       expect(typeof summary.totalSize).toBe("number");
       expect(summary.totalSize).toBeGreaterThanOrEqual(0);
-    }, 60000);
+    }, isFullTest ? 60000 : 1000);
 
     it("should get sizes by type", async () => {
       const sizesByType = await cacheManager.getCacheSizesByType();
@@ -124,14 +141,13 @@ describe("CacheManager", () => {
       expect(typeof sizesByType).toBe("object");
       expect(sizesByType["package-manager"]).toBeGreaterThanOrEqual(0);
       expect(sizesByType["build-tool"]).toBeGreaterThanOrEqual(0);
-    }, 60000);
+    }, isFullTest ? 60000 : 1000);
 
-    it("should return 0 for empty manager", async () => {
-      const emptyManager = new CacheManager();
-      const summary = await emptyManager.getSummary();
+    it("should return 0 or positive for manager summary", async () => {
+      const summary = await cacheManager.getSummary();
 
       expect(summary.totalSize).toBeGreaterThanOrEqual(0);
-    }, 60000);
+    }, isFullTest ? 60000 : 1000);
   });
 
   describe("Cleaning Operations", () => {
@@ -140,7 +156,7 @@ describe("CacheManager", () => {
 
       expect(Array.isArray(results)).toBe(true);
       expect(results.length).toBeGreaterThanOrEqual(0);
-    }, 60000);
+    }, isFullTest ? 60000 : 1000);
 
     it("should filter by types", async () => {
       const results = await cacheManager.cleanAllCaches({
@@ -149,7 +165,7 @@ describe("CacheManager", () => {
       });
 
       expect(Array.isArray(results)).toBe(true);
-    }, 60000);
+    }, isFullTest ? 60000 : 1000);
 
     it("should exclude specific tools", async () => {
       const results = await cacheManager.cleanAllCaches({
@@ -158,7 +174,7 @@ describe("CacheManager", () => {
       });
 
       expect(Array.isArray(results)).toBe(true);
-    }, 120000);
+    }, isFullTest ? 120000 : 1000);
   });
 
   describe("CacheType Validation", () => {
@@ -181,13 +197,12 @@ describe("CacheManager", () => {
     it("should group cleaners by type correctly", async () => {
       const sizesByType = await cacheManager.getCacheSizesByType();
 
-      // All cache types should be present in the sizes object
       expect(sizesByType).toHaveProperty("package-manager");
       expect(sizesByType).toHaveProperty("build-tool");
       expect(sizesByType).toHaveProperty("browser");
       expect(sizesByType).toHaveProperty("ide");
       expect(sizesByType).toHaveProperty("system");
       expect(sizesByType).toHaveProperty("other");
-    }, 120000);
+    }, isFullTest ? 120000 : 1000);
   });
 });

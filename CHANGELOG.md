@@ -8,20 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- **Test Infrastructure** - Fixed timeout issues in long-running integration tests
-  - Configured Vitest for long-running integration tests with extended timeouts (120s test, 60s hooks, 30s teardown)
-  - Used forks pool with singleFork mode to prevent IPC timeout errors during lengthy test runs
-  - Increased specific test timeouts to match actual execution times:
-    - CacheManager tests: 60-120s timeouts for real filesystem operations
-    - Integration tests: 120-360s timeouts for comprehensive test suites
-  - All 38 tests now pass consistently (21 CacheManager + 17 integration)
+- **Test Performance** - Dramatically improved test performance from ~15 minutes to ~1.3 seconds
+  - Created `MockCacheManager` for fast unit testing without real filesystem scans
+  - Mock cleaners provide pre-computed cache data (npm, yarn, docker, webpack, vscode, chrome, pip)
+  - Tests use mocks by default; set `FULL_INTEGRATION_TESTS=true` for real filesystem tests
+  - Changed `beforeEach` to `beforeAll` to share CacheManager state between tests
+  - Dynamic timeouts: 1s for mocked tests, 60-360s for full filesystem tests
 - **Universal Binary** - Added macOS Universal Binary thinner to reclaim space from multi-architecture binaries
 - **IDE Cleaners** - Added support for additional IDE caches (cursor, thonny)
 
 ### Technical
-- Vitest configuration optimized for 30+ cleaner filesystem scans taking 10-15 minutes total
-- Test suite handles both CacheManager unit tests and full integration tests reliably
-- Memory leak tests reduced iterations (3→2) to stay within timeout while maintaining validation
+- Added `src/test/mocks/mockCleaners.ts` with MockCacheManager class
+- Test suite now runs 189 tests in ~1.3s (previously 38 tests in ~15min)
+- Full filesystem tests still available via `FULL_INTEGRATION_TESTS=true npm test`
 
 ## [0.0.2] - 2025-08-18
 
