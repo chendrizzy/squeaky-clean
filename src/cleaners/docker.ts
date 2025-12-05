@@ -7,6 +7,7 @@ import {
 } from "../types";
 import { printVerbose } from "../utils/cli";
 import { minimatch } from "minimatch";
+import { checkToolAvailability } from "../utils/cache";
 
 export class DockerCleaner implements CleanerModule {
   name = "docker";
@@ -14,28 +15,30 @@ export class DockerCleaner implements CleanerModule {
   description = "Docker images, containers, volumes, networks, and build cache";
 
   async isAvailable(): Promise<boolean> {
-    try {
-      printVerbose("Checking if Docker is installed and running...");
-      const result = await execa(
-        "docker",
-        ["version", "--format", "{{.Server.Version}}"],
-        { timeout: 10000 },
-      );
-      if (result.exitCode === 0 && result.stdout) {
-        printVerbose(`Found Docker server version: ${result.stdout.trim()}`);
-        return true;
-      }
-      return false;
-    } catch (error) {
-      // Docker might be installed but not running
+    return checkToolAvailability("docker", async () => {
       try {
-        await execa("docker", ["--version"], { timeout: 5000 });
-        printVerbose("Docker is installed but server might not be running");
-        return true;
-      } catch {
+        printVerbose("Checking if Docker is installed and running...");
+        const result = await execa(
+          "docker",
+          ["version", "--format", "{{.Server.Version}}"],
+          { timeout: 10000 },
+        );
+        if (result.exitCode === 0 && result.stdout) {
+          printVerbose(`Found Docker server version: ${result.stdout.trim()}`);
+          return true;
+        }
         return false;
+      } catch (error) {
+        // Docker might be installed but not running
+        try {
+          await execa("docker", ["--version"], { timeout: 5000 });
+          printVerbose("Docker is installed but server might not be running");
+          return true;
+        } catch {
+          return false;
+        }
       }
-    }
+    });
   }
 
   async getDockerSystemInfo(): Promise<{

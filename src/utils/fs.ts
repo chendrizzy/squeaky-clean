@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { rimraf } from "rimraf";
+import { cacheManager } from "./cache";
 
 export async function pathExists(filePath: string): Promise<boolean> {
   try {
@@ -239,4 +240,48 @@ export async function clearPaths(paths: string[]): Promise<void> {
   for (const p of paths) {
     await safeRmrf(p);
   }
+}
+
+/**
+ * Get directory size with caching (2-minute TTL)
+ * Use this for repeated size calculations on the same paths
+ */
+export async function getCachedDirectorySize(
+  dirPath: string,
+  skipLargeDirectories: boolean = false,
+): Promise<number> {
+  return cacheManager.getCachedSize(
+    dirPath,
+    () => getDirectorySize(dirPath, skipLargeDirectories),
+    120000, // 2-minute TTL
+  );
+}
+
+/**
+ * Get estimated directory size with caching (2-minute TTL)
+ */
+export async function getCachedEstimatedDirectorySize(
+  dirPath: string,
+): Promise<number> {
+  return cacheManager.getCachedSize(
+    `estimated:${dirPath}`,
+    () => getEstimatedDirectorySize(dirPath),
+    120000,
+  );
+}
+
+/**
+ * Invalidate size cache for a path (call after clearing)
+ */
+export function invalidateSizeCache(dirPath: string): void {
+  cacheManager.invalidateSize(dirPath);
+  cacheManager.invalidateSize(`estimated:${dirPath}`);
+}
+
+/**
+ * Invalidate all size caches matching a prefix
+ */
+export function invalidateSizeCachePrefix(prefix: string): void {
+  cacheManager.invalidateSizePrefix(prefix);
+  cacheManager.invalidateSizePrefix(`estimated:${prefix}`);
 }

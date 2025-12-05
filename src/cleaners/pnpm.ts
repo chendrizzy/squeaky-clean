@@ -6,9 +6,10 @@ import {
 } from "../types";
 import * as path from "path";
 import * as os from "os";
-import { pathExists, getDirectorySize, safeRmrf } from "../utils/fs";
+import { pathExists, getCachedDirectorySize, safeRmrf, invalidateSizeCachePrefix } from "../utils/fs";
 import execa from "execa";
 import { printVerbose, symbols } from "../utils/cli";
+import { checkToolAvailability } from "../utils/cache";
 
 class PnpmCleaner implements CleanerModule {
   name = "pnpm";
@@ -70,8 +71,10 @@ class PnpmCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    const version = await this.getPnpmVersion();
-    return version !== null;
+    return checkToolAvailability("pnpm", async () => {
+      const version = await this.getPnpmVersion();
+      return version !== null;
+    });
   }
 
   async getCacheInfo(): Promise<CacheInfo> {
@@ -94,7 +97,7 @@ class PnpmCleaner implements CleanerModule {
 
     for (const cachePath of cachePaths) {
       try {
-        const size = await getDirectorySize(cachePath);
+        const size = await getCachedDirectorySize(cachePath);
         totalSize += size;
         validPaths.push(cachePath);
         printVerbose(
@@ -178,6 +181,8 @@ class PnpmCleaner implements CleanerModule {
           }
 
           clearedPaths.push(cachePath);
+          // Invalidate size cache after clearing
+          invalidateSizeCachePrefix(cachePath);
         }
       } catch (error) {
         const errorMsg = `Failed to clear ${cachePath}: ${error}`;

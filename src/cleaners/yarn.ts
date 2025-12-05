@@ -7,9 +7,10 @@ import {
 import { promises as fs } from "fs";
 import * as path from "path";
 import * as os from "os";
-import { pathExists, getDirectorySize, safeRmrf } from "../utils/fs";
+import { pathExists, getCachedDirectorySize, safeRmrf, invalidateSizeCachePrefix } from "../utils/fs";
 import execa from "execa";
 import { printVerbose, symbols } from "../utils/cli";
+import { checkToolAvailability } from "../utils/cache";
 
 class YarnCleaner implements CleanerModule {
   name = "yarn";
@@ -177,8 +178,10 @@ class YarnCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    const version = await this.getYarnVersion();
-    return version !== null;
+    return checkToolAvailability("yarn", async () => {
+      const version = await this.getYarnVersion();
+      return version !== null;
+    });
   }
 
   async getCacheInfo(): Promise<CacheInfo> {
@@ -201,7 +204,7 @@ class YarnCleaner implements CleanerModule {
 
     for (const cachePath of cachePaths) {
       try {
-        const size = await getDirectorySize(cachePath);
+        const size = await getCachedDirectorySize(cachePath);
         totalSize += size;
         validPaths.push(cachePath);
         printVerbose(
@@ -253,6 +256,8 @@ class YarnCleaner implements CleanerModule {
           printVerbose(`${symbols.soap} Clearing: ${cachePath}`);
           await safeRmrf(cachePath);
           clearedPaths.push(cachePath);
+          // Invalidate size cache after clearing
+          invalidateSizeCachePrefix(cachePath);
         }
       } catch (error) {
         const errorMsg = `Failed to clear ${cachePath}: ${error}`;

@@ -3,6 +3,7 @@ import { vol } from "memfs";
 import * as os from "os";
 import * as path from "path";
 import execa from "execa";
+import { cacheManager } from "../utils/cache";
 
 // Mock file system helpers
 let mockedFilesystem: Map<
@@ -18,6 +19,8 @@ export const resetMocks = () => {
   vi.clearAllMocks();
   mockedCommands.clear();
   mockedFilesystem.clear();
+  // Clear cached availability and size data to ensure test isolation
+  cacheManager.clearAll();
 };
 
 // Mock filesystem utilities

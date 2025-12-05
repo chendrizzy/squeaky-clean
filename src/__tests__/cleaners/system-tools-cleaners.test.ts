@@ -5,6 +5,7 @@ import flutterCleaner from '../../cleaners/flutter';
 import pipCleaner from '../../cleaners/pip';
 import execa from 'execa';
 import { pathExists, getDirectorySize, safeRmrf } from '../../utils/fs.js';
+import { cacheManager } from '../../utils/cache';
 import * as os from 'os';
 
 // Mock execa
@@ -42,7 +43,9 @@ describe('System Tools Cache Cleaners - Basic Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedCommands.clear();
-    
+    // Clear cached availability results to ensure test isolation
+    cacheManager.clearAll();
+
     // Set up default filesystem mocks
     vi.mocked(pathExists).mockResolvedValue(false);
     vi.mocked(getDirectorySize).mockResolvedValue(0);

@@ -9,13 +9,15 @@ import {
   CacheSelectionCriteria,
 } from "../types";
 import {
-  getDirectorySize,
-  getEstimatedDirectorySize,
+  getCachedDirectorySize,
+  getCachedEstimatedDirectorySize,
   pathExists,
   safeRmrf,
+  invalidateSizeCachePrefix,
 } from "../utils/fs";
 import { printVerbose } from "../utils/cli";
 import { minimatch } from "minimatch";
+import { checkToolAvailability } from "../utils/cache";
 
 export class NpmCleaner implements CleanerModule {
   name = "npm";
@@ -63,13 +65,15 @@ export class NpmCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    try {
-      printVerbose("Checking if npm is installed...");
-      await execa("npm", ["--version"]);
-      return true;
-    } catch {
-      return false;
-    }
+    return checkToolAvailability("npm", async () => {
+      try {
+        printVerbose("Checking if npm is installed...");
+        await execa("npm", ["--version"]);
+        return true;
+      } catch {
+        return false;
+      }
+    });
   }
 
   async getCacheInfo(): Promise<CacheInfo> {
@@ -85,12 +89,12 @@ export class NpmCleaner implements CleanerModule {
         existingPaths.push(cachePath);
 
         try {
-          // Use estimated size for large cache directories like .npm to prevent memory issues
+          // Use cached size calculations for performance (2-minute TTL)
           const isMainNpmCache =
             cachePath.includes(".npm") && !cachePath.includes("node_modules");
           const size = isMainNpmCache
-            ? await getEstimatedDirectorySize(cachePath)
-            : await getDirectorySize(cachePath, true);
+            ? await getCachedEstimatedDirectorySize(cachePath)
+            : await getCachedDirectorySize(cachePath, true);
           totalSize += size;
 
           const stats = await fs.stat(cachePath);
@@ -192,6 +196,8 @@ export class NpmCleaner implements CleanerModule {
           if (await pathExists(cachePath)) {
             printVerbose(`Clearing directory: ${cachePath}`);
             await safeRmrf(cachePath);
+            // Invalidate size cache after clearing
+            invalidateSizeCachePrefix(cachePath);
             clearedPaths.push(cachePath);
           }
         } catch (pathError) {
