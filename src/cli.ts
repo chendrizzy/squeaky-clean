@@ -1,16 +1,21 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { config } from "./config";
 import { printHeader, printError, showBootPristine } from "./utils/cli";
 
 const program = new Command();
 
-// (would normally be imported from package.json)
+// Read version from package.json to stay in sync
+const packageJson = JSON.parse(
+  readFileSync(join(__dirname, "..", "package.json"), "utf-8")
+);
 const packageInfo = {
-  name: "squeaky-clean",
-  version: "0.1.14",
-  description: "Make your dev environment squeaky clean! ✨",
+  name: packageJson.name,
+  version: packageJson.version,
+  description: packageJson.description,
 };
 
 program
