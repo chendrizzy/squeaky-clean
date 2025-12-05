@@ -392,7 +392,9 @@ export class VSCodeCleaner implements CleanerModule {
         );
         for (const cachePath of info.paths) {
           const pathInfo = pathsWithInfo.find((p) => p.path === cachePath);
-          printVerbose(`  • ${pathInfo?.category || "App Cache"}: ${cachePath}`);
+          printVerbose(
+            `  • ${pathInfo?.category || "App Cache"}: ${cachePath}`,
+          );
           if (pathInfo?.description) {
             printVerbose(`    ${pathInfo.description}`);
           }

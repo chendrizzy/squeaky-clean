@@ -9,11 +9,7 @@ import {
   ClearResult,
   CleanerModule,
 } from "../types";
-import {
-  getDirectorySize,
-  pathExists,
-  safeRmrf,
-} from "../utils/fs";
+import { getDirectorySize, pathExists, safeRmrf } from "../utils/fs";
 import { printVerbose } from "../utils/cli";
 import { minimatch } from "minimatch";
 
@@ -206,12 +202,7 @@ class CargoCleaner implements CleanerModule {
     }
     const categories = info.categories || [];
     const defaultCategories = categories.filter((c) => c.id !== "target");
-    return this.clearSelected(
-      defaultCategories,
-      dryRun,
-      protectedPaths,
-      info,
-    );
+    return this.clearSelected(defaultCategories, dryRun, protectedPaths, info);
   }
 
   async clearByCategory(

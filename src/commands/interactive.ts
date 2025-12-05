@@ -58,12 +58,8 @@ export const interactiveCommand = new Command("interactive")
       // Check if we're in a TTY environment
       if (!process.stdin.isTTY) {
         printError("Interactive mode requires a TTY environment.");
-        console.log(
-          pc.yellow("💡 Tip: Use non-interactive commands instead:"),
-        );
-        console.log(
-          pc.gray("   • squeaky clean --all    # Clean all caches"),
-        );
+        console.log(pc.yellow("💡 Tip: Use non-interactive commands instead:"));
+        console.log(pc.gray("   • squeaky clean --all    # Clean all caches"));
         console.log(
           pc.gray(
             "   • squeaky clean --dry-run # Preview what would be cleaned",
@@ -90,9 +86,7 @@ export const interactiveCommand = new Command("interactive")
       );
 
       if (availableCaches.length === 0) {
-        console.log(
-          pc.yellow("\n⚠️  No caches found with reclaimable space."),
-        );
+        console.log(pc.yellow("\n⚠️  No caches found with reclaimable space."));
         console.log(pc.gray("   This could mean:"));
         console.log(pc.gray("   • Your caches are already clean"));
         console.log(

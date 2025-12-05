@@ -42,7 +42,12 @@ export class ZedCleaner implements CleanerModule {
 
     if (platform === "darwin") {
       // macOS Zed paths
-      const zedAppSupport = path.join(homeDir, "Library", "Application Support", "Zed");
+      const zedAppSupport = path.join(
+        homeDir,
+        "Library",
+        "Application Support",
+        "Zed",
+      );
       const zedCache = path.join(homeDir, "Library", "Caches", "dev.zed.Zed");
       const zedLogs = path.join(homeDir, "Library", "Logs", "Zed");
 
@@ -137,8 +142,10 @@ export class ZedCleaner implements CleanerModule {
       );
     } else if (platform === "win32") {
       // Windows Zed paths (hypothetical - Zed is primarily macOS/Linux)
-      const appData = process.env.APPDATA || path.join(homeDir, "AppData", "Roaming");
-      const localAppData = process.env.LOCALAPPDATA || path.join(homeDir, "AppData", "Local");
+      const appData =
+        process.env.APPDATA || path.join(homeDir, "AppData", "Roaming");
+      const localAppData =
+        process.env.LOCALAPPDATA || path.join(homeDir, "AppData", "Local");
 
       paths.push(
         {
@@ -172,8 +179,10 @@ export class ZedCleaner implements CleanerModule {
       );
     } else {
       // Linux Zed paths
-      const cacheDir = process.env.XDG_CACHE_HOME || path.join(homeDir, ".cache");
-      const dataDir = process.env.XDG_DATA_HOME || path.join(homeDir, ".local", "share");
+      const cacheDir =
+        process.env.XDG_CACHE_HOME || path.join(homeDir, ".cache");
+      const dataDir =
+        process.env.XDG_DATA_HOME || path.join(homeDir, ".local", "share");
 
       paths.push(
         {
@@ -244,7 +253,12 @@ export class ZedCleaner implements CleanerModule {
 
     // Check for Zed config/data directories
     if (platform === "darwin") {
-      const zedAppSupport = path.join(homeDir, "Library", "Application Support", "Zed");
+      const zedAppSupport = path.join(
+        homeDir,
+        "Library",
+        "Application Support",
+        "Zed",
+      );
       if (await pathExists(zedAppSupport)) {
         return true;
       }
@@ -253,7 +267,8 @@ export class ZedCleaner implements CleanerModule {
         return true;
       }
     } else if (platform === "linux") {
-      const dataDir = process.env.XDG_DATA_HOME || path.join(homeDir, ".local", "share");
+      const dataDir =
+        process.env.XDG_DATA_HOME || path.join(homeDir, ".local", "share");
       const zedDataDir = path.join(dataDir, "zed");
       if (await pathExists(zedDataDir)) {
         return true;
@@ -283,7 +298,9 @@ export class ZedCleaner implements CleanerModule {
         existingPaths.push(cachePath);
         const size = await getEstimatedDirectorySize(cachePath);
         totalSize += size;
-        printVerbose(`  🔍 📁 ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`);
+        printVerbose(
+          `  🔍 📁 ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`,
+        );
       }
     }
 
@@ -301,7 +318,13 @@ export class ZedCleaner implements CleanerModule {
     const cachePaths = this.getCachePaths();
     const categoryMap = new Map<string, CacheCategory>();
 
-    for (const { path: cachePath, description, category, priority, safeToDelete } of cachePaths) {
+    for (const {
+      path: cachePath,
+      description,
+      category,
+      priority,
+      safeToDelete,
+    } of cachePaths) {
       if (!safeToDelete) continue;
       if (!(await pathExists(cachePath))) continue;
 
@@ -360,7 +383,9 @@ export class ZedCleaner implements CleanerModule {
       sizeBefore += pathSize;
 
       if (dryRun) {
-        printVerbose(`  [DRY RUN] Would clear: ${description} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`);
+        printVerbose(
+          `  [DRY RUN] Would clear: ${description} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`,
+        );
         clearedPaths.push(cachePath);
       } else {
         try {
@@ -398,7 +423,9 @@ export class ZedCleaner implements CleanerModule {
     protectedPaths?: string[],
   ): Promise<ClearResult> {
     const categories = await this.getCacheCategories();
-    const targetCategories = categories.filter((c) => categoryIds.includes(c.id));
+    const targetCategories = categories.filter((c) =>
+      categoryIds.includes(c.id),
+    );
     const clearedPaths: string[] = [];
     let sizeBefore = 0;
     let sizeAfter = 0;
@@ -416,7 +443,9 @@ export class ZedCleaner implements CleanerModule {
         sizeBefore += pathSize;
 
         if (dryRun) {
-          printVerbose(`  [DRY RUN] Would clear: ${category.name} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`);
+          printVerbose(
+            `  [DRY RUN] Would clear: ${category.name} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`,
+          );
           clearedPaths.push(cachePath);
         } else {
           try {

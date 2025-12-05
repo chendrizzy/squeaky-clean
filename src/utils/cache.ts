@@ -29,7 +29,7 @@ export class CacheManager {
   async getCachedAvailability(
     tool: string,
     checkFn: () => Promise<boolean>,
-    ttl: number = 300000
+    ttl: number = 300000,
   ): Promise<boolean> {
     const cached = this.availabilityCache.get(tool);
 
@@ -48,7 +48,7 @@ export class CacheManager {
   async getCachedSize(
     path: string,
     sizeFn: () => Promise<number>,
-    ttl: number = 120000
+    ttl: number = 120000,
   ): Promise<number> {
     const cached = this.sizeCache.get(path);
 
@@ -78,7 +78,7 @@ export class CacheManager {
         keysToDelete.push(key);
       }
     }
-    keysToDelete.forEach(key => this.sizeCache.delete(key));
+    keysToDelete.forEach((key) => this.sizeCache.delete(key));
   }
 
   /**

@@ -54,7 +54,9 @@ export async function categoriesCommand(
       }
 
       console.log(
-        pc.bold(pc.blue(`\n📦 ${cleaner.name.toUpperCase()} Cache Categories:`)),
+        pc.bold(
+          pc.blue(`\n📦 ${cleaner.name.toUpperCase()} Cache Categories:`),
+        ),
       );
       console.log(pc.gray("─".repeat(50)));
 

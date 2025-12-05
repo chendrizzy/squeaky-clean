@@ -6,7 +6,12 @@ import {
 } from "../types";
 import * as path from "path";
 import * as os from "os";
-import { pathExists, getCachedDirectorySize, safeRmrf, invalidateSizeCachePrefix } from "../utils/fs";
+import {
+  pathExists,
+  getCachedDirectorySize,
+  safeRmrf,
+  invalidateSizeCachePrefix,
+} from "../utils/fs";
 import execa from "execa";
 import { printVerbose, symbols } from "../utils/cli";
 import { checkToolAvailability } from "../utils/cache";

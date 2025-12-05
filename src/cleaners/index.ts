@@ -162,7 +162,9 @@ export class CacheManager {
 
           return info;
         } catch (error) {
-          printVerbose(`Error getting cache info for ${cleaner.name}: ${error}`);
+          printVerbose(
+            `Error getting cache info for ${cleaner.name}: ${error}`,
+          );
           return {
             name: cleaner.name,
             type: cleaner.type,
@@ -172,7 +174,7 @@ export class CacheManager {
             size: 0,
           };
         }
-      })
+      }),
     );
 
     // Filter out null results (protected caches)

@@ -189,9 +189,7 @@ export const interactiveEnhancedCommand = new Command("interactive")
       const allCleaners = await cleanerRegistry.getAvailableCleaners();
 
       if (allCleaners.length === 0) {
-        console.log(
-          pc.yellow("\n⚠️  No caches found with reclaimable space."),
-        );
+        console.log(pc.yellow("\n⚠️  No caches found with reclaimable space."));
         return;
       }
 
@@ -535,9 +533,7 @@ export const interactiveEnhancedCommand = new Command("interactive")
                 info.paths.length - result.clearedPaths.length;
               if (skippedCount > 0) {
                 console.log(
-                  pc.yellow(
-                    `      Skipped ${skippedCount} protected path(s)`,
-                  ),
+                  pc.yellow(`      Skipped ${skippedCount} protected path(s)`),
                 );
               }
             }

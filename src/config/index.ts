@@ -82,12 +82,18 @@ function getConfigDir(): string {
   const homeDir = os.homedir();
 
   if (platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(homeDir, "AppData", "Roaming"), "squeaky-clean");
+    return path.join(
+      process.env.APPDATA || path.join(homeDir, "AppData", "Roaming"),
+      "squeaky-clean",
+    );
   } else if (platform === "darwin") {
     return path.join(homeDir, "Library", "Preferences", "squeaky-clean");
   } else {
     // Linux/Unix - follow XDG spec
-    return path.join(process.env.XDG_CONFIG_HOME || path.join(homeDir, ".config"), "squeaky-clean");
+    return path.join(
+      process.env.XDG_CONFIG_HOME || path.join(homeDir, ".config"),
+      "squeaky-clean",
+    );
   }
 }
 
@@ -138,7 +144,12 @@ class ConfigManager {
     const result = { ...base };
     for (const key of Object.keys(override)) {
       const val = override[key];
-      if (val !== undefined && val !== null && typeof val === "object" && !Array.isArray(val)) {
+      if (
+        val !== undefined &&
+        val !== null &&
+        typeof val === "object" &&
+        !Array.isArray(val)
+      ) {
         result[key] = this.deepMerge(base[key] || {}, val);
       } else if (val !== undefined) {
         result[key] = val;

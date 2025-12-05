@@ -230,9 +230,7 @@ export class UniversalBinaryCleaner implements CleanerModule {
       0,
     );
 
-    printVerbose(
-      `Found ${this.universalBinaries.length} Universal Binaries`,
-    );
+    printVerbose(`Found ${this.universalBinaries.length} Universal Binaries`);
     printVerbose(
       `Total potential savings: ${(totalSavings / (1024 * 1024)).toFixed(1)} MB`,
     );
@@ -305,10 +303,7 @@ export class UniversalBinaryCleaner implements CleanerModule {
       };
     }
 
-    const sizeBefore = binariesToThin.reduce(
-      (sum, b) => sum + b.totalSize,
-      0,
-    );
+    const sizeBefore = binariesToThin.reduce((sum, b) => sum + b.totalSize, 0);
     if (dryRun) {
       printVerbose(
         `[DRY RUN] Would thin ${binariesToThin.length} Universal Binaries:`,
@@ -381,8 +376,7 @@ export class UniversalBinaryCleaner implements CleanerModule {
           throw thinError;
         }
       } catch (err) {
-        const errMsg =
-          err instanceof Error ? err.message : String(err);
+        const errMsg = err instanceof Error ? err.message : String(err);
         printVerbose(`Failed to thin ${binary.appName}: ${errMsg}`);
 
         if (!error) {

@@ -43,7 +43,9 @@ export async function ubCommand(options: UBOptions): Promise<void> {
 
     if (!cacheInfo.isInstalled || cacheInfo.paths.length === 0) {
       printInfo("No Universal Binaries found that can be thinned.");
-      printSuccess("Your applications are already optimized for Apple Silicon!");
+      printSuccess(
+        "Your applications are already optimized for Apple Silicon!",
+      );
       return;
     }
 
@@ -57,7 +59,9 @@ export async function ubCommand(options: UBOptions): Promise<void> {
       for (const cat of categories) {
         const sizeStr = formatSizeWithColor(cat.size || 0);
         console.log(`  ${symbols.binary} ${cat.name}`);
-        console.log(`     Architectures: ${cat.description.split(":")[1]?.split("-")[0]?.trim() || "Universal"}`);
+        console.log(
+          `     Architectures: ${cat.description.split(":")[1]?.split("-")[0]?.trim() || "Universal"}`,
+        );
         console.log(`     Potential savings: ${sizeStr}`);
         console.log();
       }
@@ -72,7 +76,9 @@ export async function ubCommand(options: UBOptions): Promise<void> {
     }
 
     // Display found binaries
-    console.log(`\n${symbols.sparkles} Found ${categories.length} Universal Binaries:\n`);
+    console.log(
+      `\n${symbols.sparkles} Found ${categories.length} Universal Binaries:\n`,
+    );
 
     for (const cat of categories) {
       const sizeStr = formatSizeWithColor(cat.size || 0);
@@ -95,12 +101,8 @@ export async function ubCommand(options: UBOptions): Promise<void> {
       printWarning(
         "⚠️  Warning: Thinning removes x86_64 code from application binaries.",
       );
-      printWarning(
-        "   This is generally safe but cannot be easily undone.",
-      );
-      printWarning(
-        "   Affected apps can be reinstalled if needed.",
-      );
+      printWarning("   This is generally safe but cannot be easily undone.");
+      printWarning("   Affected apps can be reinstalled if needed.");
       console.log();
 
       const choices = categories.map((cat) => ({
@@ -114,7 +116,8 @@ export async function ubCommand(options: UBOptions): Promise<void> {
           {
             type: "checkbox",
             name: "binaries",
-            message: "Select applications to thin (space to select, enter to confirm):",
+            message:
+              "Select applications to thin (space to select, enter to confirm):",
             choices,
           },
         ]);
@@ -137,10 +140,10 @@ export async function ubCommand(options: UBOptions): Promise<void> {
       .reduce((sum, cat) => sum + (cat.size || 0), 0);
 
     console.log();
+    printInfo(`Selected ${binariesToThin.length} application(s) for thinning`);
     printInfo(
-      `Selected ${binariesToThin.length} application(s) for thinning`,
+      `Expected space savings: ${formatSizeWithColor(selectedSavings)}`,
     );
-    printInfo(`Expected space savings: ${formatSizeWithColor(selectedSavings)}`);
 
     // Dry run mode
     if (options.dryRun) {

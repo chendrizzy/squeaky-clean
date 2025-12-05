@@ -142,9 +142,7 @@ async function showCurrentConfig(): Promise<void> {
     console.log(`  ${typeEmojis[type]} ${type}:`);
     for (const cleaner of cleaners) {
       const enabled = config.isToolEnabled(cleaner.name as any);
-      const status = enabled
-        ? pc.green("✓ enabled")
-        : pc.red("✗ disabled");
+      const status = enabled ? pc.green("✓ enabled") : pc.red("✗ disabled");
       console.log(`     ${status} ${cleaner.name}`);
     }
   }
@@ -407,9 +405,7 @@ async function interactiveConfigWizard(): Promise<void> {
   // Step 3: Tool enablement by category
   console.log(pc.bold("\n🔧 Step 3: Tool Configuration"));
   console.log(
-    pc.gray(
-      "Configure which cache cleaners should be enabled by category.\n",
-    ),
+    pc.gray("Configure which cache cleaners should be enabled by category.\n"),
   );
 
   const toolAnswers: Record<string, boolean> = {};

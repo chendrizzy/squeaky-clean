@@ -20,8 +20,7 @@ import { printVerbose } from "../utils/cli";
 export class PlaywrightCleaner implements CleanerModule {
   name = "playwright";
   type = "build-tool" as const;
-  description =
-    "Playwright browser binaries, test artifacts, and cache files";
+  description = "Playwright browser binaries, test artifacts, and cache files";
 
   private getCachePaths(): Array<{
     path: string;
@@ -44,7 +43,8 @@ export class PlaywrightCleaner implements CleanerModule {
       paths.push(
         {
           path: path.join(homeDir, "Library", "Caches", "ms-playwright"),
-          description: "Playwright browser binaries (Chromium, Firefox, WebKit)",
+          description:
+            "Playwright browser binaries (Chromium, Firefox, WebKit)",
           category: "browsers",
           priority: "normal",
         },
@@ -55,7 +55,12 @@ export class PlaywrightCleaner implements CleanerModule {
           priority: "normal",
         },
         {
-          path: path.join(homeDir, "Library", "Caches", "org.webkit.Playwright"),
+          path: path.join(
+            homeDir,
+            "Library",
+            "Caches",
+            "org.webkit.Playwright",
+          ),
           description: "WebKit Playwright cache",
           category: "browsers",
           priority: "low",
@@ -63,15 +68,14 @@ export class PlaywrightCleaner implements CleanerModule {
       );
     } else if (platform === "win32") {
       // Windows Playwright cache locations
-      const localAppData = process.env.LOCALAPPDATA || path.join(homeDir, "AppData", "Local");
-      paths.push(
-        {
-          path: path.join(localAppData, "ms-playwright"),
-          description: "Playwright browser binaries",
-          category: "browsers",
-          priority: "normal",
-        },
-      );
+      const localAppData =
+        process.env.LOCALAPPDATA || path.join(homeDir, "AppData", "Local");
+      paths.push({
+        path: path.join(localAppData, "ms-playwright"),
+        description: "Playwright browser binaries",
+        category: "browsers",
+        priority: "normal",
+      });
     } else {
       // Linux Playwright cache locations
       paths.push(
@@ -120,7 +124,9 @@ export class PlaywrightCleaner implements CleanerModule {
         existingPaths.push(cachePath);
         const size = await getEstimatedDirectorySize(cachePath);
         totalSize += size;
-        printVerbose(`  🔍 📁 ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`);
+        printVerbose(
+          `  🔍 📁 ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`,
+        );
       }
     }
 
@@ -138,7 +144,12 @@ export class PlaywrightCleaner implements CleanerModule {
     const cachePaths = this.getCachePaths();
     const categories: CacheCategory[] = [];
 
-    for (const { path: cachePath, description, category, priority } of cachePaths) {
+    for (const {
+      path: cachePath,
+      description,
+      category,
+      priority,
+    } of cachePaths) {
       if (await pathExists(cachePath)) {
         const size = await getDirectorySize(cachePath);
         let stats;
@@ -188,7 +199,9 @@ export class PlaywrightCleaner implements CleanerModule {
       sizeBefore += pathSize;
 
       if (dryRun) {
-        printVerbose(`  [DRY RUN] Would clear: ${description} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`);
+        printVerbose(
+          `  [DRY RUN] Would clear: ${description} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`,
+        );
         clearedPaths.push(cachePath);
       } else {
         try {
@@ -225,7 +238,9 @@ export class PlaywrightCleaner implements CleanerModule {
     protectedPaths?: string[],
   ): Promise<ClearResult> {
     const categories = await this.getCacheCategories();
-    const targetCategories = categories.filter((c) => categoryIds.includes(c.id));
+    const targetCategories = categories.filter((c) =>
+      categoryIds.includes(c.id),
+    );
     const clearedPaths: string[] = [];
     let sizeBefore = 0;
     let sizeAfter = 0;
@@ -243,7 +258,9 @@ export class PlaywrightCleaner implements CleanerModule {
         sizeBefore += pathSize;
 
         if (dryRun) {
-          printVerbose(`  [DRY RUN] Would clear: ${category.name} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`);
+          printVerbose(
+            `  [DRY RUN] Would clear: ${category.name} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`,
+          );
           clearedPaths.push(cachePath);
         } else {
           try {

@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { CacheManager } from "../cleaners/index.js";
-import { MockCacheManager, shouldRunFullTests, mockSummary } from "./mocks/mockCleaners.js";
+import {
+  MockCacheManager,
+  shouldRunFullTests,
+  mockSummary,
+} from "./mocks/mockCleaners.js";
 
 /**
  * Integration Tests
@@ -45,109 +49,133 @@ describe("Integration Tests", () => {
       }
     });
 
-    it("should get cache info for all enabled cleaners", async () => {
-      const cacheInfo = await cacheManager.getAllCacheInfo();
-      expect(Array.isArray(cacheInfo)).toBe(true);
-      expect(cacheInfo.length).toBeGreaterThan(0);
+    it(
+      "should get cache info for all enabled cleaners",
+      async () => {
+        const cacheInfo = await cacheManager.getAllCacheInfo();
+        expect(Array.isArray(cacheInfo)).toBe(true);
+        expect(cacheInfo.length).toBeGreaterThan(0);
 
-      cacheInfo.forEach((info) => {
-        expect(info).toHaveProperty("name");
-        expect(info).toHaveProperty("type");
-        expect(info).toHaveProperty("description");
-        expect(info).toHaveProperty("paths");
-        expect(info).toHaveProperty("isInstalled");
-        if (info.size !== undefined) {
-          expect(typeof info.size).toBe("number");
+        cacheInfo.forEach((info) => {
+          expect(info).toHaveProperty("name");
+          expect(info).toHaveProperty("type");
+          expect(info).toHaveProperty("description");
+          expect(info).toHaveProperty("paths");
+          expect(info).toHaveProperty("isInstalled");
+          if (info.size !== undefined) {
+            expect(typeof info.size).toBe("number");
+          }
+        });
+      },
+      isFullTest ? 60000 : 1000,
+    );
+
+    it(
+      "should get cache sizes by type",
+      async () => {
+        const sizesByType = await cacheManager.getCacheSizesByType();
+
+        expect(typeof sizesByType).toBe("object");
+        expect(sizesByType).toHaveProperty("package-manager");
+        expect(sizesByType).toHaveProperty("build-tool");
+        expect(sizesByType).toHaveProperty("browser");
+        expect(sizesByType).toHaveProperty("ide");
+        expect(sizesByType).toHaveProperty("system");
+        expect(sizesByType).toHaveProperty("other");
+
+        Object.values(sizesByType).forEach((size) => {
+          expect(typeof size).toBe("number");
+          expect(size).toBeGreaterThanOrEqual(0);
+        });
+      },
+      isFullTest ? 120000 : 1000,
+    );
+
+    it(
+      "should get summary statistics",
+      async () => {
+        const summary = await cacheManager.getSummary();
+
+        expect(summary).toHaveProperty("totalSize");
+        expect(summary).toHaveProperty("totalCleaners");
+        expect(summary).toHaveProperty("installedCleaners");
+        expect(summary).toHaveProperty("enabledCleaners");
+        expect(summary).toHaveProperty("sizesByType");
+
+        expect(typeof summary.totalSize).toBe("number");
+        expect(typeof summary.totalCleaners).toBe("number");
+        expect(typeof summary.installedCleaners).toBe("number");
+        expect(typeof summary.enabledCleaners).toBe("number");
+        expect(typeof summary.sizesByType).toBe("object");
+
+        expect(summary.totalCleaners).toBeGreaterThan(0);
+        expect(summary.enabledCleaners).toBeGreaterThan(0);
+      },
+      isFullTest ? 60000 : 1000,
+    );
+
+    it(
+      "should perform dry run cleaning",
+      async () => {
+        const results = await cacheManager.cleanAllCaches({ dryRun: true });
+
+        expect(Array.isArray(results)).toBe(true);
+        expect(results.length).toBeGreaterThan(0);
+
+        results.forEach((result) => {
+          expect(result).toHaveProperty("name");
+          expect(result).toHaveProperty("success");
+          expect(typeof result.name).toBe("string");
+          expect(typeof result.success).toBe("boolean");
+        });
+      },
+      isFullTest ? 60000 : 1000,
+    );
+
+    it(
+      "should filter cleaning by types",
+      async () => {
+        const packageManagerResults = await cacheManager.cleanAllCaches({
+          dryRun: true,
+          types: ["package-manager"],
+        });
+
+        expect(Array.isArray(packageManagerResults)).toBe(true);
+
+        const packageManagerCleaners =
+          cacheManager.getCleanersByType("package-manager");
+        if (packageManagerResults.length > 0) {
+          expect(packageManagerResults.length).toBeLessThanOrEqual(
+            packageManagerCleaners.length,
+          );
         }
-      });
-    }, isFullTest ? 60000 : 1000);
+      },
+      isFullTest ? 120000 : 1000,
+    );
 
-    it("should get cache sizes by type", async () => {
-      const sizesByType = await cacheManager.getCacheSizesByType();
+    it(
+      "should exclude specific tools from cleaning",
+      async () => {
+        const allResults = await cacheManager.cleanAllCaches({ dryRun: true });
+        const excludeDockerResults = await cacheManager.cleanAllCaches({
+          dryRun: true,
+          exclude: ["docker"],
+        });
 
-      expect(typeof sizesByType).toBe("object");
-      expect(sizesByType).toHaveProperty("package-manager");
-      expect(sizesByType).toHaveProperty("build-tool");
-      expect(sizesByType).toHaveProperty("browser");
-      expect(sizesByType).toHaveProperty("ide");
-      expect(sizesByType).toHaveProperty("system");
-      expect(sizesByType).toHaveProperty("other");
+        expect(Array.isArray(allResults)).toBe(true);
+        expect(Array.isArray(excludeDockerResults)).toBe(true);
 
-      Object.values(sizesByType).forEach((size) => {
-        expect(typeof size).toBe("number");
-        expect(size).toBeGreaterThanOrEqual(0);
-      });
-    }, isFullTest ? 120000 : 1000);
-
-    it("should get summary statistics", async () => {
-      const summary = await cacheManager.getSummary();
-
-      expect(summary).toHaveProperty("totalSize");
-      expect(summary).toHaveProperty("totalCleaners");
-      expect(summary).toHaveProperty("installedCleaners");
-      expect(summary).toHaveProperty("enabledCleaners");
-      expect(summary).toHaveProperty("sizesByType");
-
-      expect(typeof summary.totalSize).toBe("number");
-      expect(typeof summary.totalCleaners).toBe("number");
-      expect(typeof summary.installedCleaners).toBe("number");
-      expect(typeof summary.enabledCleaners).toBe("number");
-      expect(typeof summary.sizesByType).toBe("object");
-
-      expect(summary.totalCleaners).toBeGreaterThan(0);
-      expect(summary.enabledCleaners).toBeGreaterThan(0);
-    }, isFullTest ? 60000 : 1000);
-
-    it("should perform dry run cleaning", async () => {
-      const results = await cacheManager.cleanAllCaches({ dryRun: true });
-
-      expect(Array.isArray(results)).toBe(true);
-      expect(results.length).toBeGreaterThan(0);
-
-      results.forEach((result) => {
-        expect(result).toHaveProperty("name");
-        expect(result).toHaveProperty("success");
-        expect(typeof result.name).toBe("string");
-        expect(typeof result.success).toBe("boolean");
-      });
-    }, isFullTest ? 60000 : 1000);
-
-    it("should filter cleaning by types", async () => {
-      const packageManagerResults = await cacheManager.cleanAllCaches({
-        dryRun: true,
-        types: ["package-manager"],
-      });
-
-      expect(Array.isArray(packageManagerResults)).toBe(true);
-
-      const packageManagerCleaners =
-        cacheManager.getCleanersByType("package-manager");
-      if (packageManagerResults.length > 0) {
-        expect(packageManagerResults.length).toBeLessThanOrEqual(
-          packageManagerCleaners.length,
+        const hasDockerInExcluded = excludeDockerResults.some(
+          (r) => r.name === "docker",
         );
-      }
-    }, isFullTest ? 120000 : 1000);
+        expect(hasDockerInExcluded).toBe(false);
 
-    it("should exclude specific tools from cleaning", async () => {
-      const allResults = await cacheManager.cleanAllCaches({ dryRun: true });
-      const excludeDockerResults = await cacheManager.cleanAllCaches({
-        dryRun: true,
-        exclude: ["docker"],
-      });
-
-      expect(Array.isArray(allResults)).toBe(true);
-      expect(Array.isArray(excludeDockerResults)).toBe(true);
-
-      const hasDockerInExcluded = excludeDockerResults.some(
-        (r) => r.name === "docker",
-      );
-      expect(hasDockerInExcluded).toBe(false);
-
-      expect(excludeDockerResults.length).toBeLessThanOrEqual(
-        allResults.length,
-      );
-    }, isFullTest ? 180000 : 1000);
+        expect(excludeDockerResults.length).toBeLessThanOrEqual(
+          allResults.length,
+        );
+      },
+      isFullTest ? 180000 : 1000,
+    );
 
     it("should handle cleaner filtering by name", () => {
       const docker = cacheManager.getCleaner("docker");
@@ -186,83 +214,111 @@ describe("Integration Tests", () => {
   });
 
   describe("Cross-platform Compatibility", () => {
-    it("should handle different cache types on different platforms", async () => {
-      const summary = await cacheManager.getSummary();
+    it(
+      "should handle different cache types on different platforms",
+      async () => {
+        const summary = await cacheManager.getSummary();
 
-      expect(summary.totalCleaners).toBeGreaterThan(0);
-      expect(summary.sizesByType).toHaveProperty("package-manager");
-      expect(summary.sizesByType).toHaveProperty("system");
-    }, isFullTest ? 60000 : 1000);
+        expect(summary.totalCleaners).toBeGreaterThan(0);
+        expect(summary.sizesByType).toHaveProperty("package-manager");
+        expect(summary.sizesByType).toHaveProperty("system");
+      },
+      isFullTest ? 60000 : 1000,
+    );
 
-    it("should handle concurrent operations safely", async () => {
-      const promises = [
-        cacheManager.getAllCacheInfo(),
-        cacheManager.getCacheSizesByType(),
-        cacheManager.getSummary(),
-        cacheManager.cleanAllCaches({ dryRun: true }),
-      ];
+    it(
+      "should handle concurrent operations safely",
+      async () => {
+        const promises = [
+          cacheManager.getAllCacheInfo(),
+          cacheManager.getCacheSizesByType(),
+          cacheManager.getSummary(),
+          cacheManager.cleanAllCaches({ dryRun: true }),
+        ];
 
-      const results = await Promise.all(promises);
+        const results = await Promise.all(promises);
 
-      expect(Array.isArray(results[0])).toBe(true);
-      expect(typeof results[1]).toBe("object");
-      expect(results[2]).toHaveProperty("totalSize");
-      expect(Array.isArray(results[3])).toBe(true);
-    }, isFullTest ? 180000 : 1000);
+        expect(Array.isArray(results[0])).toBe(true);
+        expect(typeof results[1]).toBe("object");
+        expect(results[2]).toHaveProperty("totalSize");
+        expect(Array.isArray(results[3])).toBe(true);
+      },
+      isFullTest ? 180000 : 1000,
+    );
   });
 
   describe("Error Handling", () => {
-    it("should handle errors gracefully during cache info gathering", async () => {
-      const cacheInfo = await cacheManager.getAllCacheInfo();
-      expect(Array.isArray(cacheInfo)).toBe(true);
-    }, isFullTest ? 60000 : 1000);
+    it(
+      "should handle errors gracefully during cache info gathering",
+      async () => {
+        const cacheInfo = await cacheManager.getAllCacheInfo();
+        expect(Array.isArray(cacheInfo)).toBe(true);
+      },
+      isFullTest ? 60000 : 1000,
+    );
 
-    it("should handle errors gracefully during cleaning", async () => {
-      const results = await cacheManager.cleanAllCaches({ dryRun: true });
-      expect(Array.isArray(results)).toBe(true);
-    }, isFullTest ? 120000 : 1000);
+    it(
+      "should handle errors gracefully during cleaning",
+      async () => {
+        const results = await cacheManager.cleanAllCaches({ dryRun: true });
+        expect(Array.isArray(results)).toBe(true);
+      },
+      isFullTest ? 120000 : 1000,
+    );
 
-    it("should handle empty results gracefully", async () => {
-      const summary = await cacheManager.getSummary();
-      expect(summary.totalSize).toBeGreaterThanOrEqual(0);
-      expect(summary.totalCleaners).toBeGreaterThan(0);
-      expect(summary.installedCleaners).toBeGreaterThanOrEqual(0);
-      expect(summary.enabledCleaners).toBeGreaterThan(0);
-    }, isFullTest ? 60000 : 1000);
+    it(
+      "should handle empty results gracefully",
+      async () => {
+        const summary = await cacheManager.getSummary();
+        expect(summary.totalSize).toBeGreaterThanOrEqual(0);
+        expect(summary.totalCleaners).toBeGreaterThan(0);
+        expect(summary.installedCleaners).toBeGreaterThanOrEqual(0);
+        expect(summary.enabledCleaners).toBeGreaterThan(0);
+      },
+      isFullTest ? 60000 : 1000,
+    );
   });
 
   describe("Performance", () => {
-    it("should complete operations in reasonable time", async () => {
-      const start = Date.now();
+    it(
+      "should complete operations in reasonable time",
+      async () => {
+        const start = Date.now();
 
-      await cacheManager.getAllCacheInfo();
-      await cacheManager.getCacheSizesByType();
-      await cacheManager.getSummary();
-      await cacheManager.cleanAllCaches({ dryRun: true });
-
-      const duration = Date.now() - start;
-
-      if (isFullTest) {
-        expect(duration).toBeLessThan(180000);
-      } else {
-        // Mock should be nearly instant
-        expect(duration).toBeLessThan(1000);
-      }
-    }, isFullTest ? 180000 : 2000);
-
-    it("should handle repeated operations without memory leaks", async () => {
-      const memoryBefore = process.memoryUsage().heapUsed;
-
-      const iterations = isFullTest ? 2 : 10;
-      for (let i = 0; i < iterations; i++) {
         await cacheManager.getAllCacheInfo();
+        await cacheManager.getCacheSizesByType();
+        await cacheManager.getSummary();
         await cacheManager.cleanAllCaches({ dryRun: true });
-      }
 
-      const memoryAfter = process.memoryUsage().heapUsed;
-      const memoryIncrease = memoryAfter - memoryBefore;
+        const duration = Date.now() - start;
 
-      expect(memoryIncrease).toBeLessThan(10 * 1024 * 1024);
-    }, isFullTest ? 360000 : 2000);
+        if (isFullTest) {
+          expect(duration).toBeLessThan(180000);
+        } else {
+          // Mock should be nearly instant
+          expect(duration).toBeLessThan(1000);
+        }
+      },
+      isFullTest ? 180000 : 2000,
+    );
+
+    it(
+      "should handle repeated operations without memory leaks",
+      async () => {
+        const memoryBefore = process.memoryUsage().heapUsed;
+
+        const iterations = isFullTest ? 2 : 10;
+        for (let i = 0; i < iterations; i++) {
+          await cacheManager.getAllCacheInfo();
+          await cacheManager.cleanAllCaches({ dryRun: true });
+        }
+
+        const memoryAfter = process.memoryUsage().heapUsed;
+        const memoryIncrease = memoryAfter - memoryBefore;
+
+        expect(memoryIncrease).toBeLessThan(10 * 1024 * 1024);
+      },
+      isFullTest ? 360000 : 2000,
+    );
   });
 });

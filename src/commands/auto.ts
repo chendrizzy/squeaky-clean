@@ -308,4 +308,3 @@ function isSafeToAutoClean(cacheName: string, cacheType: string): boolean {
 
   return false;
 }
-

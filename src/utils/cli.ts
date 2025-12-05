@@ -172,7 +172,10 @@ const BOOT_ANIMATION = {
 } as const;
 
 // first-time boot-up pristine
-export async function showBootPristine(force = false, funModeAllowed = true): Promise<void> {
+export async function showBootPristine(
+  force = false,
+  funModeAllowed = true,
+): Promise<void> {
   // Skip if fun mode is not allowed
   if (!funModeAllowed) return;
 

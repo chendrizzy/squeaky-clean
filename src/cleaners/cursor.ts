@@ -43,8 +43,18 @@ export class CursorCleaner implements CleanerModule {
     if (platform === "darwin") {
       // macOS Cursor paths (similar to VS Code structure)
       const cursorDir = path.join(homeDir, ".cursor");
-      const cursorAppSupport = path.join(homeDir, "Library", "Application Support", "Cursor");
-      const cursorCache = path.join(homeDir, "Library", "Caches", "com.todesktop.230313mzl4w4u92");
+      const cursorAppSupport = path.join(
+        homeDir,
+        "Library",
+        "Application Support",
+        "Cursor",
+      );
+      const cursorCache = path.join(
+        homeDir,
+        "Library",
+        "Caches",
+        "com.todesktop.230313mzl4w4u92",
+      );
 
       paths.push(
         // Cache directories
@@ -126,8 +136,10 @@ export class CursorCleaner implements CleanerModule {
       );
     } else if (platform === "win32") {
       // Windows Cursor paths
-      const appData = process.env.APPDATA || path.join(homeDir, "AppData", "Roaming");
-      const localAppData = process.env.LOCALAPPDATA || path.join(homeDir, "AppData", "Local");
+      const appData =
+        process.env.APPDATA || path.join(homeDir, "AppData", "Roaming");
+      const localAppData =
+        process.env.LOCALAPPDATA || path.join(homeDir, "AppData", "Local");
       const cursorDir = path.join(homeDir, ".cursor");
 
       paths.push(
@@ -183,8 +195,10 @@ export class CursorCleaner implements CleanerModule {
       );
     } else {
       // Linux Cursor paths
-      const configDir = process.env.XDG_CONFIG_HOME || path.join(homeDir, ".config");
-      const cacheDir = process.env.XDG_CACHE_HOME || path.join(homeDir, ".cache");
+      const configDir =
+        process.env.XDG_CONFIG_HOME || path.join(homeDir, ".config");
+      const cacheDir =
+        process.env.XDG_CACHE_HOME || path.join(homeDir, ".cache");
       const cursorDir = path.join(homeDir, ".cursor");
 
       paths.push(
@@ -284,7 +298,9 @@ export class CursorCleaner implements CleanerModule {
         existingPaths.push(cachePath);
         const size = await getEstimatedDirectorySize(cachePath);
         totalSize += size;
-        printVerbose(`  🔍 📁 ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`);
+        printVerbose(
+          `  🔍 📁 ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`,
+        );
       }
     }
 
@@ -302,7 +318,13 @@ export class CursorCleaner implements CleanerModule {
     const cachePaths = this.getCachePaths();
     const categoryMap = new Map<string, CacheCategory>();
 
-    for (const { path: cachePath, description, category, priority, safeToDelete } of cachePaths) {
+    for (const {
+      path: cachePath,
+      description,
+      category,
+      priority,
+      safeToDelete,
+    } of cachePaths) {
       if (!safeToDelete) continue;
       if (!(await pathExists(cachePath))) continue;
 
@@ -361,7 +383,9 @@ export class CursorCleaner implements CleanerModule {
       sizeBefore += pathSize;
 
       if (dryRun) {
-        printVerbose(`  [DRY RUN] Would clear: ${description} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`);
+        printVerbose(
+          `  [DRY RUN] Would clear: ${description} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`,
+        );
         clearedPaths.push(cachePath);
       } else {
         try {
@@ -399,7 +423,9 @@ export class CursorCleaner implements CleanerModule {
     protectedPaths?: string[],
   ): Promise<ClearResult> {
     const categories = await this.getCacheCategories();
-    const targetCategories = categories.filter((c) => categoryIds.includes(c.id));
+    const targetCategories = categories.filter((c) =>
+      categoryIds.includes(c.id),
+    );
     const clearedPaths: string[] = [];
     let sizeBefore = 0;
     let sizeAfter = 0;
@@ -417,7 +443,9 @@ export class CursorCleaner implements CleanerModule {
         sizeBefore += pathSize;
 
         if (dryRun) {
-          printVerbose(`  [DRY RUN] Would clear: ${category.name} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`);
+          printVerbose(
+            `  [DRY RUN] Would clear: ${category.name} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`,
+          );
           clearedPaths.push(cachePath);
         } else {
           try {
