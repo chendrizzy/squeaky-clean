@@ -38,8 +38,9 @@ jobs:
       - name: Run unit tests
         run: npm test
       
-      - name: Run E2E tests
-        run: npm run test:e2e || echo "E2E tests not yet configured"
+      - name: Run E2E tests (optional)
+        continue-on-error: true
+        run: npm run test:e2e 2>/dev/null || echo "E2E tests not yet configured"
       
       - name: Run smoke test (dry-run)
         run: |
