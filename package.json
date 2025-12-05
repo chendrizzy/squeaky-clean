@@ -17,7 +17,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
-    "format": "prettier --write src/**/*.{ts,tsx,json}",
+    "format": "prettier --write \"src/**/*.{ts,tsx,json}\"",
     "clean": "rimraf dist .tsbuildinfo",
     "prepublishOnly": "npm run clean && tsc --build --force",
     "release": "npm run test && npm run build && npm publish",

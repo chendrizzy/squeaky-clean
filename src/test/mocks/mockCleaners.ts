@@ -2,7 +2,12 @@
  * Mock cleaners for fast unit testing
  * These avoid real filesystem operations for 10x faster tests
  */
-import type { CleanerModule, CacheInfo, ClearResult, CacheCategory } from "../../types/index.js";
+import type {
+  CleanerModule,
+  CacheInfo,
+  ClearResult,
+  CacheCategory,
+} from "../../types/index.js";
 
 // Mock cache info that would be returned by real cleaners
 export const mockCacheInfo: Record<string, CacheInfo> = {
@@ -68,7 +73,11 @@ export const mockCacheInfo: Record<string, CacheInfo> = {
 export const mockClearResults: Record<string, ClearResult> = {
   npm: { name: "npm", success: true, clearedSize: 1024 * 1024 * 500 },
   yarn: { name: "yarn", success: true, clearedSize: 1024 * 1024 * 200 },
-  docker: { name: "docker", success: true, clearedSize: 1024 * 1024 * 1024 * 2 },
+  docker: {
+    name: "docker",
+    success: true,
+    clearedSize: 1024 * 1024 * 1024 * 2,
+  },
   webpack: { name: "webpack", success: true, clearedSize: 1024 * 1024 * 100 },
   vscode: { name: "vscode", success: true, clearedSize: 1024 * 1024 * 300 },
   chrome: { name: "chrome", success: true, clearedSize: 1024 * 1024 * 800 },
@@ -78,7 +87,10 @@ export const mockClearResults: Record<string, ClearResult> = {
 /**
  * Creates a mock cleaner module for testing
  */
-export function createMockCleaner(name: string, info: CacheInfo): CleanerModule {
+export function createMockCleaner(
+  name: string,
+  info: CacheInfo,
+): CleanerModule {
   return {
     name,
     type: info.type,
@@ -96,7 +108,8 @@ export function createMockCleaner(name: string, info: CacheInfo): CleanerModule 
         useCase: "development",
       },
     ],
-    clear: async (dryRun?: boolean) => mockClearResults[name] || { name, success: true },
+    clear: async (dryRun?: boolean) =>
+      mockClearResults[name] || { name, success: true },
     clearByCategory: async (categoryIds: string[], dryRun?: boolean) =>
       mockClearResults[name] || { name, success: true },
   };
@@ -106,7 +119,9 @@ export function createMockCleaner(name: string, info: CacheInfo): CleanerModule 
  * Creates an array of mock cleaners for testing
  */
 export function createMockCleaners(): CleanerModule[] {
-  return Object.entries(mockCacheInfo).map(([name, info]) => createMockCleaner(name, info));
+  return Object.entries(mockCacheInfo).map(([name, info]) =>
+    createMockCleaner(name, info),
+  );
 }
 
 /**
@@ -121,17 +136,25 @@ export function shouldRunFullTests(): boolean {
  * Pre-computed summary for mock tests (avoids recalculation)
  */
 export const mockSummary = {
-  totalSize: Object.values(mockCacheInfo).reduce((sum, info) => sum + (info.size || 0), 0),
+  totalSize: Object.values(mockCacheInfo).reduce(
+    (sum, info) => sum + (info.size || 0),
+    0,
+  ),
   totalCleaners: Object.keys(mockCacheInfo).length,
-  installedCleaners: Object.values(mockCacheInfo).filter(info => info.isInstalled).length,
+  installedCleaners: Object.values(mockCacheInfo).filter(
+    (info) => info.isInstalled,
+  ).length,
   enabledCleaners: Object.keys(mockCacheInfo).length,
   sizesByType: {
-    "package-manager": mockCacheInfo.npm.size! + mockCacheInfo.yarn.size! + mockCacheInfo.pip.size!,
+    "package-manager":
+      mockCacheInfo.npm.size! +
+      mockCacheInfo.yarn.size! +
+      mockCacheInfo.pip.size!,
     "build-tool": mockCacheInfo.webpack.size!,
-    "browser": mockCacheInfo.chrome.size!,
-    "ide": mockCacheInfo.vscode.size!,
-    "system": mockCacheInfo.docker.size!,
-    "other": 0,
+    browser: mockCacheInfo.chrome.size!,
+    ide: mockCacheInfo.vscode.size!,
+    system: mockCacheInfo.docker.size!,
+    other: 0,
   },
 };
 
@@ -145,7 +168,7 @@ export class MockCacheManager {
   constructor() {
     this.cleaners = new Map();
     const mockCleanerList = createMockCleaners();
-    mockCleanerList.forEach(cleaner => {
+    mockCleanerList.forEach((cleaner) => {
       this.cleaners.set(cleaner.name, cleaner);
     });
   }
@@ -155,7 +178,7 @@ export class MockCacheManager {
   }
 
   getCleanersByType(type: string): CleanerModule[] {
-    return this.getAllCleaners().filter(cleaner => cleaner.type === type);
+    return this.getAllCleaners().filter((cleaner) => cleaner.type === type);
   }
 
   getEnabledCleaners(): CleanerModule[] {
@@ -170,26 +193,29 @@ export class MockCacheManager {
     return Object.values(mockCacheInfo);
   }
 
-  async cleanAllCaches(options: {
-    dryRun?: boolean;
-    types?: string[];
-    exclude?: string[];
-    include?: string[];
-  } = {}): Promise<ClearResult[]> {
+  async cleanAllCaches(
+    options: {
+      dryRun?: boolean;
+      types?: string[];
+      exclude?: string[];
+      include?: string[];
+    } = {},
+  ): Promise<ClearResult[]> {
     let cleaners = this.getEnabledCleaners();
 
     if (options.types?.length) {
-      cleaners = cleaners.filter(c => options.types!.includes(c.type));
+      cleaners = cleaners.filter((c) => options.types!.includes(c.type));
     }
     if (options.include?.length) {
-      cleaners = cleaners.filter(c => options.include!.includes(c.name));
+      cleaners = cleaners.filter((c) => options.include!.includes(c.name));
     }
     if (options.exclude?.length) {
-      cleaners = cleaners.filter(c => !options.exclude!.includes(c.name));
+      cleaners = cleaners.filter((c) => !options.exclude!.includes(c.name));
     }
 
-    return cleaners.map(cleaner =>
-      mockClearResults[cleaner.name] || { name: cleaner.name, success: true }
+    return cleaners.map(
+      (cleaner) =>
+        mockClearResults[cleaner.name] || { name: cleaner.name, success: true },
     );
   }
 
