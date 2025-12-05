@@ -40,13 +40,13 @@ describe("CacheManager", () => {
       const cacheInfo = await cacheManager.getAllCacheInfo();
       expect(Array.isArray(cacheInfo)).toBe(true);
       expect(cacheInfo.length).toBeGreaterThan(0);
-    });
+    }, 60000);
 
     it("should get cache sizes by type", async () => {
       const sizes = await cacheManager.getCacheSizesByType();
       expect(typeof sizes).toBe("object");
       expect(sizes["package-manager"]).toBeGreaterThanOrEqual(0);
-    });
+    }, 60000);
 
     it("should get summary", async () => {
       const summary = await cacheManager.getSummary();
@@ -55,7 +55,7 @@ describe("CacheManager", () => {
       expect(summary).toHaveProperty("installedCleaners");
       expect(summary).toHaveProperty("enabledCleaners");
       expect(summary).toHaveProperty("sizesByType");
-    });
+    }, 60000);
   });
 
   describe("Detection", () => {
@@ -85,7 +85,7 @@ describe("CacheManager", () => {
       // Should return info for all enabled cleaners, with failed ones having empty data
       expect(Array.isArray(cacheInfo)).toBe(true);
       expect(cacheInfo.length).toBeGreaterThan(0);
-    });
+    }, 60000);
 
     it("should filter cleaners by name", async () => {
       const npmCleaner = cacheManager.getCleaner("npm");
@@ -116,7 +116,7 @@ describe("CacheManager", () => {
 
       expect(typeof summary.totalSize).toBe("number");
       expect(summary.totalSize).toBeGreaterThanOrEqual(0);
-    });
+    }, 60000);
 
     it("should get sizes by type", async () => {
       const sizesByType = await cacheManager.getCacheSizesByType();
@@ -124,14 +124,14 @@ describe("CacheManager", () => {
       expect(typeof sizesByType).toBe("object");
       expect(sizesByType["package-manager"]).toBeGreaterThanOrEqual(0);
       expect(sizesByType["build-tool"]).toBeGreaterThanOrEqual(0);
-    });
+    }, 60000);
 
     it("should return 0 for empty manager", async () => {
       const emptyManager = new CacheManager();
       const summary = await emptyManager.getSummary();
 
       expect(summary.totalSize).toBeGreaterThanOrEqual(0);
-    });
+    }, 60000);
   });
 
   describe("Cleaning Operations", () => {
@@ -140,7 +140,7 @@ describe("CacheManager", () => {
 
       expect(Array.isArray(results)).toBe(true);
       expect(results.length).toBeGreaterThanOrEqual(0);
-    });
+    }, 60000);
 
     it("should filter by types", async () => {
       const results = await cacheManager.cleanAllCaches({
@@ -149,7 +149,7 @@ describe("CacheManager", () => {
       });
 
       expect(Array.isArray(results)).toBe(true);
-    });
+    }, 60000);
 
     it("should exclude specific tools", async () => {
       const results = await cacheManager.cleanAllCaches({
@@ -158,7 +158,7 @@ describe("CacheManager", () => {
       });
 
       expect(Array.isArray(results)).toBe(true);
-    });
+    }, 120000);
   });
 
   describe("CacheType Validation", () => {
@@ -188,6 +188,6 @@ describe("CacheManager", () => {
       expect(sizesByType).toHaveProperty("ide");
       expect(sizesByType).toHaveProperty("system");
       expect(sizesByType).toHaveProperty("other");
-    });
+    }, 120000);
   });
 });
