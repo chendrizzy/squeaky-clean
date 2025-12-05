@@ -1,6 +1,6 @@
 {
   "name": "squeaky-clean",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "✨ Easy, customizable and expandable development cache cleaner CLI with interactive configuration! Smart, safe, and configurable cache management for 25+ development tools.",
   "main": "dist/cli.js",
   "bin": {
@@ -18,8 +18,8 @@
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "format": "prettier --write src/**/*.{ts,tsx,json}",
-    "clean": "rimraf dist",
-    "prepublishOnly": "npm run clean && npm run build",
+    "clean": "rimraf dist .tsbuildinfo",
+    "prepublishOnly": "npm run clean && tsc --build --force",
     "release": "npm run test && npm run build && npm publish",
     "release:patch": "npm run version:patch && npm run test && npm run build && npm publish",
     "release:minor": "npm run version:minor && npm run test && npm run build && npm publish",
