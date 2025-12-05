@@ -1,6 +1,6 @@
 import { cacheManager } from "../cleaners";
 import { printHeader, printInfo, printSuccess, formatSize } from "../utils/cli";
-import chalk from "chalk";
+import pc from "picocolors";
 import { CacheCategory } from "../types";
 
 interface CategoriesOptions {
@@ -30,14 +30,14 @@ export async function categoriesCommand(
     cleaners = cleaners.filter((c) => c.type === options.type);
   }
 
-  console.log(chalk.cyan("\n📊 Analyzing cache categories...\n"));
+  console.log(pc.cyan("\n📊 Analyzing cache categories...\n"));
 
   for (const cleaner of cleaners) {
     // Check if cleaner supports categories
     if (!cleaner.getCacheCategories) {
       if (options.verbose) {
         console.log(
-          chalk.gray(
+          pc.gray(
             `${cleaner.name}: Categories not supported (using legacy mode)`,
           ),
         );
@@ -49,14 +49,14 @@ export async function categoriesCommand(
       const categories = await cleaner.getCacheCategories();
 
       if (categories.length === 0) {
-        console.log(chalk.gray(`${cleaner.name}: No caches found`));
+        console.log(pc.gray(`${cleaner.name}: No caches found`));
         continue;
       }
 
       console.log(
-        chalk.bold.blue(`\n📦 ${cleaner.name.toUpperCase()} Cache Categories:`),
+        pc.bold(pc.blue(`\n📦 ${cleaner.name.toUpperCase()} Cache Categories:`)),
       );
-      console.log(chalk.gray("─".repeat(50)));
+      console.log(pc.gray("─".repeat(50)));
 
       // Group categories by use case
       const grouped: { [key: string]: CacheCategory[] } = {};
@@ -69,7 +69,7 @@ export async function categoriesCommand(
       // Display categories grouped by use case
       for (const [useCase, cats] of Object.entries(grouped)) {
         console.log(
-          chalk.yellow(
+          pc.yellow(
             `\n  ${getUseCaseEmoji(useCase)} ${useCase.toUpperCase()}:`,
           ),
         );
@@ -78,27 +78,27 @@ export async function categoriesCommand(
           const priorityColor = getPriorityColor(cat.priority);
           const ageText =
             cat.ageInDays !== undefined
-              ? chalk.gray(`(${cat.ageInDays}d old)`)
+              ? pc.gray(`(${cat.ageInDays}d old)`)
               : "";
           const sizeText = cat.size
-            ? chalk.cyan(formatSize(cat.size))
-            : chalk.gray("unknown size");
+            ? pc.cyan(formatSize(cat.size))
+            : pc.gray("unknown size");
           const projectText =
             cat.isProjectSpecific && cat.projectPath
-              ? chalk.magenta(`[${path.basename(cat.projectPath)}]`)
+              ? pc.magenta(`[${path.basename(cat.projectPath)}]`)
               : "";
 
-          console.log(`    ${priorityColor("●")} ${chalk.bold(cat.name)}`);
-          console.log(`      ID: ${chalk.gray(cat.id)}`);
+          console.log(`    ${priorityColor("●")} ${pc.bold(cat.name)}`);
+          console.log(`      ID: ${pc.gray(cat.id)}`);
           console.log(`      Size: ${sizeText} ${ageText} ${projectText}`);
           console.log(`      Priority: ${priorityColor(cat.priority)}`);
 
           if (options.verbose) {
-            console.log(`      Path: ${chalk.gray(cat.paths.join(", "))}`);
-            console.log(`      Description: ${chalk.gray(cat.description)}`);
+            console.log(`      Path: ${pc.gray(cat.paths.join(", "))}`);
+            console.log(`      Description: ${pc.gray(cat.description)}`);
             if (cat.lastModified) {
               console.log(
-                `      Last Modified: ${chalk.gray(cat.lastModified.toLocaleDateString())}`,
+                `      Last Modified: ${pc.gray(cat.lastModified.toLocaleDateString())}`,
               );
             }
           }
@@ -114,22 +114,22 @@ export async function categoriesCommand(
         (c) => (c.ageInDays || 0) > 30,
       ).length;
 
-      console.log(chalk.gray("\n  ─".repeat(25)));
-      console.log(chalk.bold(`  Summary:`));
-      console.log(`    Total Categories: ${chalk.green(categories.length)}`);
-      console.log(`    Total Size: ${chalk.yellow(formatSize(totalSize))}`);
+      console.log(pc.gray("\n  ─".repeat(25)));
+      console.log(pc.bold(`  Summary:`));
+      console.log(`    Total Categories: ${pc.green(categories.length)}`);
+      console.log(`    Total Size: ${pc.yellow(formatSize(totalSize))}`);
       if (criticalCount > 0) {
         console.log(
-          `    Critical Caches: ${chalk.red(criticalCount)} (recently used, preserve)`,
+          `    Critical Caches: ${pc.red(criticalCount)} (recently used, preserve)`,
         );
       }
       if (oldCaches > 0) {
         console.log(
-          `    Old Caches (>30d): ${chalk.blue(oldCaches)} (safe to clean)`,
+          `    Old Caches (>30d): ${pc.blue(oldCaches)} (safe to clean)`,
         );
       }
     } catch (error) {
-      console.log(chalk.red(`  Error analyzing ${cleaner.name}: ${error}`));
+      console.log(pc.red(`  Error analyzing ${cleaner.name}: ${error}`));
     }
   }
 
@@ -165,15 +165,15 @@ function getUseCaseEmoji(useCase: string): string {
 function getPriorityColor(priority: string): (text: string) => string {
   switch (priority) {
     case "critical":
-      return chalk.red;
+      return pc.red;
     case "important":
-      return chalk.yellow;
+      return pc.yellow;
     case "normal":
-      return chalk.green;
+      return pc.green;
     case "low":
-      return chalk.gray;
+      return pc.gray;
     default:
-      return chalk.white;
+      return pc.white;
   }
 }
 

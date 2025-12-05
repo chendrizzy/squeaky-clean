@@ -1,15 +1,15 @@
-import chalk from "chalk";
+import pc from "picocolors";
 import { config } from "../config";
 
 export const colors = {
-  primary: chalk.cyan,
-  success: chalk.green,
-  warning: chalk.yellow,
-  error: chalk.red,
-  info: chalk.blue,
-  muted: chalk.gray,
-  bold: chalk.bold,
-  dim: chalk.dim,
+  primary: pc.cyan,
+  success: pc.green,
+  warning: pc.yellow,
+  error: pc.red,
+  info: pc.blue,
+  muted: pc.gray,
+  bold: pc.bold,
+  dim: pc.dim,
 };
 
 export function colorize(text: string, color: keyof typeof colors): string {

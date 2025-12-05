@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import inquirer from 'inquirer';
-import chalk from 'chalk';
+import pc from 'picocolors';
 
 const CLEANER_TEMPLATE = `import { BaseCleaner } from './BaseCleaner';
 import { CacheInfo, CacheCategory, CacheType } from '../types';
@@ -178,7 +178,7 @@ describe('{{ClassName}}Cleaner', () => {
 });`;
 
 async function main() {
-  console.log(chalk.bold.cyan('🚀 Squeaky Clean - Cleaner Generator\n'));
+  console.log(pc.bold(pc.cyan('🚀 Squeaky Clean - Cleaner Generator\n')));
 
   // Get input from user
   const answers = await inquirer.prompt([
@@ -291,14 +291,14 @@ async function main() {
       },
     ]);
     if (!overwrite) {
-      console.log(chalk.yellow('Aborted'));
+      console.log(pc.yellow('Aborted'));
       return;
     }
   }
 
   // Write cleaner file
   fs.writeFileSync(cleanerPath, cleanerContent);
-  console.log(chalk.green(`✅ Created cleaner: ${cleanerPath}`));
+  console.log(pc.green(`✅ Created cleaner: ${cleanerPath}`));
 
   // Write test file if requested
   if (answers.createTest) {
@@ -307,24 +307,24 @@ async function main() {
       fs.mkdirSync(testDir, { recursive: true });
     }
     fs.writeFileSync(testPath, testContent);
-    console.log(chalk.green(`✅ Created test: ${testPath}`));
+    console.log(pc.green(`✅ Created test: ${testPath}`));
   }
 
   // Instructions for next steps
-  console.log(chalk.bold.yellow('\n📝 Next Steps:'));
-  console.log(chalk.gray('1. Review and customize the generated cleaner'));
-  console.log(chalk.gray(`2. Add the cleaner to src/cleaners/index.ts:`));
-  console.log(chalk.cyan(`   import ${answers.name}Cleaner from './${fileName}';`));
-  console.log(chalk.cyan(`   this.cleaners.set('${answers.name}', ${answers.name}Cleaner);`));
-  console.log(chalk.gray('3. Update the config types if needed'));
-  console.log(chalk.gray('4. Run tests: npm test'));
-  console.log(chalk.gray('5. Test the cleaner: npm run dev -- clean --dry-run'));
+  console.log(pc.bold(pc.yellow('\n📝 Next Steps:')));
+  console.log(pc.gray('1. Review and customize the generated cleaner'));
+  console.log(pc.gray(`2. Add the cleaner to src/cleaners/index.ts:`));
+  console.log(pc.cyan(`   import ${answers.name}Cleaner from './${fileName}';`));
+  console.log(pc.cyan(`   this.cleaners.set('${answers.name}', ${answers.name}Cleaner);`));
+  console.log(pc.gray('3. Update the config types if needed'));
+  console.log(pc.gray('4. Run tests: npm test'));
+  console.log(pc.gray('5. Test the cleaner: npm run dev -- clean --dry-run'));
 
-  console.log(chalk.bold.green('\n✨ Done!'));
+  console.log(pc.bold(pc.green('\n✨ Done!')));
 }
 
 // Run the generator
 main().catch((error) => {
-  console.error(chalk.red('Error:'), error);
+  console.error(pc.red('Error:'), error);
   process.exit(1);
 });

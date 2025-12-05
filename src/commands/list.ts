@@ -1,6 +1,6 @@
 import { cacheManager } from "../cleaners";
 import { printHeader, printSuccess, printInfo, formatSize } from "../utils/cli";
-import chalk from "chalk";
+import pc from "picocolors";
 
 export async function listCommand(options?: any): Promise<void> {
   printHeader("Available Cache Cleaners");
@@ -21,7 +21,7 @@ export async function listCommand(options?: any): Promise<void> {
   };
 
   // Check availability for each cleaner
-  console.log(chalk.cyan("\nDetecting installed tools...\n"));
+  console.log(pc.cyan("\nDetecting installed tools...\n"));
 
   let totalSize = 0;
   let availableCount = 0;
@@ -36,20 +36,20 @@ export async function listCommand(options?: any): Promise<void> {
       system: "⚙️  System Tools",
     };
 
-    console.log(chalk.bold(typeLabels[type as keyof typeof typeLabels]));
+    console.log(pc.bold(typeLabels[type as keyof typeof typeLabels]));
 
     for (const cleaner of cleaners) {
       const isAvailable = await cleaner.isAvailable();
       const status = isAvailable
-        ? chalk.green("✅ Available")
-        : chalk.gray("⚪ Not detected");
+        ? pc.green("✅ Available")
+        : pc.gray("⚪ Not detected");
 
       let sizeInfo = "";
       if (options?.sizes && isAvailable) {
         try {
           const result = await cleaner.getCacheInfo();
           if (result.size && result.size > 0) {
-            sizeInfo = chalk.yellow(` (${formatSize(result.size)})`);
+            sizeInfo = pc.yellow(` (${formatSize(result.size)})`);
             totalSize += result.size;
           }
         } catch (error) {
@@ -59,7 +59,7 @@ export async function listCommand(options?: any): Promise<void> {
 
       if (isAvailable) availableCount++;
       console.log(
-        `  ${status} ${chalk.bold(cleaner.name)}${sizeInfo} - ${cleaner.description}`,
+        `  ${status} ${pc.bold(cleaner.name)}${sizeInfo} - ${cleaner.description}`,
       );
     }
 

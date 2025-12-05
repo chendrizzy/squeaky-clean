@@ -1,13 +1,9 @@
 // src/config/loadConfig.ts
-// uses Ajv for schema validation
+// uses zod for schema validation
 
 import fs from "node:fs";
 import path from "node:path";
-import Ajv, { DefinedError } from "ajv";
-import addFormats from "ajv-formats";
-
-const ajv = new Ajv({ allErrors: true, strict: true, allowUnionTypes: true });
-addFormats(ajv);
+import { validateMixedConfig } from "./configSchema";
 
 export type SqueakyConfig = Record<string, any>;
 
@@ -72,13 +68,9 @@ export async function resolveExtendsChain(
 export async function loadAndValidateConfig(
   configPath: string,
 ): Promise<SqueakyConfig> {
-  const schemaPath = path.join(process.cwd(), "schemas/config.schema.json");
-  const schema = await loadJson(schemaPath);
-  const validate = ajv.compile(schema);
-
   const root = await loadJson(configPath);
 
-  // Expand env in string leafs (shallow pass; paths/args/etc)
+  // Expand env in string leafs
   function expandLeaves(obj: any): any {
     if (typeof obj === "string") return expandEnv(obj);
     if (Array.isArray(obj)) return obj.map(expandLeaves);
@@ -96,15 +88,14 @@ export async function loadAndValidateConfig(
   for (const link of chain) merged = deepMerge(merged, expandLeaves(link.json));
   merged = deepMerge(merged, expandLeaves(root));
 
-  // Validate final object
-  const ok = validate(merged);
-  if (!ok) {
-    const errors = (validate.errors as DefinedError[])
-      .map((e) => `${e.instancePath} ${e.message}`)
-      .join("\n");
+  // Validate with zod
+  const validation = validateMixedConfig(merged);
+  if (!validation.success) {
+    const errors = (validation.errors || []).join("\n");
     const err = new Error(`Invalid config: \n${errors}`);
-    (err as any).errors = validate.errors;
+    (err as any).errors = validation.errors;
     throw err;
   }
+
   return merged;
 }

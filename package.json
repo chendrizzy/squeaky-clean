@@ -1,6 +1,6 @@
 {
   "name": "squeaky-clean",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "✨ Easy, customizable and expandable development cache cleaner CLI with interactive configuration! Smart, safe, and configurable cache management for 25+ development tools.",
   "main": "dist/cli.js",
   "bin": {
@@ -88,11 +88,7 @@
     "LICENSE"
   ],
   "dependencies": {
-    "ajv": "^8.17.1",
-    "ajv-formats": "^3.0.1",
-    "chalk": "^4.1.2",
     "commander": "^11.1.0",
-    "conf": "^10.2.0",
     "execa": "^5.1.1",
     "filesize": "^10.1.6",
     "fs-extra": "^11.3.2",
@@ -100,13 +96,13 @@
     "inquirer": "^8.2.7",
     "minimatch": "^10.1.1",
     "ora": "^5.4.1",
+    "picocolors": "^1.1.1",
     "play-sound": "^1.1.6",
     "rimraf": "^6.1.2",
-    "squeaky-clean": "^0.1.8"
+    "zod": "^4.1.13"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
-    "vite": "^6.4.1",
     "@types/fs-extra": "^11.0.4",
     "@types/inquirer": "^9.0.9",
     "@types/node": "^20.19.25",
@@ -122,6 +118,7 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.48.1",
+    "vite": "^6.4.1",
     "vitest": "^3.2.4"
   }
 }

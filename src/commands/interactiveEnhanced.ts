@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import inquirer from "inquirer";
-import chalk from "chalk";
+import pc from "picocolors";
 
 import {
   formatSizeWithColor,
@@ -63,9 +63,9 @@ export const interactiveEnhancedCommand = new Command("interactive")
         if (profile) {
           profileManager.setActiveProfile(options.profile);
           console.log(
-            chalk.green(`✅ Using profile: ${profile.icon} ${profile.name}`),
+            pc.green(`✅ Using profile: ${profile.icon} ${profile.name}`),
           );
-          console.log(chalk.gray(`   ${profile.description}`));
+          console.log(pc.gray(`   ${profile.description}`));
         }
       } else {
         // Ask user to select a profile
@@ -145,17 +145,17 @@ export const interactiveEnhancedCommand = new Command("interactive")
               protectedPaths = [...protectedPaths, ...newPaths];
               config.set({ ...currentConfig, protectedPaths });
               console.log(
-                chalk.green(`✅ Added ${newPaths.length} protected path(s)`),
+                pc.green(`✅ Added ${newPaths.length} protected path(s)`),
               );
             }
             break;
 
           case "view":
             if (protectedPaths.length > 0) {
-              console.log(chalk.bold("\n🛡️ Protected Paths:"));
+              console.log(pc.bold("\n🛡️ Protected Paths:"));
               protectedPaths.forEach((p) => console.log(`   • ${p}`));
             } else {
-              console.log(chalk.yellow("No protected paths configured"));
+              console.log(pc.yellow("No protected paths configured"));
             }
             break;
 
@@ -174,7 +174,7 @@ export const interactiveEnhancedCommand = new Command("interactive")
               );
               config.set({ ...currentConfig, protectedPaths });
               console.log(
-                chalk.green(
+                pc.green(
                   `✅ Removed ${pathsToRemove.length} protected path(s)`,
                 ),
               );
@@ -190,7 +190,7 @@ export const interactiveEnhancedCommand = new Command("interactive")
 
       if (allCleaners.length === 0) {
         console.log(
-          chalk.yellow("\n⚠️  No caches found with reclaimable space."),
+          pc.yellow("\n⚠️  No caches found with reclaimable space."),
         );
         return;
       }
@@ -218,7 +218,7 @@ export const interactiveEnhancedCommand = new Command("interactive")
       }
 
       // Display summary
-      console.log(chalk.bold("\n📋 Available Cleaners:"));
+      console.log(pc.bold("\n📋 Available Cleaners:"));
       allCleaners.forEach((cleaner) => {
         const info = cacheInfoMap.get(cleaner.name);
         const categories = categoriesMap.get(cleaner.name);
@@ -226,20 +226,20 @@ export const interactiveEnhancedCommand = new Command("interactive")
         const size = info.totalSize || 0;
 
         console.log(
-          `\n   ${emoji} ${chalk.bold(cleaner.name)} - ${formatSizeWithColor(size)}`,
+          `\n   ${emoji} ${pc.bold(cleaner.name)} - ${formatSizeWithColor(size)}`,
         );
-        console.log(`      ${chalk.gray(cleaner.description)}`);
+        console.log(`      ${pc.gray(cleaner.description)}`);
 
         if (categories && categories.length > 0) {
           console.log(
-            `      ${chalk.cyan(`${categories.length} categories available`)}`,
+            `      ${pc.cyan(`${categories.length} categories available`)}`,
           );
         }
       });
 
       console.log(
-        chalk.bold(
-          `\n💾 Total reclaimable space: ${chalk.green(formatSizeWithColor(totalSize))}\n`,
+        pc.bold(
+          `\n💾 Total reclaimable space: ${pc.green(formatSizeWithColor(totalSize))}\n`,
         ),
       );
 
@@ -275,7 +275,7 @@ export const interactiveEnhancedCommand = new Command("interactive")
       ]);
 
       if (selectionMethod === "cancel") {
-        console.log(chalk.yellow("Cancelled"));
+        console.log(pc.yellow("Cancelled"));
         return;
       }
 
@@ -449,7 +449,7 @@ export const interactiveEnhancedCommand = new Command("interactive")
       }
 
       if (selectedCleaners.length === 0) {
-        console.log(chalk.yellow("No cleaners selected"));
+        console.log(pc.yellow("No cleaners selected"));
         return;
       }
 
@@ -468,7 +468,7 @@ export const interactiveEnhancedCommand = new Command("interactive")
       ]);
 
       if (action === "cancel") {
-        console.log(chalk.yellow("Cancelled"));
+        console.log(pc.yellow("Cancelled"));
         return;
       }
 
@@ -476,7 +476,7 @@ export const interactiveEnhancedCommand = new Command("interactive")
 
       // Execute cleaning
       console.log(
-        chalk.bold(
+        pc.bold(
           `\n${isDryRun ? "👀 Preview Mode" : "🧹 Cleaning"} Selected Caches...\n`,
         ),
       );
@@ -487,7 +487,7 @@ export const interactiveEnhancedCommand = new Command("interactive")
         const criteria = (cleaner as any).criteria;
 
         console.log(
-          `${getCacheEmoji(cleaner.type)} Processing ${chalk.bold(cleaner.name)}...`,
+          `${getCacheEmoji(cleaner.type)} Processing ${pc.bold(cleaner.name)}...`,
         );
 
         try {
@@ -514,7 +514,7 @@ export const interactiveEnhancedCommand = new Command("interactive")
           if (result.success) {
             const savedSize = result.sizeBefore - (result.sizeAfter || 0);
             console.log(
-              chalk.green(
+              pc.green(
                 `   ✅ ${isDryRun ? "Would save" : "Saved"}: ${formatSizeWithColor(savedSize)}`,
               ),
             );
@@ -524,7 +524,7 @@ export const interactiveEnhancedCommand = new Command("interactive")
               result.clearedCategories.length > 0
             ) {
               console.log(
-                chalk.gray(
+                pc.gray(
                   `      Categories: ${result.clearedCategories.join(", ")}`,
                 ),
               );
@@ -535,22 +535,22 @@ export const interactiveEnhancedCommand = new Command("interactive")
                 info.paths.length - result.clearedPaths.length;
               if (skippedCount > 0) {
                 console.log(
-                  chalk.yellow(
+                  pc.yellow(
                     `      Skipped ${skippedCount} protected path(s)`,
                   ),
                 );
               }
             }
           } else {
-            console.log(chalk.red(`   ❌ Failed: ${result.error}`));
+            console.log(pc.red(`   ❌ Failed: ${result.error}`));
           }
         } catch (error) {
-          console.log(chalk.red(`   ❌ Error: ${error}`));
+          console.log(pc.red(`   ❌ Error: ${error}`));
         }
       }
 
       // Summary
-      console.log(chalk.bold("\n✨ Complete!"));
+      console.log(pc.bold("\n✨ Complete!"));
 
       if (!isDryRun) {
         // Save configuration if modified
@@ -558,10 +558,10 @@ export const interactiveEnhancedCommand = new Command("interactive")
           config.set({ ...currentConfig, protectedPaths });
         }
 
-        console.log(chalk.green("Cache cleaning completed successfully!"));
+        console.log(pc.green("Cache cleaning completed successfully!"));
       } else {
         console.log(
-          chalk.yellow(
+          pc.yellow(
             "This was a dry run. Run without preview to actually clean caches.",
           ),
         );

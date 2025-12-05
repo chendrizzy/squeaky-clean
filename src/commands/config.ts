@@ -7,7 +7,7 @@ import {
 } from "../utils/cli";
 import { config } from "../config";
 import { cacheManager } from "../cleaners";
-import chalk from "chalk";
+import pc from "picocolors";
 import inquirer from "inquirer";
 
 interface ConfigOptions {
@@ -100,24 +100,24 @@ async function showCurrentConfig(): Promise<void> {
   console.log();
 
   // Output settings
-  console.log(chalk.bold("📝 Output Settings:"));
+  console.log(pc.bold("📝 Output Settings:"));
   console.log(
-    `  ${symbols.folder} Verbose: ${currentConfig.output?.verbose ? chalk.green("enabled") : chalk.gray("disabled")}`,
+    `  ${symbols.folder} Verbose: ${currentConfig.output?.verbose ? pc.green("enabled") : pc.gray("disabled")}`,
   );
   console.log(
-    `  ${symbols.folder} Colors: ${currentConfig.output?.useColors !== false ? chalk.green("enabled") : chalk.gray("disabled")}`,
+    `  ${symbols.folder} Colors: ${currentConfig.output?.useColors !== false ? pc.green("enabled") : pc.gray("disabled")}`,
   );
   console.log();
 
   // Safety settings
-  console.log(chalk.bold("🔒 Safety Settings:"));
+  console.log(pc.bold("🔒 Safety Settings:"));
   console.log(
-    `  ${symbols.folder} Require Confirmation: ${config.shouldRequireConfirmation() ? chalk.yellow("yes") : chalk.green("no")}`,
+    `  ${symbols.folder} Require Confirmation: ${config.shouldRequireConfirmation() ? pc.yellow("yes") : pc.green("no")}`,
   );
   console.log();
 
   // Tool enablement
-  console.log(chalk.bold("🔧 Tool Enablement:"));
+  console.log(pc.bold("🔧 Tool Enablement:"));
   const allCleaners = cacheManager.getAllCleaners();
 
   const groupedCleaners = {
@@ -143,8 +143,8 @@ async function showCurrentConfig(): Promise<void> {
     for (const cleaner of cleaners) {
       const enabled = config.isToolEnabled(cleaner.name as any);
       const status = enabled
-        ? chalk.green("✓ enabled")
-        : chalk.red("✗ disabled");
+        ? pc.green("✓ enabled")
+        : pc.red("✗ disabled");
       console.log(`     ${status} ${cleaner.name}`);
     }
   }
@@ -174,7 +174,7 @@ async function getConfigValue(key: string): Promise<void> {
   }
 
   if (value !== undefined) {
-    console.log(`\n${symbols.folder} ${key}: ${chalk.bold(String(value))}`);
+    console.log(`\n${symbols.folder} ${key}: ${pc.bold(String(value))}`);
   } else {
     printWarning(`Configuration key '${key}' not found`);
     printInfo("Use `squeaky config --list` to see available options");
@@ -338,28 +338,28 @@ async function resetConfiguration(): Promise<void> {
 async function showConfigPath(): Promise<void> {
   const configPath = config.getConfigPath();
   console.log(`\n📂 Configuration file location:`);
-  console.log(`   ${chalk.bold(configPath)}`);
+  console.log(`   ${pc.bold(configPath)}`);
 
   // Check if config file exists
   try {
     const fs = await import("fs");
     const exists = fs.existsSync(configPath);
     if (exists) {
-      console.log(chalk.green("   ✓ Config file exists"));
+      console.log(pc.green("   ✓ Config file exists"));
     } else {
       console.log(
-        chalk.yellow("   ⚠ Config file will be created when first used"),
+        pc.yellow("   ⚠ Config file will be created when first used"),
       );
     }
   } catch (error) {
-    console.log(chalk.gray("   (Unable to check file existence)"));
+    console.log(pc.gray("   (Unable to check file existence)"));
   }
 }
 
 async function interactiveConfigWizard(): Promise<void> {
   console.log("\n🧙‍♂️ Interactive Configuration Wizard");
   console.log(
-    chalk.gray("This wizard will help you configure squeaky-clean settings.\n"),
+    pc.gray("This wizard will help you configure squeaky-clean settings.\n"),
   );
 
   const currentConfig = config.get();
@@ -375,7 +375,7 @@ async function interactiveConfigWizard(): Promise<void> {
   };
 
   // Step 1: Output preferences
-  console.log(chalk.bold("📝 Step 1: Output Preferences"));
+  console.log(pc.bold("📝 Step 1: Output Preferences"));
   const outputAnswers = await inquirer.prompt([
     {
       type: "confirm",
@@ -393,7 +393,7 @@ async function interactiveConfigWizard(): Promise<void> {
   ]);
 
   // Step 2: Safety preferences
-  console.log(chalk.bold("\n🔒 Step 2: Safety Preferences"));
+  console.log(pc.bold("\n🔒 Step 2: Safety Preferences"));
   const safetyAnswers = await inquirer.prompt([
     {
       type: "confirm",
@@ -405,9 +405,9 @@ async function interactiveConfigWizard(): Promise<void> {
   ]);
 
   // Step 3: Tool enablement by category
-  console.log(chalk.bold("\n🔧 Step 3: Tool Configuration"));
+  console.log(pc.bold("\n🔧 Step 3: Tool Configuration"));
   console.log(
-    chalk.gray(
+    pc.gray(
       "Configure which cache cleaners should be enabled by category.\n",
     ),
   );
@@ -426,7 +426,7 @@ async function interactiveConfigWizard(): Promise<void> {
     };
 
     console.log(
-      chalk.bold(
+      pc.bold(
         `\n${typeEmojis[type]} ${type.charAt(0).toUpperCase() + type.slice(1).replace("-", " ")} Tools:`,
       ),
     );
@@ -453,16 +453,16 @@ async function interactiveConfigWizard(): Promise<void> {
   }
 
   // Step 4: Review and apply
-  console.log(chalk.bold("\n📋 Step 4: Review Configuration"));
+  console.log(pc.bold("\n📋 Step 4: Review Configuration"));
   console.log("\nYour new configuration will be:");
   console.log(
-    `  ${symbols.folder} Verbose output: ${outputAnswers.verbose ? chalk.green("enabled") : chalk.gray("disabled")}`,
+    `  ${symbols.folder} Verbose output: ${outputAnswers.verbose ? pc.green("enabled") : pc.gray("disabled")}`,
   );
   console.log(
-    `  ${symbols.folder} Colored output: ${outputAnswers.useColors ? chalk.green("enabled") : chalk.gray("disabled")}`,
+    `  ${symbols.folder} Colored output: ${outputAnswers.useColors ? pc.green("enabled") : pc.gray("disabled")}`,
   );
   console.log(
-    `  ${symbols.folder} Require confirmation: ${safetyAnswers.requireConfirmation ? chalk.yellow("yes") : chalk.green("no")}`,
+    `  ${symbols.folder} Require confirmation: ${safetyAnswers.requireConfirmation ? pc.yellow("yes") : pc.green("no")}`,
   );
 
   console.log("\n🔧 Enabled tools:");
@@ -475,14 +475,14 @@ async function interactiveConfigWizard(): Promise<void> {
 
   if (enabledTools.length > 0) {
     enabledTools.forEach((tool) => {
-      console.log(`     ${chalk.green("✓")} ${tool}`);
+      console.log(`     ${pc.green("✓")} ${tool}`);
     });
   }
 
   if (disabledTools.length > 0) {
     console.log("\n🔧 Disabled tools:");
     disabledTools.forEach((tool) => {
-      console.log(`     ${chalk.red("✗")} ${tool}`);
+      console.log(`     ${pc.red("✗")} ${tool}`);
     });
   }
 

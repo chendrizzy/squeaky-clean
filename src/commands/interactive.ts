@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import inquirer from "inquirer";
-import chalk from "chalk";
+import pc from "picocolors";
 import { cacheManager } from "../cleaners";
 import {
   formatSizeWithColor,
@@ -59,18 +59,18 @@ export const interactiveCommand = new Command("interactive")
       if (!process.stdin.isTTY) {
         printError("Interactive mode requires a TTY environment.");
         console.log(
-          chalk.yellow("💡 Tip: Use non-interactive commands instead:"),
+          pc.yellow("💡 Tip: Use non-interactive commands instead:"),
         );
         console.log(
-          chalk.gray("   • squeaky clean --all    # Clean all caches"),
+          pc.gray("   • squeaky clean --all    # Clean all caches"),
         );
         console.log(
-          chalk.gray(
+          pc.gray(
             "   • squeaky clean --dry-run # Preview what would be cleaned",
           ),
         );
         console.log(
-          chalk.gray("   • squeaky list --sizes   # List caches with sizes"),
+          pc.gray("   • squeaky list --sizes   # List caches with sizes"),
         );
         return;
       }
@@ -91,21 +91,21 @@ export const interactiveCommand = new Command("interactive")
 
       if (availableCaches.length === 0) {
         console.log(
-          chalk.yellow("\n⚠️  No caches found with reclaimable space."),
+          pc.yellow("\n⚠️  No caches found with reclaimable space."),
         );
-        console.log(chalk.gray("   This could mean:"));
-        console.log(chalk.gray("   • Your caches are already clean"));
+        console.log(pc.gray("   This could mean:"));
+        console.log(pc.gray("   • Your caches are already clean"));
         console.log(
-          chalk.gray("   • No supported development tools are installed"),
+          pc.gray("   • No supported development tools are installed"),
         );
         console.log(
-          chalk.gray("   • Cache directories are in non-standard locations"),
+          pc.gray("   • Cache directories are in non-standard locations"),
         );
         return;
       }
 
       // Display summary
-      console.log(chalk.bold("\n📋 Found caches:"));
+      console.log(pc.bold("\n📋 Found caches:"));
       const totalSize = availableCaches.reduce(
         (sum: number, cache: any) => sum + cache.size,
         0,
@@ -114,13 +114,13 @@ export const interactiveCommand = new Command("interactive")
         const size = formatSizeWithColor(cache.size);
         const emoji = getCacheEmoji(cache.type);
         console.log(
-          `   ${emoji} ${chalk.bold(cache.name)} - ${size} - ${chalk.gray(cache.description)}`,
+          `   ${emoji} ${pc.bold(cache.name)} - ${size} - ${pc.gray(cache.description)}`,
         );
       });
 
       console.log(
-        chalk.bold(
-          `\n💾 Total reclaimable space: ${chalk.green(formatSizeWithColor(totalSize))}\n`,
+        pc.bold(
+          `\n💾 Total reclaimable space: ${pc.green(formatSizeWithColor(totalSize))}\n`,
         ),
       );
 
@@ -152,7 +152,7 @@ export const interactiveCommand = new Command("interactive")
       ]);
 
       if (selectionMethod === "exit") {
-        console.log(chalk.yellow("\n👋 Exiting without cleaning caches."));
+        console.log(pc.yellow("\n👋 Exiting without cleaning caches."));
         return;
       }
 
@@ -206,7 +206,7 @@ export const interactiveCommand = new Command("interactive")
       }
 
       if (selectedCaches.length === 0) {
-        console.log(chalk.yellow("\n⚠️  No caches selected. Exiting."));
+        console.log(pc.yellow("\n⚠️  No caches selected. Exiting."));
         return;
       }
 
@@ -215,9 +215,9 @@ export const interactiveCommand = new Command("interactive")
         .filter((cache: any) => selectedCaches.includes(cache.name))
         .reduce((sum: number, cache: any) => sum + cache.size, 0);
 
-      console.log(chalk.bold("\n🎯 Selected for cleaning:"));
+      console.log(pc.bold("\n🎯 Selected for cleaning:"));
       console.log(
-        chalk.gray(
+        pc.gray(
           `   This will free up approximately ${formatSizeWithColor(selectedSize)}`,
         ),
       );
@@ -260,7 +260,7 @@ export const interactiveCommand = new Command("interactive")
         }));
 
       if (confirmClean === "cancel") {
-        console.log(chalk.yellow("\n👋 Operation cancelled."));
+        console.log(pc.yellow("\n👋 Operation cancelled."));
         return;
       }
 
@@ -268,7 +268,7 @@ export const interactiveCommand = new Command("interactive")
 
       // Execute cleaning
       console.log(
-        chalk.bold(
+        pc.bold(
           `\n${isDryRun ? "🔍 DRY RUN: " : "🧹 "}Cleaning selected caches...\n`,
         ),
       );
@@ -307,12 +307,12 @@ export const interactiveCommand = new Command("interactive")
             result.clearedPaths.length > 0
           ) {
             result.clearedPaths.forEach((path: string) => {
-              console.log(chalk.gray(`     → ${path}`));
+              console.log(pc.gray(`     → ${path}`));
             });
           }
         } else {
           console.log(
-            `${emoji} ${name}: ${chalk.red(result.error || "Unknown error")}`,
+            `${emoji} ${name}: ${pc.red(result.error || "Unknown error")}`,
           );
         }
       });
@@ -321,10 +321,10 @@ export const interactiveCommand = new Command("interactive")
       console.log();
       if (totalFreed > 0) {
         console.log(
-          `   ${chalk.green(formatSizeWithColor(totalFreed))} ${isDryRun ? "would be" : "was"} freed\n`,
+          `   ${pc.green(formatSizeWithColor(totalFreed))} ${isDryRun ? "would be" : "was"} freed\n`,
         );
       } else {
-        console.log(chalk.yellow("   No space was freed\n"));
+        console.log(pc.yellow("   No space was freed\n"));
       }
 
       if (isDryRun) {
@@ -338,7 +338,7 @@ export const interactiveCommand = new Command("interactive")
         ]);
 
         if (proceedWithClean) {
-          console.log(chalk.bold("\n🧹 Proceeding with actual cleaning...\n"));
+          console.log(pc.bold("\n🧹 Proceeding with actual cleaning...\n"));
           const realResults = await cacheManager.cleanAllCaches({
             dryRun: false,
             exclude: excludeCaches,
@@ -353,14 +353,14 @@ export const interactiveCommand = new Command("interactive")
           });
 
           console.log(
-            chalk.green(
+            pc.green(
               `✨ Real cleaning complete! Freed ${formatSizeWithColor(realFreed)}\n`,
             ),
           );
         }
       }
 
-      console.log(chalk.bold("🎉 Interactive cleaning session complete!"));
+      console.log(pc.bold("🎉 Interactive cleaning session complete!"));
     } catch (error) {
       printError(
         `Interactive command failed: ${error instanceof Error ? error.message : error}`,

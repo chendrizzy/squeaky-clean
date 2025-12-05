@@ -1,7 +1,7 @@
-import Conf from "conf";
 import { UserConfig } from "../types";
 import fs from "fs";
 import path from "path";
+import os from "os";
 
 export const defaultConfig: UserConfig = {
   enabledCaches: {
@@ -76,103 +76,75 @@ export const defaultConfig: UserConfig = {
   },
 };
 
+// Simple file-based config store (replaces 'conf' package)
+function getConfigDir(): string {
+  const platform = process.platform;
+  const homeDir = os.homedir();
+
+  if (platform === "win32") {
+    return path.join(process.env.APPDATA || path.join(homeDir, "AppData", "Roaming"), "squeaky-clean");
+  } else if (platform === "darwin") {
+    return path.join(homeDir, "Library", "Preferences", "squeaky-clean");
+  } else {
+    // Linux/Unix - follow XDG spec
+    return path.join(process.env.XDG_CONFIG_HOME || path.join(homeDir, ".config"), "squeaky-clean");
+  }
+}
+
+function ensureConfigDir(configDir: string): void {
+  if (!fs.existsSync(configDir)) {
+    fs.mkdirSync(configDir, { recursive: true });
+  }
+}
+
 class ConfigManager {
-  private conf: Conf<UserConfig>;
+  private store: UserConfig;
+  private configPath: string;
   private customConfig: UserConfig | null = null;
   private customConfigPath: string | null = null;
 
   constructor() {
-    this.conf = new Conf<UserConfig>({
-      projectName: "squeaky-clean",
-      projectVersion: "1.0.0",
-      defaults: defaultConfig,
-      schema: {
-        enabledCaches: {
-          type: "object",
-          properties: {
-            packageManagers: { type: "boolean" },
-            buildTools: { type: "boolean" },
-            browsers: { type: "boolean" },
-            ides: { type: "boolean" },
-            system: { type: "boolean" },
-          },
-        },
-        tools: {
-          type: "object",
-          properties: {
-            // Package managers
-            npm: { type: "boolean" },
-            yarn: { type: "boolean" },
-            pnpm: { type: "boolean" },
-            bun: { type: "boolean" },
-            pip: { type: "boolean" },
-            cargo: { type: "boolean" },
-            poetry: { type: "boolean" },
-            pipenv: { type: "boolean" },
-            cocoapods: { type: "boolean" },
-            swiftpm: { type: "boolean" },
-            nuget: { type: "boolean" },
-            brew: { type: "boolean" },
-            nix: { type: "boolean" },
+    const configDir = getConfigDir();
+    this.configPath = path.join(configDir, "config.json");
+    this.store = this.loadStore();
+  }
 
-            // Build tools
-            webpack: { type: "boolean" },
-            vite: { type: "boolean" },
-            nx: { type: "boolean" },
-            turbo: { type: "boolean" },
-            flutter: { type: "boolean" },
-            "node-gyp": { type: "boolean" },
-            "go-build": { type: "boolean" },
-            maven: { type: "boolean" },
-            playwright: { type: "boolean" },
+  private loadStore(): UserConfig {
+    try {
+      if (fs.existsSync(this.configPath)) {
+        const raw = fs.readFileSync(this.configPath, "utf-8");
+        const parsed = JSON.parse(raw);
+        return this.deepMerge(defaultConfig, parsed);
+      }
+    } catch {
+      // Corrupted config - use defaults
+    }
+    return { ...defaultConfig };
+  }
 
-            // Browsers
-            chrome: { type: "boolean" },
-            firefox: { type: "boolean" },
+  private saveStore(): void {
+    try {
+      ensureConfigDir(path.dirname(this.configPath));
+      fs.writeFileSync(this.configPath, JSON.stringify(this.store, null, 2));
+    } catch {
+      // Ignore write errors (e.g., in tests or sandboxed environments)
+    }
+  }
 
-            // IDEs
-            vscode: { type: "boolean" },
-            xcode: { type: "boolean" },
-            androidstudio: { type: "boolean" },
-            jetbrains: { type: "boolean" },
-            windsurf: { type: "boolean" },
-            cursor: { type: "boolean" },
-            zed: { type: "boolean" },
-
-            // System tools
-            docker: { type: "boolean" },
-            gradle: { type: "boolean" },
-          },
-        },
-        safety: {
-          type: "object",
-          properties: {
-            requireConfirmation: { type: "boolean" },
-            dryRunDefault: { type: "boolean" },
-            backupBeforeClearing: { type: "boolean" },
-            excludeSystemCritical: { type: "boolean" },
-          },
-        },
-        customPaths: {
-          type: "array",
-          items: { type: "string" },
-        },
-        protectedPaths: {
-          // New property
-          type: "array",
-          items: { type: "string" },
-        },
-        output: {
-          type: "object",
-          properties: {
-            verbose: { type: "boolean" },
-            showSizes: { type: "boolean" },
-            useColors: { type: "boolean" },
-            emojis: { type: "string", enum: ["on", "off", "minimal"] },
-          },
-        },
-      },
-    });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private deepMerge(base: any, override: any): any {
+    if (!override || typeof override !== "object") return base;
+    if (Array.isArray(override)) return override;
+    const result = { ...base };
+    for (const key of Object.keys(override)) {
+      const val = override[key];
+      if (val !== undefined && val !== null && typeof val === "object" && !Array.isArray(val)) {
+        result[key] = this.deepMerge(base[key] || {}, val);
+      } else if (val !== undefined) {
+        result[key] = val;
+      }
+    }
+    return result;
   }
 
   loadCustomConfig(configPath: string): void {
@@ -195,7 +167,7 @@ class ConfigManager {
     if (this.customConfig) {
       return this.customConfig;
     }
-    return this.conf.store;
+    return this.store;
   }
 
   set(config: Partial<UserConfig>): void {
@@ -203,7 +175,8 @@ class ConfigManager {
       // Update custom config in memory (but don't save to file)
       this.customConfig = { ...this.customConfig, ...config };
     } else {
-      this.conf.set(config);
+      this.store = this.deepMerge(this.store, config);
+      this.saveStore();
     }
   }
 
@@ -212,7 +185,14 @@ class ConfigManager {
       this.customConfig = null;
       this.customConfigPath = null;
     } else {
-      this.conf.clear();
+      this.store = { ...defaultConfig };
+      try {
+        if (fs.existsSync(this.configPath)) {
+          fs.unlinkSync(this.configPath);
+        }
+      } catch {
+        // Ignore errors during reset
+      }
     }
   }
 
@@ -220,7 +200,7 @@ class ConfigManager {
     if (this.customConfigPath) {
       return this.customConfigPath;
     }
-    return this.conf.path;
+    return this.configPath;
   }
 
   // Specific getters for convenience
