@@ -8,7 +8,7 @@
     "squeaky-clean": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --build",
     "build:watch": "tsc --watch",
     "dev": "tsx src/cli.ts",
     "start": "node dist/cli.js",
