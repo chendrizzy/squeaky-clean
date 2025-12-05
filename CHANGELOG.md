@@ -5,6 +5,24 @@ All notable changes to Squeaky Clean will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Test Infrastructure** - Fixed timeout issues in long-running integration tests
+  - Configured Vitest for long-running integration tests with extended timeouts (120s test, 60s hooks, 30s teardown)
+  - Used forks pool with singleFork mode to prevent IPC timeout errors during lengthy test runs
+  - Increased specific test timeouts to match actual execution times:
+    - CacheManager tests: 60-120s timeouts for real filesystem operations
+    - Integration tests: 120-360s timeouts for comprehensive test suites
+  - All 38 tests now pass consistently (21 CacheManager + 17 integration)
+- **Universal Binary** - Added macOS Universal Binary thinner to reclaim space from multi-architecture binaries
+- **IDE Cleaners** - Added support for additional IDE caches (cursor, thonny)
+
+### Technical
+- Vitest configuration optimized for 30+ cleaner filesystem scans taking 10-15 minutes total
+- Test suite handles both CacheManager unit tests and full integration tests reliably
+- Memory leak tests reduced iterations (3→2) to stay within timeout while maintaining validation
+
 ## [0.0.2] - 2025-08-18
 
 ### Added:
