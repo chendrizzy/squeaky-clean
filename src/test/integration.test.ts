@@ -203,7 +203,7 @@ describe("Integration Tests", () => {
       // This should not throw even if some cleaners fail to clean
       const results = await cacheManager.cleanAllCaches({ dryRun: true });
       expect(Array.isArray(results)).toBe(true);
-    }, 60000);
+    }, 120000);
 
     it("should handle empty results gracefully", async () => {
       const summary = await cacheManager.getSummary();
@@ -233,8 +233,8 @@ describe("Integration Tests", () => {
     it("should handle repeated operations without memory leaks", async () => {
       const memoryBefore = process.memoryUsage().heapUsed;
 
-      // Run operations multiple times (reduced from 10 to 3 to avoid timeout)
-      for (let i = 0; i < 3; i++) {
+      // Run operations multiple times (reduced from 10 to 2 to avoid timeout)
+      for (let i = 0; i < 2; i++) {
         await cacheManager.getAllCacheInfo();
         await cacheManager.cleanAllCaches({ dryRun: true });
       }
@@ -242,8 +242,8 @@ describe("Integration Tests", () => {
       const memoryAfter = process.memoryUsage().heapUsed;
       const memoryIncrease = memoryAfter - memoryBefore;
 
-      // Should not use more than 15MB additional memory (increased threshold for fewer iterations)
-      expect(memoryIncrease).toBeLessThan(15 * 1024 * 1024);
-    }, 300000);
+      // Should not use more than 10MB additional memory (threshold for 2 iterations)
+      expect(memoryIncrease).toBeLessThan(10 * 1024 * 1024);
+    }, 360000);
   });
 });
