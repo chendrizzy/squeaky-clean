@@ -74,6 +74,11 @@ export const defaultConfig: UserConfig = {
     useColors: true,
     emojis: "on",
   },
+
+  autoUpdate: {
+    enabled: true,
+    checkIntervalHours: 24, // check once per day
+  },
 };
 
 // Simple file-based config store (replaces 'conf' package)
@@ -279,6 +284,46 @@ class ConfigManager {
     if (envValue === "1") return true;
     // Default to true if not explicitly set
     return true;
+  }
+
+  // Auto-update methods
+  isAutoUpdateEnabled(): boolean {
+    const config = this.get();
+    return config.autoUpdate?.enabled ?? defaultConfig.autoUpdate?.enabled ?? true;
+  }
+
+  getAutoUpdateCheckInterval(): number {
+    const config = this.get();
+    return config.autoUpdate?.checkIntervalHours ?? defaultConfig.autoUpdate?.checkIntervalHours ?? 24;
+  }
+
+  getLastUpdateCheck(): Date | null {
+    const config = this.get();
+    const lastCheck = config.autoUpdate?.lastCheck;
+    return lastCheck ? new Date(lastCheck) : null;
+  }
+
+  setLastUpdateCheck(date: Date): void {
+    const currentConfig = this.get();
+    this.set({
+      ...currentConfig,
+      autoUpdate: {
+        ...currentConfig.autoUpdate,
+        enabled: currentConfig.autoUpdate?.enabled ?? true,
+        lastCheck: date.toISOString(),
+      },
+    });
+  }
+
+  shouldCheckForUpdate(): boolean {
+    if (!this.isAutoUpdateEnabled()) return false;
+
+    const lastCheck = this.getLastUpdateCheck();
+    if (!lastCheck) return true;
+
+    const intervalHours = this.getAutoUpdateCheckInterval();
+    const hoursSinceCheck = (Date.now() - lastCheck.getTime()) / (1000 * 60 * 60);
+    return hoursSinceCheck >= intervalHours;
   }
 }
 

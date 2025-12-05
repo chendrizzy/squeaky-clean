@@ -28,6 +28,7 @@ Essentially a *"universal cachectl"*—**smart** *(sort of)*, **safe** (at least
 - **🔄 Config Migration**: Automatic migration from legacy to new configuration format
 - **🔌 Plugin Support**: Discover and use community cleaners via npm packages
 - **📋 JSON Output**: Machine-readable output for scripting and automation
+- **🔄 Auto-Update**: Background update checking with easy self-update command
 
 ## 📦 Installation
 
@@ -54,6 +55,24 @@ bun add -g squeaky-clean
 
 ```bash
 npm install --save-dev squeaky-clean
+```
+
+### Updating
+
+Squeaky Clean includes a built-in update command:
+
+```bash
+# Check for and install updates
+squeaky update
+
+# Only check for updates without installing
+squeaky update --check
+```
+
+By default, squeaky-clean will automatically check for updates once every 24 hours when you run any command. You can disable this with:
+
+```bash
+squeaky update --disable-auto-update
 ```
 
 ## Usage
@@ -153,6 +172,7 @@ squeaky clean --config my-config.json --dry-run
 | `config` | Manage configuration | - |
 | `doctor` | Check system and diagnose issues | - |
 | `auto` | Configure automatic cleaning | - |
+| `update` | Check for and install updates | - |
 | `interactive` | Start interactive configuration wizard | `i` |
 
 ### Command Options
@@ -185,6 +205,12 @@ squeaky clean --config my-config.json --dry-run
 
 - `-s, --sizes` - Include cache sizes inline with the list
 - `-t, --type <type>` - Filter by cache type
+
+#### `update` Options
+
+- `-c, --check` - Only check for updates without installing
+- `--enable-auto-update` - Enable automatic update checks on startup
+- `--disable-auto-update` - Disable automatic update checks
 
 #### Global Options
 

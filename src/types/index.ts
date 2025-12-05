@@ -193,6 +193,13 @@ export interface UserConfig {
     lastRun?: string; // ISO date string
     nextRun?: string; // ISO date string
   };
+
+  // Auto-update settings
+  autoUpdate?: {
+    enabled: boolean; // check for updates (default: true)
+    checkIntervalHours?: number; // hours between checks (default: 24)
+    lastCheck?: string; // ISO date string of last check
+  };
 }
 
 export interface CleanerModule {

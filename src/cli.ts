@@ -368,6 +368,29 @@ program
     }
   });
 
+// Update command - check for and install updates
+program
+  .command("update")
+  .description("check for and install updates")
+  .option("-c, --check", "only check for updates without installing")
+  .option("--enable-auto-update", "enable automatic update checks")
+  .option("--disable-auto-update", "disable automatic update checks")
+  .action(async (options) => {
+    try {
+      const { updateCommand } = await import("./commands/update");
+      await updateCommand({
+        check: options.check,
+        enableAutoUpdate: options.enableAutoUpdate,
+        disableAutoUpdate: options.disableAutoUpdate,
+      });
+    } catch (error) {
+      printError(
+        `Failed to check for updates: ${error instanceof Error ? error.message : error}`,
+      );
+      process.exit(1);
+    }
+  });
+
 // Help improvements
 program.addHelpText(
   "after",
@@ -381,6 +404,8 @@ Examples:
   $ squeaky auto --safe              # Smart automatic cleaning (safe mode)
   $ squeaky ub --list                # List Universal Binaries (Apple Silicon)
   $ squeaky ub                       # Interactive binary thinning
+  $ squeaky update                   # Check for and install updates
+  $ squeaky update --check           # Only check for updates
   $ squeaky-clean clean -a           # Using the full name
 
 Cache Types:
@@ -403,10 +428,26 @@ program.configureOutput({
   writeErr: (str) => printError(str),
 });
 
+// Background update check (non-blocking)
+async function runBackgroundUpdateCheck(): Promise<void> {
+  try {
+    const { backgroundUpdateCheck } = await import("./commands/update");
+    // Run in background without blocking CLI
+    backgroundUpdateCheck().catch(() => {
+      // Silently ignore errors
+    });
+  } catch {
+    // Silently ignore import errors
+  }
+}
+
 // potentially show pristine boot
 (async () => {
   // Check if pristine flag is present
   const hasPristineFlag = process.argv.includes("-p");
+
+  // Run background update check (non-blocking)
+  runBackgroundUpdateCheck();
 
   // if no command, pristine then help
   if (
