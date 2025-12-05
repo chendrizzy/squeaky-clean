@@ -23,10 +23,13 @@ export async function autoCommand(options: AutoOptions): Promise<void> {
 
     const spinner = ora("Scanning caches...").start();
 
-    // Get all cache information
+    // Get all cache information, excluding universal-binary (separate operation)
     const cacheInfos = await cacheManager.getAllCacheInfo();
     const availableCaches = cacheInfos.filter(
-      (info) => info.isInstalled && (info.size || 0) > 0,
+      (info) =>
+        info.isInstalled &&
+        (info.size || 0) > 0 &&
+        info.name !== "universal-binary", // UB is a separate operation via `squeaky ub`
     );
 
     spinner.stop();
@@ -62,19 +65,20 @@ export async function autoCommand(options: AutoOptions): Promise<void> {
       const isOld = lastModified && lastModified < cutoffDate;
 
       // High priority: Large, old, or temporary caches
+      const cacheSafe = isSafeToAutoClean(cache.name, cache.type);
       if (sizeInMB > 100) {
         recommendations.push({
           cache,
           reason: `Large cache (${sizeInMB.toFixed(1)} MB)`,
           priority: "high",
-          safe: true,
+          safe: cacheSafe,
         });
       } else if (isOld && sizeInMB > minSizeBytes / (1024 * 1024)) {
         recommendations.push({
           cache,
           reason: `Old cache (${Math.floor((Date.now() - lastModified!.getTime()) / (24 * 60 * 60 * 1000))} days)`,
           priority: "high",
-          safe: true,
+          safe: cacheSafe,
         });
       }
       // Medium priority: Moderate size caches
@@ -83,17 +87,17 @@ export async function autoCommand(options: AutoOptions): Promise<void> {
           cache,
           reason: `Moderate size (${sizeInMB.toFixed(1)} MB)`,
           priority: "medium",
-          safe: isTemporaryCache(cache.name),
+          safe: isSafeToAutoClean(cache.name, cache.type),
         });
       }
       // Low priority: Smaller caches that are safe to clean
       else if (
         sizeInMB > minSizeBytes / (1024 * 1024) &&
-        isTemporaryCache(cache.name)
+        isSafeToAutoClean(cache.name, cache.type)
       ) {
         recommendations.push({
           cache,
-          reason: `Temporary cache (${sizeInMB.toFixed(1)} MB)`,
+          reason: `Safe cache (${sizeInMB.toFixed(1)} MB)`,
           priority: "low",
           safe: true,
         });
@@ -260,16 +264,48 @@ function getPriorityEmoji(priority: "high" | "medium" | "low"): string {
   }
 }
 
-function isTemporaryCache(cacheName: string): boolean {
-  const temporaryCaches = [
-    "npm",
-    "yarn",
-    "pnpm",
-    "bun", // Package managers
-    "webpack",
-    "vite",
-    "turbo", // Build tools
-    "docker", // System tools
-  ];
-  return temporaryCaches.includes(cacheName);
+/**
+ * Determine if a cache is safe to clean automatically based on cleaner type
+ * and known characteristics.
+ */
+function isSafeToAutoClean(cacheName: string, cacheType: string): boolean {
+  // Universal binary is a separate operation - never auto-clean
+  if (cacheName === "universal-binary") {
+    return false;
+  }
+
+  // Package managers are generally safe (downloaded artifacts can be re-fetched)
+  if (cacheType === "package-manager") {
+    return true;
+  }
+
+  // Build tools are generally safe (can be rebuilt)
+  if (cacheType === "build-tool") {
+    return true;
+  }
+
+  // Docker is safe (images can be re-pulled, but may take time)
+  if (cacheName === "docker") {
+    return true;
+  }
+
+  // Gradle is safe (downloaded dependencies)
+  if (cacheName === "gradle") {
+    return true;
+  }
+
+  // Browsers may contain user data - needs review
+  if (cacheType === "browser") {
+    return false;
+  }
+
+  // IDEs may contain important settings/history - needs review
+  // But Xcode DerivedData is safe, VSCode/Cursor/Windsurf caches are generally safe
+  const safeIdeCaches = ["xcode", "vscode", "cursor", "windsurf", "zed"];
+  if (cacheType === "ide" && safeIdeCaches.includes(cacheName)) {
+    return true;
+  }
+
+  return false;
 }
+

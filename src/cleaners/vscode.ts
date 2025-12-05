@@ -15,6 +15,17 @@ import {
 } from "../utils/fs";
 import { printVerbose } from "../utils/cli";
 
+// VSCode variant patterns for dynamic discovery
+const VSCODE_CACHE_PATTERNS = [
+  "com.microsoft.VSCode",
+  "com.microsoft.VSCode.ShipIt",
+  "com.microsoft.VSCodeInsiders",
+  "com.microsoft.VSCodeInsiders.ShipIt",
+  "com.microsoft.VSCodeExploration",
+  "com.microsoft.VSCode-OSS",
+  "com.vscodium.VSCodium",
+] as const;
+
 export class VSCodeCleaner implements CleanerModule {
   name = "vscode";
   type = "ide" as const;
@@ -47,6 +58,16 @@ export class VSCodeCleaner implements CleanerModule {
       vscodeConfigDir = path.join(homeDir, ".config", "Code");
       vscodeExtensionsDir = path.join(homeDir, ".vscode", "extensions");
     }
+
+    // Generate macOS VSCode cache paths for all known variants
+    const macOSVSCodeCaches =
+      platform === "darwin"
+        ? VSCODE_CACHE_PATTERNS.map((pattern) => ({
+            path: path.join(homeDir, "Library", "Caches", pattern),
+            description: `macOS ${pattern} application cache`,
+            category: "App Cache",
+          }))
+        : [];
 
     return [
       // Extension host cache and logs
@@ -99,23 +120,26 @@ export class VSCodeCleaner implements CleanerModule {
         category: "Extensions",
       },
 
-      // Platform-specific additional locations
+      // Platform-specific additional locations - macOS VSCode variants
+      ...macOSVSCodeCaches,
+
       ...(platform === "darwin"
         ? [
-            {
-              path: path.join(
-                homeDir,
-                "Library",
-                "Caches",
-                "com.microsoft.VSCode",
-              ),
-              description: "macOS VS Code application cache",
-              category: "App Cache",
-            },
             {
               path: path.join(homeDir, "Library", "Logs", "Microsoft VS Code"),
               description: "macOS VS Code system logs",
               category: "Logs",
+            },
+            // VS Code Insiders support
+            {
+              path: path.join(
+                homeDir,
+                "Library",
+                "Application Support",
+                "Code - Insiders",
+              ),
+              description: "VS Code Insiders application support",
+              category: "App Support",
             },
           ]
         : []),
@@ -143,6 +167,48 @@ export class VSCodeCleaner implements CleanerModule {
         category: "Remote",
       },
     ];
+  }
+
+  // Dynamic discovery of additional VSCode cache directories
+  private async discoverAdditionalVSCodeCaches(): Promise<
+    Array<{ path: string; description: string; category: string }>
+  > {
+    const homeDir = os.homedir();
+    const platform = process.platform;
+    const additionalPaths: Array<{
+      path: string;
+      description: string;
+      category: string;
+    }> = [];
+
+    if (platform === "darwin") {
+      try {
+        const cachesDir = path.join(homeDir, "Library", "Caches");
+        const entries = await fs.readdir(cachesDir);
+
+        // Find all com.microsoft.VSCode* directories dynamically
+        for (const entry of entries) {
+          if (
+            entry.startsWith("com.microsoft.VSCode") ||
+            entry.startsWith("com.vscodium")
+          ) {
+            const fullPath = path.join(cachesDir, entry);
+            // Check if not already in known patterns
+            if (!VSCODE_CACHE_PATTERNS.includes(entry as any)) {
+              additionalPaths.push({
+                path: fullPath,
+                description: `Discovered ${entry} cache`,
+                category: "App Cache",
+              });
+            }
+          }
+        }
+      } catch {
+        // Ignore errors during discovery
+      }
+    }
+
+    return additionalPaths;
   }
 
   async isAvailable(): Promise<boolean> {
@@ -208,13 +274,19 @@ export class VSCodeCleaner implements CleanerModule {
   }
 
   async getCacheInfo(): Promise<CacheInfo> {
-    const allPaths = this.getCachePaths();
+    // Combine static and dynamically discovered paths
+    const staticPaths = this.getCachePaths();
+    const discoveredPaths = await this.discoverAdditionalVSCodeCaches();
+    const allPaths = [...staticPaths, ...discoveredPaths];
+
     const existingPaths: string[] = [];
     let totalSize = 0;
     let lastModified: Date | undefined;
     const categories = new Map<string, { size: number; count: number }>();
 
-    printVerbose(`Checking ${allPaths.length} VS Code cache locations...`);
+    printVerbose(
+      `Checking ${allPaths.length} VS Code cache locations (${discoveredPaths.length} dynamically discovered)...`,
+    );
 
     for (const { path: cachePath, description, category } of allPaths) {
       if (await pathExists(cachePath)) {
@@ -309,14 +381,18 @@ export class VSCodeCleaner implements CleanerModule {
     }
 
     try {
+      // Combine static and dynamically discovered paths for full coverage
+      const staticPaths = this.getCachePaths();
+      const discoveredPaths = await this.discoverAdditionalVSCodeCaches();
+      const pathsWithInfo = [...staticPaths, ...discoveredPaths];
+
       if (dryRun) {
         printVerbose(
           `[DRY RUN] Would clear ${info.paths.length} VS Code cache locations:`,
         );
-        const pathsWithInfo = this.getCachePaths();
         for (const cachePath of info.paths) {
           const pathInfo = pathsWithInfo.find((p) => p.path === cachePath);
-          printVerbose(`  • ${pathInfo?.category || "Unknown"}: ${cachePath}`);
+          printVerbose(`  • ${pathInfo?.category || "App Cache"}: ${cachePath}`);
           if (pathInfo?.description) {
             printVerbose(`    ${pathInfo.description}`);
           }
@@ -330,8 +406,6 @@ export class VSCodeCleaner implements CleanerModule {
         };
       }
 
-      const pathsWithInfo = this.getCachePaths();
-
       // Clear caches by category priority (safest first)
       const priorityOrder = [
         "Logs",
@@ -341,6 +415,7 @@ export class VSCodeCleaner implements CleanerModule {
         "History",
         "Language Servers",
         "Remote",
+        "App Support", // VS Code Insiders and variants
         "Workspaces", // More careful - contains workspace state
         "Storage", // Most careful - contains extension settings
       ];

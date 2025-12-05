@@ -251,11 +251,30 @@ program
   .action(async (options) => {
     try {
       printHeader('Smart Cache Clearing');
-      
+
       const { autoCommand } = await import('./commands/auto');
       await autoCommand(options);
     } catch (error) {
       printError(`Failed to auto-clear: ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+  });
+
+// Universal Binary command - thin Universal Binaries on Apple Silicon
+program
+  .command('ub')
+  .aliases(['thin', 'universal-binaries'])
+  .description('thin Universal Binaries on Apple Silicon to remove unused x86_64 code')
+  .option('-a, --all', 'thin all Universal Binaries without prompting')
+  .option('-l, --list', 'list Universal Binaries without thinning')
+  .option('-d, --dry-run', 'show what would be thinned without actually thinning')
+  .option('-f, --force', 'skip confirmation prompts')
+  .action(async (options) => {
+    try {
+      const { ubCommand } = await import('./commands/ub');
+      await ubCommand(options);
+    } catch (error) {
+      printError(`Failed to thin binaries: ${error instanceof Error ? error.message : error}`);
       process.exit(1);
     }
   });
@@ -280,11 +299,13 @@ program
 program.addHelpText('after', `
 Examples:
   $ squeaky clean --all              # Clean all configured caches
-  $ squeaky clean -t package-manager # Clean only package manager caches  
+  $ squeaky clean -t package-manager # Clean only package manager caches
   $ squeaky clean --exclude chrome   # Clean all except Chrome cache
   $ squeaky list --sizes             # Show all caches with sizes
   $ squeaky config --interactive     # Configure cache preferences
   $ squeaky auto --safe              # Smart automatic cleaning (safe mode)
+  $ squeaky ub --list                # List Universal Binaries (Apple Silicon)
+  $ squeaky ub                       # Interactive binary thinning
   $ squeaky-clean clean -a           # Using the full name
 
 Cache Types:

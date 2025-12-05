@@ -12,6 +12,12 @@ import bunCleaner from "./bun";
 import pipCleaner from "./pip";
 import brewCleaner from "./brew";
 import nixCleaner from "./nix";
+import cargoCleaner from "./cargo";
+import poetryCleaner from "./poetry";
+import pipenvCleaner from "./pipenv";
+import cocoapodsCleaner from "./cocoapods";
+import swiftpmCleaner from "./swiftpm";
+import nugetCleaner from "./nuget";
 
 // Build tools
 import webpackCleaner from "./webpack";
@@ -21,12 +27,17 @@ import turboCleaner from "./turbo";
 import flutterCleaner from "./flutter";
 import nodeGypCleaner from "./nodeGyp";
 import goBuildCleaner from "./goBuild";
+import mavenCleaner from "./maven";
+import playwrightCleaner from "./playwright";
 
 // IDEs
 import xcodeCleaner from "./xcode";
 import vscodeCleaner from "./vscode";
 import androidStudioCleaner from "./androidstudio";
 import jetBrainsCleaner from "./jetbrains";
+import windsurfCleaner from "./windsurf";
+import cursorCleaner from "./cursor";
+import zedCleaner from "./zed";
 
 // Browsers
 import chromeCleaner from "./chrome";
@@ -35,6 +46,7 @@ import firefoxCleaner from "./firefox";
 // System tools
 import dockerCleaner from "./docker";
 import gradleCleaner from "./gradle";
+import universalBinaryCleaner from "./universalBinary";
 
 export class CacheManager {
   private cleaners: Map<string, CleanerModule>;
@@ -51,6 +63,12 @@ export class CacheManager {
     this.cleaners.set("pip", pipCleaner);
     this.cleaners.set("brew", brewCleaner);
     this.cleaners.set("nix", nixCleaner);
+    this.cleaners.set("cargo", cargoCleaner);
+    this.cleaners.set("poetry", poetryCleaner);
+    this.cleaners.set("pipenv", pipenvCleaner);
+    this.cleaners.set("cocoapods", cocoapodsCleaner);
+    this.cleaners.set("swiftpm", swiftpmCleaner);
+    this.cleaners.set("nuget", nugetCleaner);
 
     // Build tools
     this.cleaners.set("webpack", webpackCleaner);
@@ -60,12 +78,17 @@ export class CacheManager {
     this.cleaners.set("flutter", flutterCleaner);
     this.cleaners.set("node-gyp", nodeGypCleaner);
     this.cleaners.set("go-build", goBuildCleaner);
+    this.cleaners.set("maven", mavenCleaner);
+    this.cleaners.set("playwright", playwrightCleaner);
 
     // IDEs and development tools
     this.cleaners.set("xcode", xcodeCleaner);
     this.cleaners.set("vscode", vscodeCleaner);
     this.cleaners.set("androidstudio", androidStudioCleaner);
     this.cleaners.set("jetbrains", jetBrainsCleaner);
+    this.cleaners.set("windsurf", windsurfCleaner);
+    this.cleaners.set("cursor", cursorCleaner);
+    this.cleaners.set("zed", zedCleaner);
 
     // Browsers
     this.cleaners.set("chrome", chromeCleaner);
@@ -74,6 +97,7 @@ export class CacheManager {
     // System tools
     this.cleaners.set("docker", dockerCleaner);
     this.cleaners.set("gradle", gradleCleaner);
+    this.cleaners.set("universal-binary", universalBinaryCleaner);
   }
 
   /**

@@ -104,6 +104,14 @@ export interface UserConfig {
     pnpm: boolean;
     bun: boolean;
     pip: boolean;
+    cargo: boolean;
+    poetry: boolean;
+    pipenv: boolean;
+    cocoapods: boolean;
+    swiftpm: boolean;
+    nuget: boolean;
+    brew: boolean;
+    nix: boolean;
 
     // Build tools
     webpack: boolean;
@@ -111,6 +119,10 @@ export interface UserConfig {
     nx: boolean;
     turbo: boolean;
     flutter: boolean;
+    "node-gyp": boolean;
+    "go-build": boolean;
+    maven: boolean;
+    playwright: boolean;
 
     // Browsers
     chrome: boolean;
@@ -121,11 +133,14 @@ export interface UserConfig {
     xcode: boolean;
     androidstudio: boolean;
     jetbrains: boolean;
+    windsurf: boolean;
+    cursor: boolean;
+    zed: boolean;
 
     // System tools
     docker: boolean;
     gradle: boolean;
-    maven: boolean;
+    "universal-binary": boolean;
   };
 
   // Granular tool settings (new)

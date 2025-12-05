@@ -142,6 +142,8 @@ export const symbols = {
   folder: "📁",
   file: "📄",
   trash: "🗑️",
+  binary: "💾",
+  apple: "🍎",
 } as const;
 
 // Special message for completion

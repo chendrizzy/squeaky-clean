@@ -18,29 +18,44 @@ export const defaultConfig: UserConfig = {
     yarn: true,
     pnpm: true,
     bun: true,
-    pip: true, // Python pip caches are generally safe to clear
+    pip: true,
+    cargo: true, // Rust cargo caches can be 5-50GB
+    poetry: true, // Python Poetry caches
+    pipenv: true, // Python Pipenv caches
+    cocoapods: true, // CocoaPods caches (macOS)
+    swiftpm: true, // Swift Package Manager caches (macOS)
+    nuget: true, // .NET NuGet caches can be 6-100GB
+    brew: true, // Homebrew caches (macOS)
+    nix: true, // Nix package manager caches
 
     // Build tools
     webpack: true,
     vite: true,
     nx: true,
     turbo: true,
-    flutter: true, // Flutter caches are safe and can be large
+    flutter: true,
+    "node-gyp": true, // Node native addon build caches
+    "go-build": true, // Go build caches
+    maven: true,
+    playwright: true, // Playwright browser binaries can be 1-2GB
 
     // Browsers
     chrome: false, // More conservative - browser caches can affect user experience
     firefox: false,
 
     // IDEs
-    vscode: true, // VS Code caches are generally safe to clear
+    vscode: true,
     xcode: true, // Xcode can accumulate huge caches
-    androidstudio: true, // Android Studio caches are safe and can be large
+    androidstudio: true,
     jetbrains: false, // More conservative for JetBrains IDEs
+    windsurf: true, // Windsurf IDE (Codeium) caches
+    cursor: true, // Cursor AI IDE caches
+    zed: true, // Zed editor caches
 
     // System tools
     docker: false, // More conservative - Docker cleanup affects containers
-    gradle: true, // Gradle caches are safe and can be large
-    maven: true, // Maven caches are safe and can be large
+    gradle: true,
+    "universal-binary": false, // More conservative - modifies application binaries
   },
 
   safety: {
@@ -91,6 +106,14 @@ class ConfigManager {
             pnpm: { type: "boolean" },
             bun: { type: "boolean" },
             pip: { type: "boolean" },
+            cargo: { type: "boolean" },
+            poetry: { type: "boolean" },
+            pipenv: { type: "boolean" },
+            cocoapods: { type: "boolean" },
+            swiftpm: { type: "boolean" },
+            nuget: { type: "boolean" },
+            brew: { type: "boolean" },
+            nix: { type: "boolean" },
 
             // Build tools
             webpack: { type: "boolean" },
@@ -98,6 +121,10 @@ class ConfigManager {
             nx: { type: "boolean" },
             turbo: { type: "boolean" },
             flutter: { type: "boolean" },
+            "node-gyp": { type: "boolean" },
+            "go-build": { type: "boolean" },
+            maven: { type: "boolean" },
+            playwright: { type: "boolean" },
 
             // Browsers
             chrome: { type: "boolean" },
@@ -108,11 +135,13 @@ class ConfigManager {
             xcode: { type: "boolean" },
             androidstudio: { type: "boolean" },
             jetbrains: { type: "boolean" },
+            windsurf: { type: "boolean" },
+            cursor: { type: "boolean" },
+            zed: { type: "boolean" },
 
             // System tools
             docker: { type: "boolean" },
             gradle: { type: "boolean" },
-            maven: { type: "boolean" },
           },
         },
         safety: {
