@@ -104,6 +104,7 @@ jobs:
         run: |
           # Bump version based on commit messages
           npm version ${{ steps.check_commits.outputs.version_type }} --no-git-tag-version
+          node scripts/remove-self-dependency.js
           
           # Get the new version
           NEW_VERSION=$(node -p "require('./package.json').version")
