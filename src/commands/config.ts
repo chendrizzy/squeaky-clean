@@ -14,8 +14,8 @@ interface ConfigOptions {
   list?: boolean;
   get?: string;
   set?: string;
-  enable?: string;
-  disable?: string;
+  enable?: string | string[];
+  disable?: string | string[];
   reset?: boolean;
   interactive?: boolean;
   path?: boolean;
@@ -70,15 +70,17 @@ export async function configCommand(options: ConfigOptions): Promise<void> {
       return;
     }
 
-    // Enable specific tool
-    if (options.enable) {
-      await enableTool(options.enable);
+    // Enable specific tool(s)
+    const toolsToEnable = normalizeToolList(options.enable);
+    if (toolsToEnable) {
+      await updateToolStatus(toolsToEnable, true);
       return;
     }
 
-    // Disable specific tool
-    if (options.disable) {
-      await disableTool(options.disable);
+    // Disable specific tool(s)
+    const toolsToDisable = normalizeToolList(options.disable);
+    if (toolsToDisable) {
+      await updateToolStatus(toolsToDisable, false);
       return;
     }
 
@@ -221,38 +223,53 @@ async function setConfigValue(keyValue: string): Promise<void> {
   }
 }
 
-async function enableTool(toolName: string): Promise<void> {
-  const allCleaners = cacheManager.getAllCleaners();
-  const cleaner = allCleaners.find((c) => c.name === toolName);
+function normalizeToolList(
+  input?: string | string[],
+): string[] | null {
+  if (!input) return null;
 
-  if (!cleaner) {
-    printError(`Tool '${toolName}' not found`);
-    printInfo(`Available tools: ${allCleaners.map((c) => c.name).join(", ")}`);
-    return;
-  }
+  const tools = (Array.isArray(input) ? input : [input])
+    .flatMap((name) => name.split(","))
+    .map((name) => name.trim())
+    .filter(Boolean);
 
-  const currentConfig = config.get();
-  const tools = { ...currentConfig.tools, [toolName]: true };
+  if (tools.length === 0) return null;
 
-  config.set({ ...currentConfig, tools });
-  printSuccess(`✓ Enabled ${toolName} cache cleaner`);
+  return Array.from(new Set(tools));
 }
 
-async function disableTool(toolName: string): Promise<void> {
+async function updateToolStatus(
+  toolNames: string[],
+  enabled: boolean,
+): Promise<void> {
   const allCleaners = cacheManager.getAllCleaners();
-  const cleaner = allCleaners.find((c) => c.name === toolName);
+  const availableTools = new Set(allCleaners.map((c) => c.name));
+  const missingTools = toolNames.filter((name) => !availableTools.has(name));
 
-  if (!cleaner) {
-    printError(`Tool '${toolName}' not found`);
+  if (missingTools.length > 0) {
+    const label = missingTools.length === 1 ? "Tool" : "Tools";
+    printError(`${label} not found: ${missingTools.join(", ")}`);
     printInfo(`Available tools: ${allCleaners.map((c) => c.name).join(", ")}`);
     return;
   }
 
   const currentConfig = config.get();
-  const tools = { ...currentConfig.tools, [toolName]: false };
+  const tools = { ...currentConfig.tools } as Record<string, boolean>;
+
+  toolNames.forEach((name) => {
+    tools[name] = enabled;
+  });
 
   config.set({ ...currentConfig, tools });
-  printWarning(`✗ Disabled ${toolName} cache cleaner`);
+
+  const formattedList = toolNames.join(", ");
+  const suffix = toolNames.length > 1 ? "cache cleaners" : "cache cleaner";
+
+  if (enabled) {
+    printSuccess(`✓ Enabled ${formattedList} ${suffix}`);
+  } else {
+    printWarning(`✗ Disabled ${formattedList} ${suffix}`);
+  }
 }
 
 async function resetConfiguration(): Promise<void> {

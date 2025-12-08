@@ -193,8 +193,14 @@ const configCmd = program
   .option("-i, --interactive", "interactive configuration wizard")
   .option("-g, --get <key>", "get a specific configuration value")
   .option("-s, --set <key=value>", "set a specific configuration value")
-  .option("-e, --enable <tool>", "enable a specific cache cleaner")
-  .option("-d, --disable <tool>", "disable a specific cache cleaner")
+  .option(
+    "-e, --enable <tools...>",
+    "enable one or more cache cleaners (space-separated)",
+  )
+  .option(
+    "-d, --disable <tools...>",
+    "disable one or more cache cleaners (space-separated)",
+  )
   .action(async (options) => {
     try {
       // No need to set default behavior here - let configCommand handle it

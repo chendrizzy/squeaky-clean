@@ -99,6 +99,7 @@
     "picocolors": "^1.1.1",
     "play-sound": "^1.1.6",
     "rimraf": "^6.1.2",
+    "squeaky-clean": "^0.3.3",
     "zod": "^4.1.13"
   },
   "devDependencies": {

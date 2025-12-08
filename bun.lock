@@ -16,7 +16,7 @@
         "picocolors": "^1.1.1",
         "play-sound": "^1.1.6",
         "rimraf": "^6.1.2",
-        "squeaky-clean": "^0.1.10",
+        "squeaky-clean": "^0.3.3",
         "zod": "^4.1.13",
       },
       "devDependencies": {
@@ -622,7 +622,7 @@
 
     "source-map-js": ["source-map-js@1.2.1", "", {}, "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="],
 
-    "squeaky-clean": ["squeaky-clean@0.1.10", "", { "dependencies": { "commander": "^11.1.0", "execa": "^5.1.1", "filesize": "^10.1.6", "fs-extra": "^11.3.2", "globby": "^11.1.0", "inquirer": "^8.2.7", "minimatch": "^10.1.1", "ora": "^5.4.1", "picocolors": "^1.1.1", "play-sound": "^1.1.6", "rimraf": "^6.1.2", "zod": "^4.1.13" }, "bin": { "squeaky": "dist/cli.js", "squeaky-clean": "dist/cli.js" } }, "sha512-+eruvKoPFA8kHmgMZu9ri+MPu0QmM5ojUu1ic231mpH4xRZTcr2pTNjg+G51iZLuVIs2MS1aj6upDR3qxq9uEQ=="],
+    "squeaky-clean": ["squeaky-clean@0.3.3", "", { "dependencies": { "commander": "^11.1.0", "execa": "^5.1.1", "filesize": "^10.1.6", "fs-extra": "^11.3.2", "globby": "^11.1.0", "inquirer": "^8.2.7", "minimatch": "^10.1.1", "ora": "^5.4.1", "picocolors": "^1.1.1", "play-sound": "^1.1.6", "rimraf": "^6.1.2", "zod": "^4.1.13" }, "bin": { "squeaky": "dist/cli.js", "squeaky-clean": "dist/cli.js" } }, "sha512-OZ6DMOsA4x0KK8hHM8/Hg9P8Tdobow0CPJLpvXl/bQhQh1T+9J2AWZgTaR5/Wrz+9QTa6HA8Ltz7QKv622ocfw=="],
 
     "stackback": ["stackback@0.0.2", "", {}, "sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw=="],
 

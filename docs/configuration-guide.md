@@ -176,14 +176,11 @@ squeaky config --set colors=false
 ### Tool Management
 
 ```bash
-# Enable specific tools
-squeaky config --enable npm
-squeaky config --enable docker
-squeaky config --enable vscode
+# Enable specific tools (space-separated)
+squeaky config --enable npm docker vscode
 
 # Disable specific tools
-squeaky config --disable chrome
-squeaky config --disable jetbrains
+squeaky config --disable chrome jetbrains
 ```
 
 ### Get Specific Values
@@ -199,15 +196,11 @@ squeaky config --get colors
 ### Bulk Operations
 
 ```bash
-# Enable all package managers
-squeaky config --enable npm
-squeaky config --enable yarn
-squeaky config --enable pnpm
+# Enable all package managers in one command
+squeaky config --enable npm yarn pnpm
 
-# Or use a script
-for tool in npm yarn pnpm webpack vite; do
-  squeaky config --enable $tool
-done
+# Or mix tool types together
+squeaky config --enable npm yarn pnpm webpack vite
 ```
 
 ---

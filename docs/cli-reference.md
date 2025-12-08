@@ -137,30 +137,26 @@ squeaky config --set colors=false
 squeaky config --set verbose=false
 ```
 
-##### `-e, --enable <tool>`
-Enable a specific cache cleaner tool.
+##### `-e, --enable <tool...>`
+Enable one or more cache cleaner tools (space-separated).
 
 ```bash
 # Enable Docker cleaner
 squeaky config --enable docker
 
-# Enable Chrome cleaner
-squeaky config --enable chrome
-
-# Enable VS Code cleaner
-squeaky config --enable vscode
+# Enable multiple tools at once
+squeaky config --enable xcode chrome universal-binary
 ```
 
-##### `-d, --disable <tool>`
-Disable a specific cache cleaner tool.
+##### `-d, --disable <tool...>`
+Disable one or more cache cleaner tools (space-separated).
 
 ```bash
 # Disable Docker cleaner
 squeaky config --disable docker
 
-# Disable browser cleaners
-squeaky config --disable chrome
-squeaky config --disable firefox
+# Disable browser cleaners together
+squeaky config --disable chrome firefox
 ```
 
 ##### `-r, --reset`
@@ -423,8 +419,8 @@ squeaky interactive --verbose
 squeaky config --interactive
 
 # Quick enable/disable
-squeaky config --enable docker
-squeaky config --disable chrome
+squeaky config --enable docker chrome
+squeaky config --disable chrome firefox
 
 # Bulk configuration
 squeaky config --set verbose=true
