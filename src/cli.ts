@@ -10,7 +10,7 @@ const program = new Command();
 
 // Read version from package.json to stay in sync
 const packageJson = JSON.parse(
-  readFileSync(join(__dirname, "..", "package.json"), "utf-8")
+  readFileSync(join(__dirname, "..", "package.json"), "utf-8"),
 );
 const packageInfo = {
   name: packageJson.name,

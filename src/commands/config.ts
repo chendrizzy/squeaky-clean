@@ -238,9 +238,7 @@ async function setConfigValue(keyValue: string): Promise<void> {
   }
 }
 
-function normalizeToolList(
-  input?: string | string[],
-): string[] | null {
+function normalizeToolList(input?: string | string[]): string[] | null {
   if (!input) return null;
 
   const tools = (Array.isArray(input) ? input : [input])
@@ -272,9 +270,7 @@ async function updateToolStatus(
   const tools = { ...currentConfig.tools } as UserConfig["tools"];
 
   toolNames.forEach((name) => {
-    tools[
-      name as keyof UserConfig["tools"]
-    ] = enabled;
+    tools[name as keyof UserConfig["tools"]] = enabled;
   });
 
   config.set({ ...currentConfig, tools });

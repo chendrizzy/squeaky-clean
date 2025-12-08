@@ -289,12 +289,18 @@ class ConfigManager {
   // Auto-update methods
   isAutoUpdateEnabled(): boolean {
     const config = this.get();
-    return config.autoUpdate?.enabled ?? defaultConfig.autoUpdate?.enabled ?? true;
+    return (
+      config.autoUpdate?.enabled ?? defaultConfig.autoUpdate?.enabled ?? true
+    );
   }
 
   getAutoUpdateCheckInterval(): number {
     const config = this.get();
-    return config.autoUpdate?.checkIntervalHours ?? defaultConfig.autoUpdate?.checkIntervalHours ?? 24;
+    return (
+      config.autoUpdate?.checkIntervalHours ??
+      defaultConfig.autoUpdate?.checkIntervalHours ??
+      24
+    );
   }
 
   getLastUpdateCheck(): Date | null {
@@ -322,7 +328,8 @@ class ConfigManager {
     if (!lastCheck) return true;
 
     const intervalHours = this.getAutoUpdateCheckInterval();
-    const hoursSinceCheck = (Date.now() - lastCheck.getTime()) / (1000 * 60 * 60);
+    const hoursSinceCheck =
+      (Date.now() - lastCheck.getTime()) / (1000 * 60 * 60);
     return hoursSinceCheck >= intervalHours;
   }
 }

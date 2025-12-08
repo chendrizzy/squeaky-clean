@@ -1,5 +1,10 @@
 import { config } from "../config";
-import { printSuccess, printError, printInfo, printWarning } from "../utils/cli";
+import {
+  printSuccess,
+  printError,
+  printInfo,
+  printWarning,
+} from "../utils/cli";
 import execa from "execa";
 
 interface UpdateOptions {
@@ -186,7 +191,9 @@ export async function updateCommand(options: UpdateOptions): Promise<void> {
     }
 
     // Perform the update
-    printWarning(`Updating from ${versionInfo.current} to ${versionInfo.latest}...`);
+    printWarning(
+      `Updating from ${versionInfo.current} to ${versionInfo.latest}...`,
+    );
 
     const success = await performUpdate();
 
@@ -198,6 +205,8 @@ export async function updateCommand(options: UpdateOptions): Promise<void> {
     printError(
       `Update failed: ${error instanceof Error ? error.message : error}`,
     );
-    printInfo("You can manually update with: npm install -g squeaky-clean@latest");
+    printInfo(
+      "You can manually update with: npm install -g squeaky-clean@latest",
+    );
   }
 }
