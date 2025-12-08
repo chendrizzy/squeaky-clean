@@ -9,6 +9,7 @@ import { config } from "../config";
 import { cacheManager } from "../cleaners";
 import pc from "picocolors";
 import inquirer from "inquirer";
+import type { UserConfig } from "../types";
 
 interface ConfigOptions {
   list?: boolean;
@@ -268,7 +269,7 @@ async function updateToolStatus(
   }
 
   const currentConfig = config.get();
-  const tools = { ...currentConfig.tools } as Record<string, boolean>;
+  const tools = { ...currentConfig.tools } as UserConfig["tools"];
 
   toolNames.forEach((name) => {
     tools[name] = enabled;
