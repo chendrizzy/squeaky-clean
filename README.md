@@ -431,6 +431,7 @@ npm run dev
 - `npm run test:coverage` - Generate test coverage report
 - `npm run lint` - Lint the codebase
 - `npm run format` - Format code with Prettier
+- `npm run release` - Run tests/build, publish to npm, and sync the GitHub release (requires the `gh` CLI + `GH_TOKEN` or `GITHUB_TOKEN` to be set)
 
 ### Testing
 
