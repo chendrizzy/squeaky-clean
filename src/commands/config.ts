@@ -272,7 +272,9 @@ async function updateToolStatus(
   const tools = { ...currentConfig.tools } as UserConfig["tools"];
 
   toolNames.forEach((name) => {
-    tools[name] = enabled;
+    tools[
+      name as keyof UserConfig["tools"]
+    ] = enabled;
   });
 
   config.set({ ...currentConfig, tools });
