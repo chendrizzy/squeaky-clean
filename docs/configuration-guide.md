@@ -187,10 +187,10 @@ squeaky config --disable chrome jetbrains
 
 ```bash
 # Disable background update checks
-squeaky update --disable-auto-update
+squeaky update --disable-auto
 
 # Re-enable background checks (every 24h by default)
-squeaky update --enable-auto-update
+squeaky update --auto-on
 
 # Check without installing
 squeaky update --check

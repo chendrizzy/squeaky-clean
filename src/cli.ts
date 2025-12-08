@@ -379,15 +379,23 @@ program
   .command("update")
   .description("check for and install updates")
   .option("-c, --check", "only check for updates without installing")
-  .option("--enable-auto-update", "enable automatic update checks")
-  .option("--disable-auto-update", "disable automatic update checks")
+  .option(
+    "--auto-on, --enable-auto, --enable-auto-update",
+    "enable automatic update checks",
+  )
+  .option(
+    "--auto-off, --disable-auto, --disable-auto-update",
+    "disable automatic update checks",
+  )
   .action(async (options) => {
     try {
       const { updateCommand } = await import("./commands/update");
       await updateCommand({
         check: options.check,
-        enableAutoUpdate: options.enableAutoUpdate,
-        disableAutoUpdate: options.disableAutoUpdate,
+        enableAutoUpdate:
+          options.autoOn ?? options.enableAuto ?? options.enableAutoUpdate,
+        disableAutoUpdate:
+          options.autoOff ?? options.disableAuto ?? options.disableAutoUpdate,
       });
     } catch (error) {
       printError(
@@ -413,7 +421,7 @@ Examples:
   $ squeaky ub                       # Interactive binary thinning
   $ squeaky update                   # Check for and install updates
   $ squeaky update --check           # Only check for updates
-  $ squeaky update --enable-auto-update # Re-enable background update checks
+  $ squeaky update --auto-on          # Re-enable background update checks
   $ squeaky-clean clean -a           # Using the full name
 
 Cache Types:

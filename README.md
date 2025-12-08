@@ -72,7 +72,7 @@ squeaky update --check
 By default, squeaky-clean will automatically check for updates once every 24 hours when you run any command. You can disable this with:
 
 ```bash
-squeaky update --disable-auto-update
+squeaky update --disable-auto
 ```
 
 ## Usage
@@ -209,8 +209,8 @@ squeaky clean --config my-config.json --dry-run
 #### `update` Options
 
 - `-c, --check` - Only check for updates without installing
-- `--enable-auto-update` - Enable automatic update checks on startup
-- `--disable-auto-update` - Disable automatic update checks
+- `--auto-on` - Enable automatic update checks on startup (`--enable-auto`/`--enable-auto-update` aliases)
+- `--auto-off` - Disable automatic update checks (`--disable-auto`/`--disable-auto-update` aliases)
 
 #### Global Options
 

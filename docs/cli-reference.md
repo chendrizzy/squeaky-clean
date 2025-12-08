@@ -428,7 +428,7 @@ squeaky update
 squeaky update --check
 
 # Re-enable background update checks (every 24h by default)
-squeaky update --enable-auto-update
+squeaky update --auto-on
 ```
 
 #### Options
@@ -436,11 +436,11 @@ squeaky update --enable-auto-update
 ##### `-c, --check`
 Only check for updates without installing.
 
-##### `--enable-auto-update`
-Enable automatic update checks on startup.
+##### `--auto-on`
+Enable automatic update checks on startup. (aliases: `--enable-auto`, `--enable-auto-update`)
 
-##### `--disable-auto-update`
-Disable automatic update checks.
+##### `--auto-off`
+Disable automatic update checks. (aliases: `--disable-auto`, `--disable-auto-update`)
 
 ---
 

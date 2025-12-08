@@ -5,8 +5,12 @@ import execa from "execa";
 interface UpdateOptions {
   check?: boolean;
   force?: boolean;
+  enableAuto?: boolean;
+  disableAuto?: boolean;
   enableAutoUpdate?: boolean;
   disableAutoUpdate?: boolean;
+  autoOn?: boolean;
+  autoOff?: boolean;
 }
 
 interface VersionInfo {
@@ -126,8 +130,13 @@ export async function backgroundUpdateCheck(): Promise<void> {
  * Main update command
  */
 export async function updateCommand(options: UpdateOptions): Promise<void> {
+  const enableAutoFlag =
+    options.autoOn ?? options.enableAuto ?? options.enableAutoUpdate;
+  const disableAutoFlag =
+    options.autoOff ?? options.disableAuto ?? options.disableAutoUpdate;
+
   // Handle auto-update configuration
-  if (options.enableAutoUpdate !== undefined) {
+  if (enableAutoFlag !== undefined) {
     const currentConfig = config.get();
     config.set({
       ...currentConfig,
@@ -140,7 +149,7 @@ export async function updateCommand(options: UpdateOptions): Promise<void> {
     return;
   }
 
-  if (options.disableAutoUpdate !== undefined) {
+  if (disableAutoFlag !== undefined) {
     const currentConfig = config.get();
     config.set({
       ...currentConfig,
