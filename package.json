@@ -1,6 +1,6 @@
 {
   "name": "squeaky-clean",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "✨ Easy, customizable and expandable development cache cleaner CLI with interactive configuration! Smart, safe, and configurable cache management for 25+ development tools.",
   "main": "dist/cli.js",
   "bin": {
@@ -26,12 +26,9 @@
     "release:major": "npm run version:major && npm run test && npm run build && npm publish",
     "remove-self-dependency": "node scripts/remove-self-dependency.js",
     "version:patch": "npm version patch && npm run remove-self-dependency && node scripts/update-version.js",
-    "version:minor":
-      "npm version minor && npm run remove-self-dependency && node scripts/update-version.js",
-    "version:major":
-      "npm version major && npm run remove-self-dependency && node scripts/update-version.js",
-    "version:sync":
-      "npm run remove-self-dependency && node scripts/update-version.js",
+    "version:minor": "npm version minor && npm run remove-self-dependency && node scripts/update-version.js",
+    "version:major": "npm version major && npm run remove-self-dependency && node scripts/update-version.js",
+    "version:sync": "npm run remove-self-dependency && node scripts/update-version.js",
     "generate:cleaner": "tsx scripts/generate-cleaner.ts"
   },
   "keywords": [
