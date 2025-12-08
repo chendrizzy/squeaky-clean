@@ -183,6 +183,19 @@ squeaky config --enable npm docker vscode
 squeaky config --disable chrome jetbrains
 ```
 
+### Update Checks
+
+```bash
+# Disable background update checks
+squeaky update --disable-auto-update
+
+# Re-enable background checks (every 24h by default)
+squeaky update --enable-auto-update
+
+# Check without installing
+squeaky update --check
+```
+
 ### Get Specific Values
 
 ```bash

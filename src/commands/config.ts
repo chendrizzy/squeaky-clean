@@ -118,6 +118,20 @@ async function showCurrentConfig(): Promise<void> {
   );
   console.log();
 
+  // Update settings
+  const lastUpdateCheck = config.getLastUpdateCheck();
+  console.log(pc.bold("🔄 Update Settings:"));
+  console.log(
+    `  ${symbols.folder} Auto-checks: ${config.isAutoUpdateEnabled() ? pc.green("enabled") : pc.gray("disabled")}`,
+  );
+  console.log(
+    `  ${symbols.folder} Check interval: every ${config.getAutoUpdateCheckInterval()}h`,
+  );
+  console.log(
+    `  ${symbols.folder} Last check: ${lastUpdateCheck ? lastUpdateCheck.toLocaleString() : "never"}`,
+  );
+  console.log();
+
   // Tool enablement
   console.log(pc.bold("🔧 Tool Enablement:"));
   const allCleaners = cacheManager.getAllCleaners();

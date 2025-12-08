@@ -407,11 +407,13 @@ Examples:
   $ squeaky clean --exclude chrome   # Clean all except Chrome cache
   $ squeaky list --sizes             # Show all caches with sizes
   $ squeaky config --interactive     # Configure cache preferences
+  $ squeaky config --enable xcode chrome universal-binary # Enable multiple cleaners
   $ squeaky auto --safe              # Smart automatic cleaning (safe mode)
   $ squeaky ub --list                # List Universal Binaries (Apple Silicon)
   $ squeaky ub                       # Interactive binary thinning
   $ squeaky update                   # Check for and install updates
   $ squeaky update --check           # Only check for updates
+  $ squeaky update --enable-auto-update # Re-enable background update checks
   $ squeaky-clean clean -a           # Using the full name
 
 Cache Types:

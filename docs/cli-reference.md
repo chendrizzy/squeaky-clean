@@ -9,6 +9,8 @@ Complete reference for all Squeaky Clean commands and options.
 - [Configuration Commands](#configuration-commands)
 - [Cache Management Commands](#cache-management-commands)
 - [Utility Commands](#utility-commands)
+- [Update Command](#squeaky-update)
+- [Universal Binary Command](#squeaky-ub)
 - [Examples](#examples)
 
 ---
@@ -63,6 +65,8 @@ squeaky --version
 - [`doctor`](#squeaky-doctor) - Diagnose issues
 - [`auto`](#squeaky-auto) - Smart automatic cleaning
 - [`interactive`](#squeaky-interactive) - Interactive cache selection
+- [`update`](#squeaky-update) - Check for and install updates
+- [`ub`](#squeaky-ub) - Thin Universal Binaries on Apple Silicon
 
 ---
 
@@ -108,6 +112,8 @@ List all available configuration options and commands.
 ```bash
 squeaky config --list
 ```
+
+Includes auto-update status (enabled/disabled, interval, last check), safety settings, output preferences, and tool enablement by category.
 
 ##### `-g, --get <key>`
 Get a specific configuration value.
@@ -407,6 +413,65 @@ squeaky interactive --verbose
 - Size information
 - Category-based organization
 - Safe preview before cleaning
+
+---
+
+### `squeaky update`
+
+Check for and install updates, or manage background update checks.
+
+```bash
+# Check for updates and install if available
+squeaky update
+
+# Only check without installing
+squeaky update --check
+
+# Re-enable background update checks (every 24h by default)
+squeaky update --enable-auto-update
+```
+
+#### Options
+
+##### `-c, --check`
+Only check for updates without installing.
+
+##### `--enable-auto-update`
+Enable automatic update checks on startup.
+
+##### `--disable-auto-update`
+Disable automatic update checks.
+
+---
+
+### `squeaky ub`
+
+Thin Universal Binaries on Apple Silicon by removing unused x86_64 code.
+
+```bash
+# List Universal Binaries without modifying
+squeaky ub --list
+
+# Thin all detected binaries without prompts
+squeaky ub --all --force
+
+# Safe preview
+squeaky ub --dry-run
+```
+
+#### Options
+
+##### `-a, --all`
+Thin all detected Universal Binaries without prompting.
+
+##### `-l, --list`
+List Universal Binaries without thinning.
+
+##### `-d, --dry-run`
+Show what would be thinned without making changes.
+
+##### `-f, --force`
+Skip confirmation prompts when thinning.
 
 ---
 
