@@ -71,6 +71,8 @@ Thumbs.db
 # --------------------------------------
 # AI Assistant Configurations
 # --------------------------------------
+CLAUDE.md
+AGENTS.md
 .claude/
 .claude-flow/
 .serena/
