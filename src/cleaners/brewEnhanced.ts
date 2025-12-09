@@ -2,7 +2,7 @@ import { BaseCleaner } from "./BaseCleaner";
 import { CacheInfo, CacheCategory, CacheType } from "../types";
 import { existsSync, statSync } from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 import { execSync } from "child_process";
 import { printVerbose } from "../utils/cli";
 import { getCacheSize } from "../utils/fs";

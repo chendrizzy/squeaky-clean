@@ -87,18 +87,21 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
 
     // Get cache info first if showing sizes
     if (options.sizes && !options.dryRun) {
-      const sizeSpinner = ora("Scanning cache sizes...").start();
+      // Use real-time parallel progress tracking for size scanning
+      printInfo("Scanning cache sizes...");
       try {
-        const cacheInfos = await cacheManager.getAllCacheInfo();
+        const cacheInfos = await cacheManager.getAllCacheInfo({
+          showProgress: true, // Enable real-time progress tracking
+        });
         const totalSize = cacheInfos.reduce(
           (sum, info) => sum + (info.size || 0),
           0,
         );
-        sizeSpinner.succeed(
+        printSuccess(
           `Total cache size found: ${formatSizeWithColor(totalSize)}`,
         );
       } catch (error) {
-        sizeSpinner.fail("Failed to scan cache sizes");
+        printError("Failed to scan cache sizes");
         throw error;
       }
     }
@@ -115,6 +118,7 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
         exclude,
         include,
         subCachesToClear, // Pass sub-caches option
+        showProgress: false, // Don't show progress during clean (spinner is enough)
       });
       cleanSpinner.stop();
     } catch (error) {

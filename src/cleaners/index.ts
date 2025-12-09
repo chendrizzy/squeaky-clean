@@ -2,6 +2,7 @@ import { CleanerModule, CacheInfo, ClearResult, CacheType } from "../types";
 import { config } from "../config";
 import { printVerbose, symbols } from "../utils/cli";
 import { minimatch } from "minimatch";
+import { createParallelTracker } from "../utils/parallelProgress";
 
 // Import all cleaner modules
 // Package managers
@@ -38,6 +39,7 @@ import jetBrainsCleaner from "./jetbrains";
 import windsurfCleaner from "./windsurf";
 import cursorCleaner from "./cursor";
 import zedCleaner from "./zed";
+import antigravityCleaner from "./antigravity";
 
 // Browsers
 import chromeCleaner from "./chrome";
@@ -47,6 +49,7 @@ import firefoxCleaner from "./firefox";
 import dockerCleaner from "./docker";
 import gradleCleaner from "./gradle";
 import universalBinaryCleaner from "./universalBinary";
+import shipitCleaner from "./shipit";
 
 export class CacheManager {
   private cleaners: Map<string, CleanerModule>;
@@ -89,6 +92,7 @@ export class CacheManager {
     this.cleaners.set("windsurf", windsurfCleaner);
     this.cleaners.set("cursor", cursorCleaner);
     this.cleaners.set("zed", zedCleaner);
+    this.cleaners.set("antigravity", antigravityCleaner);
 
     // Browsers
     this.cleaners.set("chrome", chromeCleaner);
@@ -98,6 +102,7 @@ export class CacheManager {
     this.cleaners.set("docker", dockerCleaner);
     this.cleaners.set("gradle", gradleCleaner);
     this.cleaners.set("universal-binary", universalBinaryCleaner);
+    this.cleaners.set("shipit", shipitCleaner);
   }
 
   /**
@@ -133,19 +138,37 @@ export class CacheManager {
   /**
    * Get cache info for all enabled cleaners
    */
-  async getAllCacheInfo(): Promise<CacheInfo[]> {
+  async getAllCacheInfo(options?: {
+    showProgress?: boolean;
+  }): Promise<CacheInfo[]> {
     const enabledCleaners = this.getEnabledCleaners();
     const protectedPaths = config.getProtectedPaths(); // Get protected paths
+    const showProgress = options?.showProgress ?? false;
 
     printVerbose(
       `${symbols.soap} Scanning ${enabledCleaners.length} enabled cache types...`,
     );
+
+    // Create parallel progress tracker if progress display is enabled
+    const tracker = showProgress
+      ? createParallelTracker(enabledCleaners.map((c) => c.name))
+      : null;
+
+    if (tracker) {
+      tracker.start();
+    }
 
     // Parallel execution for 10-25x performance improvement
     const scanResults = await Promise.all(
       enabledCleaners.map(async (cleaner) => {
         try {
           printVerbose(`Checking ${cleaner.name} caches...`);
+
+          // Update progress: scanning
+          if (tracker) {
+            tracker.update(cleaner.name, "scanning");
+          }
+
           const info = await cleaner.getCacheInfo();
 
           // Check if any of the cache's paths are protected
@@ -157,7 +180,19 @@ export class CacheManager {
 
           if (isProtected) {
             printVerbose(`Skipping protected cache: ${cleaner.name}`);
+            if (tracker) {
+              tracker.update(cleaner.name, "complete", {
+                size: 0,
+              });
+            }
             return null;
+          }
+
+          // Update progress: complete
+          if (tracker) {
+            tracker.update(cleaner.name, "complete", {
+              size: info.size || 0,
+            });
           }
 
           return info;
@@ -165,6 +200,17 @@ export class CacheManager {
           printVerbose(
             `Error getting cache info for ${cleaner.name}: ${error}`,
           );
+
+          // Update progress: error
+          if (tracker) {
+            tracker.update(cleaner.name, "error", {
+              error:
+                error instanceof Error
+                  ? error.message.substring(0, 50)
+                  : "Unknown error",
+            });
+          }
+
           return {
             name: cleaner.name,
             type: cleaner.type,
@@ -176,6 +222,11 @@ export class CacheManager {
         }
       }),
     );
+
+    // Stop progress tracker
+    if (tracker) {
+      tracker.stop();
+    }
 
     // Filter out null results (protected caches)
     return scanResults.filter((result): result is CacheInfo => result !== null);
@@ -191,10 +242,13 @@ export class CacheManager {
       exclude?: string[];
       include?: string[];
       subCachesToClear?: Map<string, string[]>; // New option
+      showProgress?: boolean;
     } = {},
   ): Promise<ClearResult[]> {
     let cleaners = this.getEnabledCleaners();
-    const allCacheInfos = await this.getAllCacheInfo(); // Get all cache info once
+    const allCacheInfos = await this.getAllCacheInfo({
+      showProgress: options.showProgress,
+    }); // Get all cache info once
     const protectedPaths = config.getProtectedPaths(); // Get protected paths
 
     // Filter by types if specified
@@ -314,14 +368,18 @@ export class CacheManager {
   /**
    * Get summary statistics
    */
-  async getSummary(): Promise<{
+  async getSummary(options?: {
+    showProgress?: boolean;
+  }): Promise<{
     totalSize: number;
     totalCleaners: number;
     installedCleaners: number;
     enabledCleaners: number;
     sizesByType: Record<CacheType, number>;
   }> {
-    const allCacheInfo = await this.getAllCacheInfo();
+    const allCacheInfo = await this.getAllCacheInfo({
+      showProgress: options?.showProgress,
+    });
 
     // Calculate sizes by type from the same data to avoid double scanning
     const sizesByType: Record<CacheType, number> = {

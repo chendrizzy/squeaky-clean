@@ -67,14 +67,14 @@ export function printError(text: string): void {
 export function printWarning(text: string): void {
   const mode = config.getEmojiMode();
   const prefix =
-    mode === "on" || mode === "minimal" ? colorize("⚠️ ", "warning") : "";
+    mode === "on" || mode === "minimal" ? colorize("⚠️  ", "warning") : "";
   console.log(prefix + text);
 }
 
 export function printInfo(text: string): void {
   const mode = config.getEmojiMode();
   const prefix =
-    mode === "on" || mode === "minimal" ? colorize("ℹ️ ", "info") : "";
+    mode === "on" || mode === "minimal" ? colorize("ℹ️  ", "info") : "";
   console.log(prefix + text);
 }
 

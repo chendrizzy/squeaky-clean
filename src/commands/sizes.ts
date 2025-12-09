@@ -6,18 +6,19 @@ import {
   symbols,
 } from "../utils/cli";
 import { cacheManager } from "../cleaners";
-import ora from "ora";
 
 export async function sizesCommand(_options: any): Promise<void> {
   try {
     printInfo(`${symbols.soap} Cache Sizes`);
     printInfo("──────────────");
 
-    const spinner = ora("Scanning cache directories...").start();
+    // Use real-time parallel progress tracking
+    printInfo("Scanning cache directories...");
 
     try {
-      const cacheInfos = await cacheManager.getAllCacheInfo();
-      spinner.stop();
+      const cacheInfos = await cacheManager.getAllCacheInfo({
+        showProgress: true, // Enable real-time progress tracking
+      });
 
       console.log(); // Add some space
 
@@ -90,7 +91,7 @@ export async function sizesCommand(_options: any): Promise<void> {
         );
       }
     } catch (error) {
-      spinner.fail("Failed to scan cache directories");
+      printError("Failed to scan cache directories");
       throw error;
     }
   } catch (error) {

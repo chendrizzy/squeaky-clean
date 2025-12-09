@@ -1,5 +1,5 @@
 import path from "path";
-import os from "os";
+import * as os from "os";
 import execa from "execa";
 import { promises as fs } from "fs";
 import {

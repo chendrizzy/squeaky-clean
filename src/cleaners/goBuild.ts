@@ -2,7 +2,7 @@ import { BaseCleaner } from "./BaseCleaner";
 import { CacheInfo, CacheCategory, CacheType } from "../types";
 import { existsSync, statSync } from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { printVerbose } from "../utils/cli";

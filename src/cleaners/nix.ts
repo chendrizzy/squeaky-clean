@@ -8,7 +8,7 @@ import {
 import { getCacheSize } from "../utils/fs";
 import { execSync } from "child_process";
 import { printVerbose, symbols } from "../utils/cli";
-import os from "os";
+import * as os from "os";
 import path from "path";
 import fs from "fs";
 import { minimatch } from "minimatch";

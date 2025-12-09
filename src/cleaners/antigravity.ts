@@ -16,11 +16,17 @@ import {
 } from "../utils/fs";
 import { printVerbose } from "../utils/cli";
 
-export class WindsurfCleaner implements CleanerModule {
-  name = "windsurf";
+/**
+ * Google Antigravity IDE Cleaner
+ *
+ * Google Antigravity is an agentic AI IDE from Google, similar to Cursor/Windsurf.
+ * This cleaner manages caches for extensions, workspace storage, logs, and AI model caches.
+ */
+export class AntigravityCleaner implements CleanerModule {
+  name = "antigravity";
   type = "ide" as const;
   description =
-    "Windsurf IDE (Codeium) extensions cache, workspace storage, logs, and temporary files";
+    "Google Antigravity IDE extensions cache, workspace storage, logs, and AI model caches";
 
   private getCachePaths(): Array<{
     path: string;
@@ -30,7 +36,7 @@ export class WindsurfCleaner implements CleanerModule {
     safeToDelete: boolean;
   }> {
     const homeDir = os.homedir();
-    const platform = process.platform;
+    const platform = os.platform();
 
     const paths: Array<{
       path: string;
@@ -41,82 +47,84 @@ export class WindsurfCleaner implements CleanerModule {
     }> = [];
 
     if (platform === "darwin") {
-      // macOS Windsurf paths
-      const windsurfDir = path.join(homeDir, ".windsurf");
-      const windsurfCacheDir = path.join(
-        homeDir,
-        "Library",
-        "Caches",
-        "com.exafunction.windsurf",
-      );
-      const windsurfAppSupport = path.join(
+      // macOS Antigravity paths
+      const antigravityDir = path.join(homeDir, ".antigravity");
+      const antigravityAppSupport = path.join(
         homeDir,
         "Library",
         "Application Support",
-        "Windsurf",
+        "Antigravity",
+      );
+      const antigravityCache = path.join(
+        homeDir,
+        "Library",
+        "Caches",
+        "com.google.antigravity",
+      );
+      const antigravityShipItCache = path.join(
+        homeDir,
+        "Library",
+        "Caches",
+        "com.google.antigravity.ShipIt",
       );
 
       paths.push(
-        // Cache directories (safe to clear)
+        // Main application cache
         {
-          path: windsurfCacheDir,
-          description: "Windsurf application cache",
+          path: antigravityCache,
+          description: "Antigravity application cache",
           category: "cache",
           priority: "low",
           safeToDelete: true,
         },
+        // ShipIt update cache
         {
-          path: path.join(
-            homeDir,
-            "Library",
-            "Caches",
-            "com.exafunction.windsurf.ShipIt",
-          ),
-          description: "Windsurf update cache",
-          category: "updates",
+          path: antigravityShipItCache,
+          description: "Antigravity update cache (ShipIt)",
+          category: "cache",
           priority: "low",
           safeToDelete: true,
         },
-        // Logs (safe to clear)
+        // Logs
         {
-          path: path.join(windsurfAppSupport, "logs"),
-          description: "Windsurf application logs",
+          path: path.join(antigravityAppSupport, "logs"),
+          description: "Antigravity application logs",
           category: "logs",
           priority: "low",
           safeToDelete: true,
         },
         // Extension caches
         {
-          path: path.join(windsurfDir, "extensions", ".obsolete"),
+          path: path.join(antigravityDir, "extensions", ".obsolete"),
           description: "Obsolete extension files",
           category: "extensions",
           priority: "low",
           safeToDelete: true,
         },
         {
-          path: path.join(windsurfAppSupport, "CachedExtensions"),
+          path: path.join(antigravityAppSupport, "CachedExtensions"),
           description: "Cached extension metadata",
           category: "extensions",
           priority: "normal",
           safeToDelete: true,
         },
         {
-          path: path.join(windsurfAppSupport, "CachedExtensionVSIXs"),
+          path: path.join(antigravityAppSupport, "CachedExtensionVSIXs"),
           description: "Cached extension VSIX files",
           category: "extensions",
           priority: "normal",
           safeToDelete: true,
         },
-        // Workspace storage (generally safe but may lose some state)
+        // Workspace storage
         {
-          path: path.join(windsurfAppSupport, "User", "workspaceStorage"),
+          path: path.join(antigravityAppSupport, "User", "workspaceStorage"),
           description: "Workspace-specific cache and state",
           category: "workspaces",
           priority: "normal",
           safeToDelete: true,
         },
         {
-          path: path.join(windsurfAppSupport, "User", "History"),
+          path: path.join(antigravityAppSupport, "User", "History"),
           description: "File history and timeline cache",
           category: "history",
           priority: "normal",
@@ -124,121 +132,205 @@ export class WindsurfCleaner implements CleanerModule {
         },
         // Crash dumps
         {
-          path: path.join(windsurfAppSupport, "CrashDumps"),
+          path: path.join(antigravityAppSupport, "CrashDumps"),
           description: "Application crash dumps",
           category: "diagnostics",
           priority: "low",
           safeToDelete: true,
         },
-        // Extension global storage (be careful - may contain important data)
+        // General cache directory
         {
-          path: path.join(windsurfAppSupport, "User", "globalStorage"),
-          description: "Extension global storage (some safe to clear)",
-          category: "storage",
-          priority: "important",
-          safeToDelete: false,
+          path: path.join(antigravityAppSupport, "Cache"),
+          description: "Antigravity cache directory",
+          category: "cache",
+          priority: "normal",
+          safeToDelete: true,
+        },
+        // GPU cache
+        {
+          path: path.join(antigravityAppSupport, "GPUCache"),
+          description: "GPU shader cache",
+          category: "cache",
+          priority: "low",
+          safeToDelete: true,
+        },
+        // Code cache
+        {
+          path: path.join(antigravityAppSupport, "Code Cache"),
+          description: "V8 code cache",
+          category: "cache",
+          priority: "low",
+          safeToDelete: true,
         },
       );
     } else if (platform === "win32") {
-      // Windows Windsurf paths
+      // Windows Antigravity paths
       const appData =
         process.env.APPDATA || path.join(homeDir, "AppData", "Roaming");
       const localAppData =
         process.env.LOCALAPPDATA || path.join(homeDir, "AppData", "Local");
-      const windsurfDir = path.join(homeDir, ".windsurf");
+      const antigravityDir = path.join(homeDir, ".antigravity");
 
       paths.push(
         {
-          path: path.join(localAppData, "Windsurf", "Cache"),
-          description: "Windsurf application cache",
+          path: path.join(localAppData, "Antigravity", "Cache"),
+          description: "Antigravity application cache",
           category: "cache",
           priority: "low",
           safeToDelete: true,
         },
         {
-          path: path.join(appData, "Windsurf", "logs"),
-          description: "Windsurf application logs",
+          path: path.join(appData, "Antigravity", "logs"),
+          description: "Antigravity application logs",
           category: "logs",
           priority: "low",
           safeToDelete: true,
         },
         {
-          path: path.join(windsurfDir, "extensions", ".obsolete"),
+          path: path.join(antigravityDir, "extensions", ".obsolete"),
           description: "Obsolete extension files",
           category: "extensions",
           priority: "low",
           safeToDelete: true,
         },
         {
-          path: path.join(appData, "Windsurf", "CachedExtensions"),
+          path: path.join(appData, "Antigravity", "CachedExtensions"),
           description: "Cached extension metadata",
           category: "extensions",
           priority: "normal",
           safeToDelete: true,
         },
         {
-          path: path.join(appData, "Windsurf", "User", "workspaceStorage"),
+          path: path.join(appData, "Antigravity", "CachedExtensionVSIXs"),
+          description: "Cached extension VSIX files",
+          category: "extensions",
+          priority: "normal",
+          safeToDelete: true,
+        },
+        {
+          path: path.join(appData, "Antigravity", "User", "workspaceStorage"),
           description: "Workspace-specific cache and state",
           category: "workspaces",
           priority: "normal",
           safeToDelete: true,
         },
         {
-          path: path.join(appData, "Windsurf", "CrashDumps"),
+          path: path.join(appData, "Antigravity", "User", "History"),
+          description: "File history and timeline cache",
+          category: "history",
+          priority: "normal",
+          safeToDelete: true,
+        },
+        {
+          path: path.join(appData, "Antigravity", "CrashDumps"),
           description: "Application crash dumps",
           category: "diagnostics",
+          priority: "low",
+          safeToDelete: true,
+        },
+        {
+          path: path.join(localAppData, "Antigravity", "GPUCache"),
+          description: "GPU shader cache",
+          category: "cache",
+          priority: "low",
+          safeToDelete: true,
+        },
+        {
+          path: path.join(localAppData, "Antigravity", "Code Cache"),
+          description: "V8 code cache",
+          category: "cache",
           priority: "low",
           safeToDelete: true,
         },
       );
     } else {
-      // Linux Windsurf paths
+      // Linux Antigravity paths
       const configDir =
         process.env.XDG_CONFIG_HOME || path.join(homeDir, ".config");
       const cacheDir =
         process.env.XDG_CACHE_HOME || path.join(homeDir, ".cache");
-      const windsurfDir = path.join(homeDir, ".windsurf");
+      const antigravityDir = path.join(homeDir, ".antigravity");
 
       paths.push(
         {
-          path: path.join(cacheDir, "windsurf"),
-          description: "Windsurf application cache",
+          path: path.join(cacheDir, "antigravity"),
+          description: "Antigravity application cache",
           category: "cache",
           priority: "low",
           safeToDelete: true,
         },
         {
-          path: path.join(configDir, "Windsurf", "logs"),
-          description: "Windsurf application logs",
+          path: path.join(cacheDir, "Antigravity"),
+          description: "Antigravity application cache (alternate)",
+          category: "cache",
+          priority: "low",
+          safeToDelete: true,
+        },
+        {
+          path: path.join(configDir, "Antigravity", "logs"),
+          description: "Antigravity application logs",
           category: "logs",
           priority: "low",
           safeToDelete: true,
         },
         {
-          path: path.join(windsurfDir, "extensions", ".obsolete"),
+          path: path.join(antigravityDir, "extensions", ".obsolete"),
           description: "Obsolete extension files",
           category: "extensions",
           priority: "low",
           safeToDelete: true,
         },
         {
-          path: path.join(configDir, "Windsurf", "CachedExtensions"),
+          path: path.join(configDir, "Antigravity", "CachedExtensions"),
           description: "Cached extension metadata",
           category: "extensions",
           priority: "normal",
           safeToDelete: true,
         },
         {
-          path: path.join(configDir, "Windsurf", "User", "workspaceStorage"),
+          path: path.join(configDir, "Antigravity", "CachedExtensionVSIXs"),
+          description: "Cached extension VSIX files",
+          category: "extensions",
+          priority: "normal",
+          safeToDelete: true,
+        },
+        {
+          path: path.join(
+            configDir,
+            "Antigravity",
+            "User",
+            "workspaceStorage",
+          ),
           description: "Workspace-specific cache and state",
           category: "workspaces",
           priority: "normal",
           safeToDelete: true,
         },
         {
-          path: path.join(configDir, "Windsurf", "CrashDumps"),
+          path: path.join(configDir, "Antigravity", "User", "History"),
+          description: "File history and timeline cache",
+          category: "history",
+          priority: "normal",
+          safeToDelete: true,
+        },
+        {
+          path: path.join(configDir, "Antigravity", "CrashDumps"),
           description: "Application crash dumps",
           category: "diagnostics",
+          priority: "low",
+          safeToDelete: true,
+        },
+        {
+          path: path.join(configDir, "Antigravity", "GPUCache"),
+          description: "GPU shader cache",
+          category: "cache",
+          priority: "low",
+          safeToDelete: true,
+        },
+        {
+          path: path.join(configDir, "Antigravity", "Code Cache"),
+          description: "V8 code cache",
+          category: "cache",
           priority: "low",
           safeToDelete: true,
         },
@@ -250,11 +342,11 @@ export class WindsurfCleaner implements CleanerModule {
 
   async isAvailable(): Promise<boolean> {
     const homeDir = os.homedir();
-    const platform = process.platform;
+    const platform = os.platform();
 
-    // Check for .windsurf directory (extensions)
-    const windsurfDir = path.join(homeDir, ".windsurf");
-    if (await pathExists(windsurfDir)) {
+    // Check for .antigravity directory
+    const antigravityDir = path.join(homeDir, ".antigravity");
+    if (await pathExists(antigravityDir)) {
       return true;
     }
 
@@ -268,9 +360,29 @@ export class WindsurfCleaner implements CleanerModule {
 
     // Check for application
     if (platform === "darwin") {
-      const appPath = "/Applications/Windsurf.app";
+      const appPath = "/Applications/Antigravity.app";
       if (await pathExists(appPath)) {
         return true;
+      }
+    } else if (platform === "win32") {
+      const localAppData =
+        process.env.LOCALAPPDATA ||
+        path.join(homeDir, "AppData", "Local");
+      const appPath = path.join(localAppData, "Programs", "Antigravity");
+      if (await pathExists(appPath)) {
+        return true;
+      }
+    } else {
+      // Linux - check common install locations
+      const linuxPaths = [
+        "/usr/share/antigravity",
+        "/opt/Antigravity",
+        path.join(homeDir, ".local", "share", "antigravity"),
+      ];
+      for (const linuxPath of linuxPaths) {
+        if (await pathExists(linuxPath)) {
+          return true;
+        }
       }
     }
 
@@ -283,7 +395,7 @@ export class WindsurfCleaner implements CleanerModule {
     let totalSize = 0;
 
     for (const { path: cachePath, safeToDelete } of cachePaths) {
-      if (!safeToDelete) continue; // Only count safe-to-delete paths
+      if (!safeToDelete) continue;
 
       if (await pathExists(cachePath)) {
         existingPaths.push(cachePath);
@@ -327,7 +439,7 @@ export class WindsurfCleaner implements CleanerModule {
         stats = null;
       }
 
-      const categoryId = `windsurf-${category}`;
+      const categoryId = `antigravity-${category}`;
       const existing = categoryMap.get(categoryId);
 
       if (existing) {
@@ -336,7 +448,7 @@ export class WindsurfCleaner implements CleanerModule {
       } else {
         categoryMap.set(categoryId, {
           id: categoryId,
-          name: `Windsurf ${category}`,
+          name: `Antigravity ${category}`,
           description,
           paths: [cachePath],
           size,
@@ -362,10 +474,9 @@ export class WindsurfCleaner implements CleanerModule {
     let sizeAfter = 0;
 
     for (const { path: cachePath, description, safeToDelete } of cachePaths) {
-      if (!safeToDelete) continue; // Only clear safe paths by default
+      if (!safeToDelete) continue;
       if (!(await pathExists(cachePath))) continue;
 
-      // Check if path is protected
       if (protectedPaths?.some((p) => cachePath.startsWith(p))) {
         printVerbose(`  Skipping protected path: ${cachePath}`);
         continue;
@@ -427,7 +538,7 @@ export class WindsurfCleaner implements CleanerModule {
         if (!(await pathExists(cachePath))) continue;
 
         if (protectedPaths?.some((p) => cachePath.startsWith(p))) {
-          printVerbose(`Skipping protected path: ${cachePath}`);
+          printVerbose(`  Skipping protected path: ${cachePath}`);
           continue;
         }
 
@@ -462,4 +573,4 @@ export class WindsurfCleaner implements CleanerModule {
   }
 }
 
-export default new WindsurfCleaner();
+export default new AntigravityCleaner();

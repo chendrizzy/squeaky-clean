@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 import execa from "execa";
 import {
   CacheInfo,
@@ -125,7 +125,7 @@ export class PlaywrightCleaner implements CleanerModule {
         const size = await getEstimatedDirectorySize(cachePath);
         totalSize += size;
         printVerbose(
-          `  🔍 📁 ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`,
+          `📁 ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`,
         );
       }
     }
@@ -200,16 +200,16 @@ export class PlaywrightCleaner implements CleanerModule {
 
       if (dryRun) {
         printVerbose(
-          `  [DRY RUN] Would clear: ${description} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`,
+          `[DRY RUN] Would clear: ${description} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`,
         );
         clearedPaths.push(cachePath);
       } else {
         try {
           await safeRmrf(cachePath);
           clearedPaths.push(cachePath);
-          printVerbose(`  ✓ Cleared: ${description}`);
+          printVerbose(`✓ Cleared: ${description}`);
         } catch (error) {
-          printVerbose(`  ✗ Failed to clear ${description}: ${error}`);
+          printVerbose(`✗ Failed to clear ${description}: ${error}`);
         }
       }
     }
@@ -259,16 +259,16 @@ export class PlaywrightCleaner implements CleanerModule {
 
         if (dryRun) {
           printVerbose(
-            `  [DRY RUN] Would clear: ${category.name} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`,
+            `[DRY RUN] Would clear: ${category.name} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`,
           );
           clearedPaths.push(cachePath);
         } else {
           try {
             await safeRmrf(cachePath);
             clearedPaths.push(cachePath);
-            printVerbose(`  ✓ Cleared: ${category.name}`);
+            printVerbose(`✓ Cleared: ${category.name}`);
           } catch (error) {
-            printVerbose(`  ✗ Failed to clear ${category.name}: ${error}`);
+            printVerbose(`✗ Failed to clear ${category.name}: ${error}`);
           }
         }
       }
