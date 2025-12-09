@@ -73,11 +73,16 @@ async function main() {
     process.exit(1);
   }
 
+  // Check for authentication - either env var or gh CLI auth
   if (!process.env.GH_TOKEN && !process.env.GITHUB_TOKEN) {
-    console.error(
-      "❌ GH_TOKEN or GITHUB_TOKEN must be set in the environment to authenticate with GitHub.",
-    );
-    process.exit(1);
+    try {
+      execSync("gh auth status", { stdio: "ignore" });
+    } catch {
+      console.error(
+        "❌ GitHub authentication required. Either set GH_TOKEN/GITHUB_TOKEN or run 'gh auth login'.",
+      );
+      process.exit(1);
+    }
   }
 
   fs.writeFileSync(notesFile, buildReleaseNotes());
