@@ -19,6 +19,7 @@ Essentially a *"universal cachectl"*—**smart** *(sort of)*, **safe** (at least
 
 - **🎯 Smart Detection**: Automatically detects installed development tools and their cache locations
 - **🎨 Interactive Wizard**: Beautiful CLI interface with progress bars and colored output
+- **📡 Real-Time Progress**: Live parallel scanning status with animated indicators for 25+ tools simultaneously
 - **🔧 Highly Configurable**: Choose exactly which caches to clean and when
 - **📊 Size Analytics**: See how much space each cache is using before cleaning
 - **🛡️ Safe by Default**: Dry-run mode to preview what will be cleaned (v0.1.0+ defaults to dry-run)

@@ -26,12 +26,9 @@
     "release:major": "npm run version:major && npm run test && npm run build && npm publish",
     "remove-self-dependency": "node scripts/remove-self-dependency.js",
     "version:patch": "npm version patch && npm run remove-self-dependency && node scripts/update-version.js",
-    "version:minor":
-      "npm version minor && npm run remove-self-dependency && node scripts/update-version.js",
-    "version:major":
-      "npm version major && npm run remove-self-dependency && node scripts/update-version.js",
-    "version:sync":
-      "npm run remove-self-dependency && node scripts/update-version.js",
+    "version:minor": "npm version minor && npm run remove-self-dependency && node scripts/update-version.js",
+    "version:major": "npm version major && npm run remove-self-dependency && node scripts/update-version.js",
+    "version:sync": "npm run remove-self-dependency && node scripts/update-version.js",
     "release:github": "node scripts/update-github-release.js",
     "generate:cleaner": "tsx scripts/generate-cleaner.ts"
   },
@@ -104,6 +101,7 @@
     "picocolors": "^1.1.1",
     "play-sound": "^1.1.6",
     "rimraf": "^6.1.2",
+    "squeaky-clean": "^0.3.4",
     "zod": "^4.1.13"
   },
   "devDependencies": {

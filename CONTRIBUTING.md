@@ -149,26 +149,139 @@ Then create a Pull Request on GitHub.
 
 ## 🧹 Adding New Cache Cleaners
 
-### 1. Create Cleaner File
+### Quick Start: Use the Generator (Recommended)
+
+The easiest way to add a new cleaner is using the interactive generator:
+
+```bash
+npm run generate:cleaner
+```
+
+This will prompt you for:
+- Tool name and description
+- Cache type (package-manager, build-tool, ide, system, browser)
+- Cache paths for each platform (macOS, Linux, Windows)
+
+The generator creates properly structured cleaner and test files following all modern patterns.
+
+### Manual Creation
+
+If you prefer to create a cleaner manually, follow this pattern:
+
+#### 1. Create Cleaner File
 
 Create a new file in `src/cleaners/` (e.g., `redis.ts`):
 
 ```typescript
-import execa from 'execa';
-import { CacheInfo, ClearResult, CleanerModule } from '../types';
-import { pathExists, getDirectorySize, safeRmrf } from '../utils/fs';
-import { printVerbose } from '../utils/cli';
-import * as os from 'os';
-import * as path from 'path';
+import { promises as fs } from "fs";
+import path from "path";
+import * as os from "os";
+import execa from "execa";
+import {
+  CacheInfo,
+  ClearResult,
+  CleanerModule,
+  CacheCategory,
+  CacheSelectionCriteria,
+} from "../types";
+import {
+  getDirectorySize,
+  getEstimatedDirectorySize,
+  pathExists,
+  safeRmrf,
+} from "../utils/fs";
+import { printVerbose } from "../utils/cli";
 
 export class RedisCleaner implements CleanerModule {
-  name = 'redis';
-  type = 'database' as const;
-  description = 'Redis database cache files and logs';
+  name = "redis";
+  type = "database" as const;
+  description = "Redis database cache files, logs, and temporary data";
+
+  /**
+   * Define cache paths for each platform with metadata
+   */
+  private getCachePaths(): Array<{
+    path: string;
+    description: string;
+    category: string;
+    priority: "critical" | "important" | "normal" | "low";
+    safeToDelete: boolean;
+  }> {
+    const homeDir = os.homedir();
+    const platform = process.platform;
+
+    const paths: Array<{
+      path: string;
+      description: string;
+      category: string;
+      priority: "critical" | "important" | "normal" | "low";
+      safeToDelete: boolean;
+    }> = [];
+
+    if (platform === "darwin") {
+      // macOS cache paths
+      paths.push(
+        {
+          path: path.join(homeDir, ".redis", "cache"),
+          description: "Redis client cache",
+          category: "cache",
+          priority: "low",
+          safeToDelete: true,
+        },
+        {
+          path: path.join(homeDir, "Library", "Logs", "redis"),
+          description: "Redis logs",
+          category: "logs",
+          priority: "low",
+          safeToDelete: true,
+        },
+      );
+    } else if (platform === "win32") {
+      // Windows cache paths
+      const appData = process.env.APPDATA || path.join(homeDir, "AppData", "Roaming");
+      paths.push({
+        path: path.join(appData, "Redis", "cache"),
+        description: "Redis client cache",
+        category: "cache",
+        priority: "low",
+        safeToDelete: true,
+      });
+    } else {
+      // Linux cache paths
+      const cacheDir = process.env.XDG_CACHE_HOME || path.join(homeDir, ".cache");
+      paths.push(
+        {
+          path: path.join(cacheDir, "redis"),
+          description: "Redis client cache",
+          category: "cache",
+          priority: "low",
+          safeToDelete: true,
+        },
+        {
+          path: "/var/log/redis",
+          description: "Redis server logs",
+          category: "logs",
+          priority: "low",
+          safeToDelete: true,
+        },
+      );
+    }
+
+    return paths;
+  }
 
   async isAvailable(): Promise<boolean> {
+    // Check for cache directories
+    const cachePaths = this.getCachePaths();
+    for (const { path: cachePath } of cachePaths) {
+      if (await pathExists(cachePath)) {
+        return true;
+      }
+    }
+
+    // Also check if Redis CLI is installed
     try {
-      await execa('redis-cli', ['--version']);
+      await execa("redis-cli", ["--version"], { timeout: 5000 });
       return true;
     } catch {
       return false;
@@ -176,50 +289,190 @@ export class RedisCleaner implements CleanerModule {
   }
 
   async getCacheInfo(): Promise<CacheInfo> {
-    const paths: string[] = [];
+    const cachePaths = this.getCachePaths();
+    const existingPaths: string[] = [];
     let totalSize = 0;
 
-    // Add Redis cache detection logic here
-    // Check common Redis cache locations
-    
+    for (const { path: cachePath, safeToDelete } of cachePaths) {
+      if (!safeToDelete) continue;
+
+      if (await pathExists(cachePath)) {
+        existingPaths.push(cachePath);
+        const size = await getEstimatedDirectorySize(cachePath);
+        totalSize += size;
+        printVerbose(`📁 ${cachePath}: ${(size / (1024 * 1024)).toFixed(1)} MB`);
+      }
+    }
+
     return {
       name: this.name,
       type: this.type,
       description: this.description,
-      paths,
+      paths: existingPaths,
       isInstalled: await this.isAvailable(),
       size: totalSize,
     };
   }
 
-  async clear(dryRun = false): Promise<ClearResult> {
-    const cacheInfo = await this.getCacheInfo();
-    
-    if (!cacheInfo.isInstalled) {
-      return {
-        name: this.name,
-        success: false,
-        error: 'Redis is not available',
-        clearedPaths: [],
-        sizeBefore: 0,
-        sizeAfter: 0,
-      };
+  async getCacheCategories(): Promise<CacheCategory[]> {
+    const cachePaths = this.getCachePaths();
+    const categoryMap = new Map<string, CacheCategory>();
+
+    for (const { path: cachePath, description, category, priority, safeToDelete } of cachePaths) {
+      if (!safeToDelete) continue;
+      if (!(await pathExists(cachePath))) continue;
+
+      const size = await getDirectorySize(cachePath);
+      let stats;
+      try {
+        stats = await fs.stat(cachePath);
+      } catch {
+        stats = null;
+      }
+
+      const categoryId = `redis-${category}`;
+      const existing = categoryMap.get(categoryId);
+
+      if (existing) {
+        existing.paths.push(cachePath);
+        existing.size = (existing.size || 0) + size;
+      } else {
+        categoryMap.set(categoryId, {
+          id: categoryId,
+          name: `Redis ${category}`,
+          description,
+          paths: [cachePath],
+          size,
+          lastModified: stats?.mtime,
+          priority,
+          useCase: "development",
+        });
+      }
     }
 
-    // Add clearing logic here
-    
+    return Array.from(categoryMap.values());
+  }
+
+  async clear(
+    dryRun = false,
+    _criteria?: CacheSelectionCriteria,
+    _cacheInfo?: CacheInfo,
+    protectedPaths?: string[],
+  ): Promise<ClearResult> {
+    const cachePaths = this.getCachePaths();
+    const clearedPaths: string[] = [];
+    let sizeBefore = 0;
+    let sizeAfter = 0;
+
+    for (const { path: cachePath, description, safeToDelete } of cachePaths) {
+      if (!safeToDelete) continue;
+      if (!(await pathExists(cachePath))) continue;
+
+      // Check if path is protected
+      if (protectedPaths?.some((p) => cachePath.startsWith(p))) {
+        printVerbose(`  Skipping protected path: ${cachePath}`);
+        continue;
+      }
+
+      const pathSize = await getDirectorySize(cachePath);
+      sizeBefore += pathSize;
+
+      if (dryRun) {
+        printVerbose(
+          `[DRY RUN] Would clear: ${description} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`,
+        );
+        clearedPaths.push(cachePath);
+      } else {
+        try {
+          await safeRmrf(cachePath);
+          clearedPaths.push(cachePath);
+          printVerbose(`✓ Cleared: ${description}`);
+        } catch (error) {
+          printVerbose(`✗ Failed to clear ${description}: ${error}`);
+        }
+      }
+    }
+
+    if (!dryRun) {
+      for (const { path: cachePath, safeToDelete } of cachePaths) {
+        if (!safeToDelete) continue;
+        if (await pathExists(cachePath)) {
+          sizeAfter += await getDirectorySize(cachePath);
+        }
+      }
+    }
+
     return {
       name: this.name,
       success: true,
-      clearedPaths: cacheInfo.paths,
-      sizeBefore: cacheInfo.size,
-      sizeAfter: 0,
+      sizeBefore,
+      sizeAfter: dryRun ? sizeBefore : sizeAfter,
+      clearedPaths,
+    };
+  }
+
+  async clearByCategory(
+    categoryIds: string[],
+    dryRun = false,
+    _cacheInfo?: CacheInfo,
+    protectedPaths?: string[],
+  ): Promise<ClearResult> {
+    const categories = await this.getCacheCategories();
+    const targetCategories = categories.filter((c) => categoryIds.includes(c.id));
+    const clearedPaths: string[] = [];
+    let sizeBefore = 0;
+    let sizeAfter = 0;
+
+    for (const category of targetCategories) {
+      for (const cachePath of category.paths) {
+        if (!(await pathExists(cachePath))) continue;
+
+        if (protectedPaths?.some((p) => cachePath.startsWith(p))) {
+          printVerbose(`  Skipping protected path: ${cachePath}`);
+          continue;
+        }
+
+        const pathSize = await getDirectorySize(cachePath);
+        sizeBefore += pathSize;
+
+        if (dryRun) {
+          printVerbose(
+            `[DRY RUN] Would clear: ${category.name} (${(pathSize / (1024 * 1024)).toFixed(1)} MB)`,
+          );
+          clearedPaths.push(cachePath);
+        } else {
+          try {
+            await safeRmrf(cachePath);
+            clearedPaths.push(cachePath);
+            printVerbose(`✓ Cleared: ${category.name}`);
+          } catch (error) {
+            printVerbose(`✗ Failed to clear ${category.name}: ${error}`);
+          }
+        }
+      }
+    }
+
+    return {
+      name: this.name,
+      success: true,
+      sizeBefore,
+      sizeAfter: dryRun ? sizeBefore : sizeAfter,
+      clearedPaths,
+      clearedCategories: categoryIds,
     };
   }
 }
 
 export default new RedisCleaner();
 ```
+
+#### Key Pattern Elements
+
+- **`getCachePaths()`**: Private method returning path metadata for each platform
+- **`safeToDelete`**: Boolean flag to protect user data from accidental deletion
+- **`protectedPaths`**: Parameter in `clear()` and `clearByCategory()` for path exclusion
+- **Platform detection**: Use `process.platform` to handle macOS, Windows, and Linux
+- **Category support**: Enable granular cache control via `getCacheCategories()`
 
 ### 2. Register the Cleaner
 
