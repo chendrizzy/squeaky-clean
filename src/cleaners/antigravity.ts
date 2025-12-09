@@ -295,12 +295,7 @@ export class AntigravityCleaner implements CleanerModule {
           safeToDelete: true,
         },
         {
-          path: path.join(
-            configDir,
-            "Antigravity",
-            "User",
-            "workspaceStorage",
-          ),
+          path: path.join(configDir, "Antigravity", "User", "workspaceStorage"),
           description: "Workspace-specific cache and state",
           category: "workspaces",
           priority: "normal",
@@ -366,8 +361,7 @@ export class AntigravityCleaner implements CleanerModule {
       }
     } else if (platform === "win32") {
       const localAppData =
-        process.env.LOCALAPPDATA ||
-        path.join(homeDir, "AppData", "Local");
+        process.env.LOCALAPPDATA || path.join(homeDir, "AppData", "Local");
       const appPath = path.join(localAppData, "Programs", "Antigravity");
       if (await pathExists(appPath)) {
         return true;

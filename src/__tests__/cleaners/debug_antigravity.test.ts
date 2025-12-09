@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi, afterAll } from "vitest";
-import { pathExists, getDirectorySize, getEstimatedDirectorySize, safeRmrf } from "../../utils/fs.js";
+import {
+  pathExists,
+  getDirectorySize,
+  getEstimatedDirectorySize,
+  safeRmrf,
+} from "../../utils/fs.js";
 import * as os from "os";
 
 // Mock filesystem utilities
@@ -61,13 +66,19 @@ describe("Debug test", () => {
 
     // Debug: throw if no paths checked - this would mean getCachePaths isn't being called correctly
     if (checkedPaths.length === 0) {
-      throw new Error("No paths were checked! The cleaner didn't call pathExists at all.");
+      throw new Error(
+        "No paths were checked! The cleaner didn't call pathExists at all.",
+      );
     }
 
     // Debug: show all paths that were checked
-    const pathsWithAppData = checkedPaths.filter(p => p.includes("AppData") && p.includes("Antigravity"));
+    const pathsWithAppData = checkedPaths.filter(
+      (p) => p.includes("AppData") && p.includes("Antigravity"),
+    );
     if (pathsWithAppData.length === 0) {
-      throw new Error(`No AppData+Antigravity paths found in checked paths: ${JSON.stringify(checkedPaths)}`);
+      throw new Error(
+        `No AppData+Antigravity paths found in checked paths: ${JSON.stringify(checkedPaths)}`,
+      );
     }
 
     expect(available).toBe(true);

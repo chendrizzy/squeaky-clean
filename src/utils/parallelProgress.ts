@@ -208,7 +208,18 @@ export class ParallelProgressTracker {
 
       case "scanning":
         // Animated spinner using frame counter for consistent animation
-        const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        const spinnerFrames = [
+          "⠋",
+          "⠙",
+          "⠹",
+          "⠸",
+          "⠼",
+          "⠴",
+          "⠦",
+          "⠧",
+          "⠇",
+          "⠏",
+        ];
         const frame = spinnerFrames[this.frameIndex % spinnerFrames.length];
         statusSymbol = useColors ? pc.cyan(frame) : frame;
         statusText = useColors ? pc.cyan("scanning") : "scanning";
@@ -232,12 +243,11 @@ export class ParallelProgressTracker {
 
         // Show duration
         if (scanner.startTime && scanner.endTime) {
-          const duration = ((scanner.endTime - scanner.startTime) / 1000).toFixed(
-            1,
-          );
-          sizeText += useColors
-            ? pc.dim(` [${duration}s]`)
-            : ` [${duration}s]`;
+          const duration = (
+            (scanner.endTime - scanner.startTime) /
+            1000
+          ).toFixed(1);
+          sizeText += useColors ? pc.dim(` [${duration}s]`) : ` [${duration}s]`;
         }
         break;
 

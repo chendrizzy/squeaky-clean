@@ -368,9 +368,7 @@ export class CacheManager {
   /**
    * Get summary statistics
    */
-  async getSummary(options?: {
-    showProgress?: boolean;
-  }): Promise<{
+  async getSummary(options?: { showProgress?: boolean }): Promise<{
     totalSize: number;
     totalCleaners: number;
     installedCleaners: number;

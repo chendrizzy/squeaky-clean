@@ -286,9 +286,9 @@ describe("ShipIt Cache Cleaner", () => {
       const info = await shipitCleaner.getCacheInfo();
 
       expect(info.isInstalled).toBe(true);
-      expect(
-        info.paths.some((p) => p.includes("com.unknown.app.ShipIt")),
-      ).toBe(true);
+      expect(info.paths.some((p) => p.includes("com.unknown.app.ShipIt"))).toBe(
+        true,
+      );
     });
   });
 });

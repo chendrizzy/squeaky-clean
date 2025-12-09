@@ -30,6 +30,9 @@ vi.mock("os", async (importOriginal) => {
 // Import cleaner AFTER mocks are set up to ensure singleton uses mocked dependencies
 import antigravityCleaner from "../../cleaners/antigravity";
 
+// Detect actual platform for conditional test skipping
+const actualPlatform = process.platform;
+
 describe("Google Antigravity IDE Cleaner", () => {
   // Store original env values to restore after tests
   const originalEnv = {
@@ -101,14 +104,17 @@ describe("Google Antigravity IDE Cleaner", () => {
         expect(available).toBe(true);
       });
 
-      it("should return true when Application Support Antigravity exists", async () => {
-        vi.mocked(pathExists).mockImplementation(async (p: string) => {
-          return p.includes("Library/Application Support/Antigravity");
-        });
+      it.skipIf(actualPlatform !== "darwin")(
+        "should return true when Application Support Antigravity exists",
+        async () => {
+          vi.mocked(pathExists).mockImplementation(async (p: string) => {
+            return p.includes("Library/Application Support/Antigravity");
+          });
 
-        const available = await antigravityCleaner.isAvailable();
-        expect(available).toBe(true);
-      });
+          const available = await antigravityCleaner.isAvailable();
+          expect(available).toBe(true);
+        },
+      );
 
       it("should return true when Antigravity.app exists", async () => {
         vi.mocked(pathExists).mockImplementation(async (p: string) => {
@@ -212,26 +218,32 @@ describe("Google Antigravity IDE Cleaner", () => {
       expect(info.size).toBe(0);
     });
 
-    it("should include macOS-specific paths", async () => {
-      vi.mocked(os.platform).mockReturnValue("darwin");
-      vi.mocked(pathExists).mockResolvedValue(true);
-      vi.mocked(getEstimatedDirectorySize).mockResolvedValue(50 * 1024 * 1024);
+    it.skipIf(actualPlatform !== "darwin")(
+      "should include macOS-specific paths",
+      async () => {
+        vi.mocked(os.platform).mockReturnValue("darwin");
+        vi.mocked(pathExists).mockResolvedValue(true);
+        vi.mocked(getEstimatedDirectorySize).mockResolvedValue(
+          50 * 1024 * 1024,
+        );
 
-      const info = await antigravityCleaner.getCacheInfo();
+        const info = await antigravityCleaner.getCacheInfo();
 
-      // Check for expected macOS cache paths
-      const hasLibraryCachesPath = info.paths.some(
-        (p) =>
-          p.includes("Library/Caches") && p.includes("com.google.antigravity"),
-      );
-      const hasAppSupportPath = info.paths.some(
-        (p) =>
-          p.includes("Library/Application Support") &&
-          p.includes("Antigravity"),
-      );
+        // Check for expected macOS cache paths
+        const hasLibraryCachesPath = info.paths.some(
+          (p) =>
+            p.includes("Library/Caches") &&
+            p.includes("com.google.antigravity"),
+        );
+        const hasAppSupportPath = info.paths.some(
+          (p) =>
+            p.includes("Library/Application Support") &&
+            p.includes("Antigravity"),
+        );
 
-      expect(hasLibraryCachesPath || hasAppSupportPath).toBe(true);
-    });
+        expect(hasLibraryCachesPath || hasAppSupportPath).toBe(true);
+      },
+    );
 
     it("should detect com.google.antigravity.ShipIt cache", async () => {
       vi.mocked(os.platform).mockReturnValue("darwin");
@@ -319,9 +331,12 @@ describe("Google Antigravity IDE Cleaner", () => {
       vi.mocked(pathExists).mockResolvedValue(true);
       vi.mocked(getDirectorySize).mockResolvedValue(50 * 1024 * 1024);
 
-      const result = await antigravityCleaner.clear(false, undefined, undefined, [
-        "/Users/test/Library/",
-      ]);
+      const result = await antigravityCleaner.clear(
+        false,
+        undefined,
+        undefined,
+        ["/Users/test/Library/"],
+      );
 
       // safeRmrf should not be called for protected paths
       const callArgs = vi.mocked(safeRmrf).mock.calls.map((c) => c[0]);
@@ -414,7 +429,11 @@ describe("Google Antigravity IDE Cleaner", () => {
 
       // Each platform should have different path patterns
       expect(macInfo.paths.some((p) => p.includes("Library"))).toBe(true);
-      expect(linuxInfo.paths.some((p) => p.includes(".config") || p.includes(".cache"))).toBe(true);
+      expect(
+        linuxInfo.paths.some(
+          (p) => p.includes(".config") || p.includes(".cache"),
+        ),
+      ).toBe(true);
       expect(winInfo.paths.some((p) => p.includes("AppData"))).toBe(true);
     });
   });

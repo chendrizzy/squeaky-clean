@@ -301,7 +301,9 @@ describe("ParallelProgressTracker", () => {
     tracker = new ParallelProgressTracker(["large"]);
     tracker.start();
 
-    tracker.update("large", "complete", { size: 1024 * 1024 * 1024 * 1024 * 2 }); // 2 TB
+    tracker.update("large", "complete", {
+      size: 1024 * 1024 * 1024 * 1024 * 2,
+    }); // 2 TB
 
     tracker.stop();
 
