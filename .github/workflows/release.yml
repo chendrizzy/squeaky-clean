@@ -174,7 +174,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Update Homebrew formula
+      - name: Update Homebrew tap formula
         if: ${{ !contains(steps.manual_version.outputs.version || steps.tag_version.outputs.version, '-') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -201,17 +201,31 @@ jobs:
             exit 1
           fi
           
-          echo "Updating Homebrew formula to v${VERSION} (sha256: ${SHA256})"
+          echo "Updating Homebrew tap formula to v${VERSION} (sha256: ${SHA256})"
           
-          # Update the formula file
+          # Clone the tap repo, update the formula, and push
+          git clone https://x-access-token:${GH_TOKEN}@github.com/chendrizzy/homebrew-squeaky-clean.git /tmp/homebrew-tap
+          cd /tmp/homebrew-tap
+          
           sed -i "s|url \"https://registry.npmjs.org/squeaky-clean/-/squeaky-clean-.*\.tgz\"|url \"${TARBALL_URL}\"|" Formula/squeaky-clean.rb
           sed -i "s/sha256 \"[a-f0-9]*\"/sha256 \"${SHA256}\"/" Formula/squeaky-clean.rb
           
-          # Commit and push the formula update
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
           git add Formula/squeaky-clean.rb
           if git diff --cached --quiet; then
-            echo "No changes to Homebrew formula, skipping commit."
+            echo "No changes to Homebrew formula, skipping."
           else
+            git commit -m "Update squeaky-clean to v${VERSION}"
+            git push origin main
+          fi
+          
+          # Also update the in-repo copy
+          cd $GITHUB_WORKSPACE
+          sed -i "s|url \"https://registry.npmjs.org/squeaky-clean/-/squeaky-clean-.*\.tgz\"|url \"${TARBALL_URL}\"|" Formula/squeaky-clean.rb
+          sed -i "s/sha256 \"[a-f0-9]*\"/sha256 \"${SHA256}\"/" Formula/squeaky-clean.rb
+          git add Formula/squeaky-clean.rb
+          if ! git diff --cached --quiet; then
             git commit -m "chore(brew): update formula to v${VERSION}"
             git push origin main
           fi
