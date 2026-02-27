@@ -46,10 +46,11 @@ sed -i.bak "s|url \"https://registry.npmjs.org/squeaky-clean/-/squeaky-clean-.*\
 sed -i.bak "s/sha256 \"[a-f0-9]*\"/sha256 \"${SHA256}\"/" Formula/squeaky-clean.rb
 rm -f Formula/squeaky-clean.rb.bak
 
-# Commit and push in-repo formula
+# Commit and push in-repo formula (pull first to handle version bump commits)
 git add Formula/squeaky-clean.rb
 if ! git diff --cached --quiet; then
   git commit -m "chore(brew): update formula to v${VERSION}"
+  git pull --rebase origin main
   git push origin main
 fi
 
