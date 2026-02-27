@@ -52,6 +52,19 @@ pnpm add -g squeaky-clean
 bun add -g squeaky-clean
 ```
 
+### Homebrew (macOS/Linux)
+
+```bash
+brew tap chendrizzy/squeaky-clean https://github.com/chendrizzy/squeaky-clean.git
+brew install squeaky-clean
+```
+
+Or as a one-liner:
+
+```bash
+brew install chendrizzy/squeaky-clean/squeaky-clean
+```
+
 ### Local Installation
 
 ```bash

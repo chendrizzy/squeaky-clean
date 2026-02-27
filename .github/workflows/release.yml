@@ -173,3 +173,45 @@ jobs:
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Update Homebrew formula
+        if: ${{ !contains(steps.manual_version.outputs.version || steps.tag_version.outputs.version, '-') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.manual_version.outputs.version || steps.tag_version.outputs.version }}"
+          TARBALL_URL="https://registry.npmjs.org/squeaky-clean/-/squeaky-clean-${VERSION}.tgz"
+          
+          # Wait for npm to propagate the new version
+          echo "Waiting for npm to propagate v${VERSION}..."
+          for i in $(seq 1 30); do
+            if curl -sL --head "$TARBALL_URL" | grep -q "200"; then
+              echo "npm tarball available."
+              break
+            fi
+            echo "Attempt $i/30: not yet available, waiting 10s..."
+            sleep 10
+          done
+          
+          # Get SHA256 of the new tarball
+          SHA256=$(curl -sL "$TARBALL_URL" | shasum -a 256 | awk '{print $1}')
+          
+          if [ -z "$SHA256" ] || [ "$SHA256" == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ]; then
+            echo "ERROR: Failed to fetch tarball or got empty file"
+            exit 1
+          fi
+          
+          echo "Updating Homebrew formula to v${VERSION} (sha256: ${SHA256})"
+          
+          # Update the formula file
+          sed -i "s|url \"https://registry.npmjs.org/squeaky-clean/-/squeaky-clean-.*\.tgz\"|url \"${TARBALL_URL}\"|" Formula/squeaky-clean.rb
+          sed -i "s/sha256 \"[a-f0-9]*\"/sha256 \"${SHA256}\"/" Formula/squeaky-clean.rb
+          
+          # Commit and push the formula update
+          git add Formula/squeaky-clean.rb
+          if git diff --cached --quiet; then
+            echo "No changes to Homebrew formula, skipping commit."
+          else
+            git commit -m "chore(brew): update formula to v${VERSION}"
+            git push origin main
+          fi
