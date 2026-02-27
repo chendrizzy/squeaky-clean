@@ -23,6 +23,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,json}\"",
     "clean": "rimraf dist .tsbuildinfo",
     "prepublishOnly": "npm run clean && tsc --build --force",
+    "postpublish": "bash scripts/update-homebrew.sh",
     "release": "npm run test && npm run build && npm pack && npm publish && npm run release:github",
     "release:patch": "npm run version:patch && npm run test && npm run build && npm publish && npm run release:github",
     "release:minor": "npm run version:minor && npm run test && npm run build && npm publish && npm run release:github",
