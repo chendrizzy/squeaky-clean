@@ -93,12 +93,20 @@ jobs:
           ---
           *This PR was automatically created by the dependency update workflow.*"
 
+          LABEL_NAMES=$(gh label list --limit 200 --json name --jq '.[].name' || true)
+          LABEL_ARGS=()
+          for label in dependencies automated; do
+            if printf '%s\n' "$LABEL_NAMES" | grep -Fxq "$label"; then
+              LABEL_ARGS+=(--label "$label")
+            fi
+          done
+
           gh pr create \
             --title "chore(deps): Update dependencies" \
             --body "$PR_BODY" \
             --base main \
             --head "${{ steps.update.outputs.branch }}" \
-            --label "dependencies,automated"
+            "${LABEL_ARGS[@]}"
 
   auto-merge-dependabot:
     runs-on: ubuntu-latest
