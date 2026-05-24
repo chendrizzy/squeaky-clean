@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - See `docs/PARALLEL_PROGRESS.md` for detailed documentation
 
 ### Fixed
+- **Clean command execution** - Fixed `squeaky clean [--option]` incorrectly falling into dry-run behavior when `--dry-run` was not provided
+  - Interactive runs now ask for confirmation instead of silently switching to dry-run
+  - Non-interactive confirmation-required runs now exit safely with guidance instead of hanging
+  - `--force` executes real cleaning and `--dry-run` is only honored when explicitly provided
+- **Release dry-run validation** - Fixed npm publish dry-runs hanging in the Homebrew update lifecycle script
 - **Test Performance** - Dramatically improved test performance from ~15 minutes to ~1.3 seconds
   - Created `MockCacheManager` for fast unit testing without real filesystem scans
   - Mock cleaners provide pre-computed cache data (npm, yarn, docker, webpack, vscode, chrome, pip)

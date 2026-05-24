@@ -173,6 +173,7 @@ jobs:
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          SQUEAKY_CLEAN_SKIP_HOMEBREW_UPDATE: true
 
       - name: Update Homebrew tap formula
         if: ${{ !contains(steps.manual_version.outputs.version || steps.tag_version.outputs.version, '-') }}

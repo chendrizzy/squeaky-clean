@@ -6,6 +6,16 @@ set -euo pipefail
 VERSION=$(node -p "require('./package.json').version")
 TARBALL_URL="https://registry.npmjs.org/squeaky-clean/-/squeaky-clean-${VERSION}.tgz"
 
+if [[ "${npm_config_dry_run:-}" == "true" || "${npm_config_dry_run:-}" == "1" ]]; then
+  echo "Skipping Homebrew update during npm dry-run"
+  exit 0
+fi
+
+if [[ "${SQUEAKY_CLEAN_SKIP_HOMEBREW_UPDATE:-}" == "true" || "${SQUEAKY_CLEAN_SKIP_HOMEBREW_UPDATE:-}" == "1" ]]; then
+  echo "Skipping Homebrew update because SQUEAKY_CLEAN_SKIP_HOMEBREW_UPDATE is set"
+  exit 0
+fi
+
 # Skip prereleases
 if [[ "$VERSION" == *"-"* ]]; then
   echo "Skipping Homebrew update for prerelease ${VERSION}"
