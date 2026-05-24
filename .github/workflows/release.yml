@@ -28,8 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      packages: write
-      id-token: write  # For npm provenance with OIDC
+      id-token: write  # For npm trusted publishing with OIDC
     
     steps:
       - name: Checkout code
@@ -41,8 +40,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.14.0'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup npm for trusted publishing
+        run: |
+          npm install -g npm@11
+          node --version
+          npm --version
       
       - name: Install dependencies
         run: npm ci
@@ -103,22 +108,57 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Validate release version
+        id: release
+        run: |
+          VERSION="${{ steps.manual_version.outputs.version || steps.tag_version.outputs.version }}"
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+
+          if [ -z "$VERSION" ]; then
+            echo "ERROR: Could not determine release version"
+            exit 1
+          fi
+
+          if [ "$VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "ERROR: Release version v${VERSION} does not match package.json version ${PACKAGE_VERSION}"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+          if [[ "$VERSION" == *"-"* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate release secrets
+        if: ${{ steps.release.outputs.prerelease != 'true' }}
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN || secrets.AUTOMATION }}
+        run: |
+          if [ -z "${HOMEBREW_TAP_TOKEN:-}" ]; then
+            echo "ERROR: HOMEBREW_TAP_TOKEN or AUTOMATION secret is required to update the tap repo"
+            exit 1
+          fi
       
       - name: Build project
         run: npm run build
       
       - name: Run tests
         run: npm test
+
+      - name: Pack release tarball
+        run: |
+          rm -f dist/*.tgz
+          npm pack --pack-destination dist
       
       - name: Generate changelog
         id: changelog
         run: |
-          # Get the current version
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ steps.manual_version.outputs.version }}"
-          else
-            VERSION="${{ steps.tag_version.outputs.version }}"
-          fi
+          VERSION="${{ steps.release.outputs.version }}"
           
           # Get the previous tag
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
@@ -150,8 +190,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${{ steps.manual_version.outputs.version || steps.tag_version.outputs.version }}"
-          TAG_NAME="v$VERSION"
+          VERSION="${{ steps.release.outputs.version }}"
+          TAG_NAME="${{ steps.release.outputs.tag }}"
           
           # Prepare release arguments
           RELEASE_ARGS=(
@@ -161,7 +201,7 @@ jobs:
           )
           
           # Add prerelease flag if needed
-          if [[ "$VERSION" == *"-"* ]]; then
+          if [ "${{ steps.release.outputs.prerelease }}" = "true" ]; then
             RELEASE_ARGS+=( --prerelease )
           fi
           
@@ -175,43 +215,56 @@ jobs:
           fi
 
           # Upload assets (--clobber handles existing files)
-          gh release upload "$TAG_NAME" dist/*.tgz dist/*.js README.md LICENSE --clobber || true
+          gh release upload "$TAG_NAME" dist/*.tgz README.md LICENSE --clobber || true
       
-      - name: Publish to npm with provenance (if not prerelease)
-        if: ${{ !contains(steps.manual_version.outputs.version || steps.tag_version.outputs.version, '-') }}
+      - name: Publish to npm with trusted publishing
+        if: ${{ steps.release.outputs.prerelease != 'true' }}
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION="${{ steps.release.outputs.version }}"
           if npm view squeaky-clean@$VERSION version &>/dev/null; then
             echo "Version $VERSION already published to npm, skipping..."
           else
             echo "Publishing version $VERSION to npm..."
-            npm publish --provenance --access public
+            npm publish --access public
           fi
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           SQUEAKY_CLEAN_SKIP_HOMEBREW_UPDATE: true
 
       - name: Update Homebrew tap formula
-        if: ${{ !contains(steps.manual_version.outputs.version || steps.tag_version.outputs.version, '-') }}
+        if: ${{ steps.release.outputs.prerelease != 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN || secrets.AUTOMATION }}
         run: |
-          VERSION="${{ steps.manual_version.outputs.version || steps.tag_version.outputs.version }}"
+          VERSION="${{ steps.release.outputs.version }}"
           TARBALL_URL="https://registry.npmjs.org/squeaky-clean/-/squeaky-clean-${VERSION}.tgz"
-          
+          TARBALL_FILE=$(mktemp)
+          TAP_DIR=$(mktemp -d)
+
+          cleanup() {
+            rm -f "$TARBALL_FILE"
+            rm -rf "$TAP_DIR"
+          }
+          trap cleanup EXIT
+
           # Wait for npm to propagate the new version
           echo "Waiting for npm to propagate v${VERSION}..."
           for i in $(seq 1 30); do
-            if curl -sL --head "$TARBALL_URL" | grep -q "200"; then
+            if curl -fsSL "$TARBALL_URL" -o "$TARBALL_FILE"; then
               echo "npm tarball available."
               break
             fi
+
+            if [ "$i" = "30" ]; then
+              echo "ERROR: Timed out waiting for npm tarball after 5 minutes"
+              exit 1
+            fi
+
             echo "Attempt $i/30: not yet available, waiting 10s..."
             sleep 10
           done
           
           # Get SHA256 of the new tarball
-          SHA256=$(curl -sL "$TARBALL_URL" | shasum -a 256 | awk '{print $1}')
+          SHA256=$(shasum -a 256 "$TARBALL_FILE" | awk '{print $1}')
           
           if [ -z "$SHA256" ] || [ "$SHA256" == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ]; then
             echo "ERROR: Failed to fetch tarball or got empty file"
@@ -221,8 +274,8 @@ jobs:
           echo "Updating Homebrew tap formula to v${VERSION} (sha256: ${SHA256})"
           
           # Clone the tap repo, update the formula, and push
-          git clone https://x-access-token:${GH_TOKEN}@github.com/chendrizzy/homebrew-squeaky-clean.git /tmp/homebrew-tap
-          cd /tmp/homebrew-tap
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/chendrizzy/homebrew-squeaky-clean.git" "$TAP_DIR"
+          cd "$TAP_DIR"
           
           sed -i "s|url \"https://registry.npmjs.org/squeaky-clean/-/squeaky-clean-.*\.tgz\"|url \"${TARBALL_URL}\"|" Formula/squeaky-clean.rb
           sed -i "s/sha256 \"[a-f0-9]*\"/sha256 \"${SHA256}\"/" Formula/squeaky-clean.rb
@@ -238,7 +291,9 @@ jobs:
           fi
           
           # Also update the in-repo copy
-          cd $GITHUB_WORKSPACE
+          cd "$GITHUB_WORKSPACE"
+          git fetch origin main
+          git checkout -B main origin/main
           sed -i "s|url \"https://registry.npmjs.org/squeaky-clean/-/squeaky-clean-.*\.tgz\"|url \"${TARBALL_URL}\"|" Formula/squeaky-clean.rb
           sed -i "s/sha256 \"[a-f0-9]*\"/sha256 \"${SHA256}\"/" Formula/squeaky-clean.rb
           git add Formula/squeaky-clean.rb

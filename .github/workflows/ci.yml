@@ -143,9 +143,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22.14.0'
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup npm for trusted publishing dry-run parity
+        run: npm install -g npm@11
       
       - name: Install dependencies
         run: npm ci
@@ -154,6 +157,12 @@ jobs:
         run: npm run build
       
       - name: Publish to npm (dry-run)
-        run: npm publish --dry-run
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view squeaky-clean@$VERSION version &>/dev/null; then
+            echo "Version $VERSION is already published; validating package contents with npm pack --dry-run instead."
+            rm -f dist/*.tgz
+            npm pack --dry-run
+          else
+            npm publish --dry-run
+          fi
