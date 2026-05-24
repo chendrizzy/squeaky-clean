@@ -26,17 +26,17 @@ echo "Updating Homebrew formula for v${VERSION}..."
 
 # Wait for npm to propagate
 echo "Waiting for npm tarball to be available..."
-for i in $(seq 1 30); do
+for i in $(seq 1 90); do
   STATUS=$(curl -sL -o /dev/null -w "%{http_code}" "$TARBALL_URL")
   if [ "$STATUS" = "200" ]; then
     echo "npm tarball available."
     break
   fi
-  if [ "$i" = "30" ]; then
-    echo "ERROR: Timed out waiting for npm tarball after 5 minutes"
+  if [ "$i" = "90" ]; then
+    echo "ERROR: Timed out waiting for npm tarball after 15 minutes"
     exit 1
   fi
-  echo "  Attempt $i/30: HTTP $STATUS, retrying in 10s..."
+  echo "  Attempt $i/90: HTTP $STATUS, retrying in 10s..."
   sleep 10
 done
 
