@@ -9,6 +9,7 @@ on:
         default: 'patch'
         type: choice
         options:
+          - current
           - patch
           - minor
           - major
@@ -56,6 +57,21 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         id: manual_version
         run: |
+          if [ "${{ github.event.inputs.version_type }}" == "current" ]; then
+            NEW_VERSION=$(node -p "require('./package.json').version")
+            echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            git fetch --tags --force
+
+            if git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; then
+              echo "Tag v$NEW_VERSION already exists, publishing current version."
+            else
+              git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
+              git push origin "v$NEW_VERSION"
+            fi
+
+            exit 0
+          fi
+
           # Determine version bump command
           if [ "${{ github.event.inputs.version_type }}" == "prerelease" ]; then
             npm version prerelease --preid=${{ github.event.inputs.prerelease_id }} --no-git-tag-version
