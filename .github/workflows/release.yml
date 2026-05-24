@@ -41,11 +41,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22.14.0'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Setup npm for trusted publishing
         run: |
           npm install -g npm@11
+          npm config set registry https://registry.npmjs.org/
           node --version
           npm --version
       
@@ -225,6 +225,9 @@ jobs:
             echo "Version $VERSION already published to npm, skipping..."
           else
             echo "Publishing version $VERSION to npm..."
+            unset NODE_AUTH_TOKEN
+            unset NPM_CONFIG_USERCONFIG
+            npm config set registry https://registry.npmjs.org/
             npm publish --access public
           fi
         env:
@@ -287,17 +290,5 @@ jobs:
             echo "No changes to Homebrew formula, skipping."
           else
             git commit -m "Update squeaky-clean to v${VERSION}"
-            git push origin main
-          fi
-          
-          # Also update the in-repo copy
-          cd "$GITHUB_WORKSPACE"
-          git fetch origin main
-          git checkout -B main origin/main
-          sed -i "s|url \"https://registry.npmjs.org/squeaky-clean/-/squeaky-clean-.*\.tgz\"|url \"${TARBALL_URL}\"|" Formula/squeaky-clean.rb
-          sed -i "s/sha256 \"[a-f0-9]*\"/sha256 \"${SHA256}\"/" Formula/squeaky-clean.rb
-          git add Formula/squeaky-clean.rb
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(brew): update formula to v${VERSION}"
             git push origin main
           fi

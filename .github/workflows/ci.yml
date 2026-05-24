@@ -145,10 +145,11 @@ jobs:
         with:
           node-version: '22.14.0'
           cache: 'npm'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Setup npm for trusted publishing dry-run parity
-        run: npm install -g npm@11
+        run: |
+          npm install -g npm@11
+          npm config set registry https://registry.npmjs.org/
       
       - name: Install dependencies
         run: npm ci
@@ -164,5 +165,8 @@ jobs:
             rm -f dist/*.tgz
             npm pack --dry-run
           else
+            unset NODE_AUTH_TOKEN
+            unset NPM_CONFIG_USERCONFIG
+            npm config set registry https://registry.npmjs.org/
             npm publish --dry-run
           fi

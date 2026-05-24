@@ -8,6 +8,7 @@ on:
       - '**.md'
       - 'docs/**'
       - '.github/workflows/**'
+      - 'Formula/**'
       - 'package.json'
       - 'package-lock.json'
 
