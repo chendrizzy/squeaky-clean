@@ -64,11 +64,19 @@ export function printError(text: string): void {
   console.log(prefix + text);
 }
 
+function formatWarningText(text: string, prefix: string): string {
+  const leadingNewlines = text.match(/^\n*/)?.[0] ?? "";
+  const body = text.slice(leadingNewlines.length);
+  const normalizedBody = body.replace(/^(?:⚠️|⚠)\s*/u, "");
+
+  return `${leadingNewlines}${prefix}${normalizedBody}`;
+}
+
 export function printWarning(text: string): void {
   const mode = config.getEmojiMode();
   const prefix =
     mode === "on" || mode === "minimal" ? colorize("⚠️  ", "warning") : "";
-  console.log(prefix + text);
+  console.log(formatWarningText(text, prefix));
 }
 
 export function printInfo(text: string): void {
@@ -127,7 +135,7 @@ export function createProgressMessage(
 export const symbols = {
   success: "✅",
   error: "❌",
-  warning: "⚠️",
+  warning: "⚠️ ",
   info: "ℹ️",
   arrow: "→",
   bullet: "•",
@@ -458,6 +466,13 @@ export async function showBootPristine(
     colorize("\nWould you like to open this rickovery URL? (y/n)", "info"),
   );
 
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    console.log(
+      colorize("\nSkipping prompt in non-interactive terminal.", "dim"),
+    );
+    return;
+  }
+
   // uncomment for demo:
   // const userResponse = 'y';
 
@@ -467,7 +482,13 @@ export async function showBootPristine(
     output: process.stdout,
   });
   const userResponse = await new Promise<string>((resolve) => {
+    const timeout = setTimeout(() => {
+      rl.close();
+      resolve("n");
+    }, 30000);
+
     rl.question("", (answer: string) => {
+      clearTimeout(timeout);
       rl.close();
       resolve(answer.toLowerCase());
     });

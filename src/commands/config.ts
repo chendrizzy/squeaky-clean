@@ -547,6 +547,6 @@ async function interactiveConfigWizard(): Promise<void> {
     console.log();
     await showCurrentConfig();
   } else {
-    printWarning("\n⚠ Configuration changes cancelled.");
+    printWarning("\nConfiguration changes cancelled.");
   }
 }

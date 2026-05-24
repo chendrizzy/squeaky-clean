@@ -99,7 +99,7 @@ export async function ubCommand(options: UBOptions): Promise<void> {
       // Interactive selection
       console.log();
       printWarning(
-        "⚠️  Warning: Thinning removes x86_64 code from application binaries.",
+        "Warning: Thinning removes x86_64 code from application binaries.",
       );
       printWarning("   This is generally safe but cannot be easily undone.");
       printWarning("   Affected apps can be reinstalled if needed.");

@@ -27,10 +27,14 @@ export class ParallelProgressTracker {
   private isActive: boolean = false;
   private lastDisplayLines: number = 0;
   private frameIndex: number = 0; // Smooth frame counter for consistent animation
+  private readonly useDynamicDisplay: boolean = Boolean(process.stdout.isTTY);
 
   constructor(scannerNames: string[]) {
     // Initialize all scanners as pending
-    this.maxNameLength = Math.max(...scannerNames.map((n) => n.length));
+    this.maxNameLength =
+      scannerNames.length > 0
+        ? Math.max(...scannerNames.map((name) => name.length))
+        : 0;
     for (const name of scannerNames) {
       this.scanners.set(name, {
         name,
@@ -46,14 +50,19 @@ export class ParallelProgressTracker {
     this.startTime = Date.now();
     this.isActive = true;
 
+    if (!this.useDynamicDisplay) {
+      console.log(pc.dim(`Scanning ${this.scanners.size} cache types...`));
+      return;
+    }
+
     // Initial render
     this.render();
 
-    // Update display every 80ms for smoother animation (12.5fps vs 10fps)
+    // Update display every 120ms for smooth animation without excessive redraws.
     this.displayInterval = setInterval(() => {
       this.frameIndex++;
       this.render();
-    }, 80);
+    }, 120);
   }
 
   /**
@@ -116,7 +125,9 @@ export class ParallelProgressTracker {
     this.render(true);
 
     // Move cursor past the display area
-    console.log();
+    if (this.useDynamicDisplay) {
+      console.log();
+    }
   }
 
   /**
@@ -126,7 +137,7 @@ export class ParallelProgressTracker {
     if (!this.isActive && !isFinal) return;
 
     // Clear previous display (move cursor up and clear lines)
-    if (this.lastDisplayLines > 0) {
+    if (this.useDynamicDisplay && this.lastDisplayLines > 0) {
       process.stdout.write(`\x1b[${this.lastDisplayLines}A`);
       process.stdout.write("\x1b[0J");
     }
@@ -177,7 +188,11 @@ export class ParallelProgressTracker {
 
     // Output all lines
     const output = lines.join("\n");
-    process.stdout.write(output + "\n");
+    if (this.useDynamicDisplay) {
+      process.stdout.write(output + "\n");
+    } else if (isFinal) {
+      console.log(output);
+    }
     this.lastDisplayLines = lines.length;
   }
 

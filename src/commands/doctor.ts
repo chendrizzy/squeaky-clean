@@ -34,9 +34,9 @@ export async function doctorCommand(): Promise<void> {
   for (const cleaner of allCleaners) {
     try {
       const isAvailable = await cleaner.isAvailable();
-      const status = isAvailable ? "✅" : "⚠️";
+      const status = isAvailable ? "✅ " : "⚠️  ";
       const statusText = isAvailable ? "Available" : "Not Found";
-      console.log(`${status} ${cleaner.name}: ${statusText}`);
+      console.log(`${status}${cleaner.name}: ${statusText}`);
 
       if (!isAvailable && config.isToolEnabled(cleaner.name as any)) {
         detectionIssues++;
@@ -99,7 +99,7 @@ export async function doctorCommand(): Promise<void> {
 
   if (parseFloat(memoryUsage) > 90) {
     console.log(
-      `⚠️ High memory usage detected - this may slow cache operations`,
+      `⚠️  High memory usage detected - this may slow cache operations`,
     );
   }
 
@@ -110,7 +110,7 @@ export async function doctorCommand(): Promise<void> {
   if (totalIssues === 0) {
     printSuccess("✅ System is healthy! No issues detected.");
   } else {
-    console.log(`⚠️ Found ${totalIssues} issue(s):`);
+    console.log(`⚠️  Found ${totalIssues} issue(s):`);
     if (detectionIssues > 0) {
       console.log(`   - ${detectionIssues} tool detection issue(s)`);
     }

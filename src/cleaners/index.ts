@@ -140,13 +140,14 @@ export class CacheManager {
    */
   async getAllCacheInfo(options?: {
     showProgress?: boolean;
+    cleaners?: CleanerModule[];
   }): Promise<CacheInfo[]> {
-    const enabledCleaners = this.getEnabledCleaners();
+    const enabledCleaners = options?.cleaners ?? this.getEnabledCleaners();
     const protectedPaths = config.getProtectedPaths(); // Get protected paths
     const showProgress = options?.showProgress ?? false;
 
     printVerbose(
-      `${symbols.soap} Scanning ${enabledCleaners.length} enabled cache types...`,
+      `${symbols.soap} Scanning ${enabledCleaners.length} selected cache types...`,
     );
 
     // Create parallel progress tracker if progress display is enabled
@@ -158,74 +159,78 @@ export class CacheManager {
       tracker.start();
     }
 
-    // Parallel execution for 10-25x performance improvement
-    const scanResults = await Promise.all(
-      enabledCleaners.map(async (cleaner) => {
-        try {
-          printVerbose(`Checking ${cleaner.name} caches...`);
+    let scanResults: (CacheInfo | null)[] = [];
 
-          // Update progress: scanning
-          if (tracker) {
-            tracker.update(cleaner.name, "scanning");
-          }
+    try {
+      // Parallel execution for 10-25x performance improvement
+      scanResults = await Promise.all(
+        enabledCleaners.map(async (cleaner) => {
+          try {
+            printVerbose(`Checking ${cleaner.name} caches...`);
 
-          const info = await cleaner.getCacheInfo();
+            // Update progress: scanning
+            if (tracker) {
+              tracker.update(cleaner.name, "scanning");
+            }
 
-          // Check if any of the cache's paths are protected
-          const isProtected = info.paths.some((cachePath) =>
-            protectedPaths.some((protectedPattern) =>
-              minimatch(cachePath, protectedPattern, { dot: true }),
-            ),
-          );
+            const info = await cleaner.getCacheInfo();
 
-          if (isProtected) {
-            printVerbose(`Skipping protected cache: ${cleaner.name}`);
+            // Check if any of the cache's paths are protected
+            const isProtected = info.paths.some((cachePath) =>
+              protectedPaths.some((protectedPattern) =>
+                minimatch(cachePath, protectedPattern, { dot: true }),
+              ),
+            );
+
+            if (isProtected) {
+              printVerbose(`Skipping protected cache: ${cleaner.name}`);
+              if (tracker) {
+                tracker.update(cleaner.name, "complete", {
+                  size: 0,
+                });
+              }
+              return null;
+            }
+
+            // Update progress: complete
             if (tracker) {
               tracker.update(cleaner.name, "complete", {
-                size: 0,
+                size: info.size || 0,
               });
             }
-            return null;
+
+            return info;
+          } catch (error) {
+            printVerbose(
+              `Error getting cache info for ${cleaner.name}: ${error}`,
+            );
+
+            // Update progress: error
+            if (tracker) {
+              tracker.update(cleaner.name, "error", {
+                error:
+                  error instanceof Error
+                    ? error.message.substring(0, 50)
+                    : "Unknown error",
+              });
+            }
+
+            return {
+              name: cleaner.name,
+              type: cleaner.type,
+              description: cleaner.description,
+              paths: [],
+              isInstalled: false,
+              size: 0,
+            };
           }
-
-          // Update progress: complete
-          if (tracker) {
-            tracker.update(cleaner.name, "complete", {
-              size: info.size || 0,
-            });
-          }
-
-          return info;
-        } catch (error) {
-          printVerbose(
-            `Error getting cache info for ${cleaner.name}: ${error}`,
-          );
-
-          // Update progress: error
-          if (tracker) {
-            tracker.update(cleaner.name, "error", {
-              error:
-                error instanceof Error
-                  ? error.message.substring(0, 50)
-                  : "Unknown error",
-            });
-          }
-
-          return {
-            name: cleaner.name,
-            type: cleaner.type,
-            description: cleaner.description,
-            paths: [],
-            isInstalled: false,
-            size: 0,
-          };
-        }
-      }),
-    );
-
-    // Stop progress tracker
-    if (tracker) {
-      tracker.stop();
+        }),
+      );
+    } finally {
+      // Always stop the progress tracker so redraw intervals cannot leak.
+      if (tracker) {
+        tracker.stop();
+      }
     }
 
     // Filter out null results (protected caches)
@@ -246,10 +251,6 @@ export class CacheManager {
     } = {},
   ): Promise<ClearResult[]> {
     let cleaners = this.getEnabledCleaners();
-    const allCacheInfos = await this.getAllCacheInfo({
-      showProgress: options.showProgress,
-    }); // Get all cache info once
-    const protectedPaths = config.getProtectedPaths(); // Get protected paths
 
     // Filter by types if specified
     if (options.types && options.types.length > 0) {
@@ -258,19 +259,22 @@ export class CacheManager {
       );
     }
 
-    // Include specific tools if specified (this takes precedence over exclude)
+    // Include specific tools if specified (takes precedence over exclude)
     if (options.include && options.include.length > 0) {
       cleaners = cleaners.filter((cleaner) =>
         options.include!.includes(cleaner.name),
       );
-    }
-
-    // Exclude specific tools if specified
-    if (options.exclude && options.exclude.length > 0) {
+    } else if (options.exclude && options.exclude.length > 0) {
       cleaners = cleaners.filter(
         (cleaner) => !options.exclude!.includes(cleaner.name),
       );
     }
+
+    const allCacheInfos = await this.getAllCacheInfo({
+      showProgress: options.showProgress,
+      cleaners,
+    }); // Get cache info once for selected cleaners only
+    const protectedPaths = config.getProtectedPaths(); // Get protected paths
 
     const results: ClearResult[] = [];
 

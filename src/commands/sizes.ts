@@ -3,15 +3,11 @@ import {
   printSuccess,
   printError,
   formatSizeWithColor,
-  symbols,
 } from "../utils/cli";
 import { cacheManager } from "../cleaners";
 
 export async function sizesCommand(_options: any): Promise<void> {
   try {
-    printInfo(`${symbols.soap} Cache Sizes`);
-    printInfo("──────────────");
-
     // Use real-time parallel progress tracking
     printInfo("Scanning cache directories...");
 

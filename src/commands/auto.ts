@@ -133,7 +133,7 @@ export async function autoCommand(options: AutoOptions): Promise<void> {
     for (const rec of recommendations) {
       const emoji = getPriorityEmoji(rec.priority);
       const sizeStr = formatSizeWithColor(rec.cache.size || 0);
-      const safetyFlag = rec.safe ? "✅" : "⚠️";
+      const safetyFlag = rec.safe ? "✅" : "⚠️ ";
 
       console.log(`${emoji} ${safetyFlag} ${rec.cache.name} - ${sizeStr}`);
       console.log(`     ${rec.reason}`);
@@ -160,7 +160,7 @@ export async function autoCommand(options: AutoOptions): Promise<void> {
 
     if (needsReview.length > 0) {
       console.log();
-      printWarning(`⚠️  Need manual review (${needsReview.length} caches):`);
+      printWarning(`Need manual review (${needsReview.length} caches):`);
       needsReview.forEach((name) => console.log(`   • ${name}`));
     }
 

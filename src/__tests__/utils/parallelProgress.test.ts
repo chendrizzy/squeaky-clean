@@ -7,8 +7,14 @@ import {
 describe("ParallelProgressTracker", () => {
   let tracker: ParallelProgressTracker;
   let consoleOutput: string[] = [];
+  const originalStdoutIsTTY = process.stdout.isTTY;
 
   beforeEach(() => {
+    Object.defineProperty(process.stdout, "isTTY", {
+      value: true,
+      configurable: true,
+    });
+
     // Capture console output
     consoleOutput = [];
     vi.spyOn(process.stdout, "write").mockImplementation((str: any) => {
@@ -18,6 +24,10 @@ describe("ParallelProgressTracker", () => {
   });
 
   afterEach(() => {
+    Object.defineProperty(process.stdout, "isTTY", {
+      value: originalStdoutIsTTY,
+      configurable: true,
+    });
     vi.restoreAllMocks();
   });
 
@@ -225,6 +235,26 @@ describe("ParallelProgressTracker", () => {
 
     const summary = tracker.getSummary();
     expect(summary.complete).toBe(1);
+  });
+
+  it("should use sparse milestone logs without ANSI cursor controls outside a TTY", () => {
+    Object.defineProperty(process.stdout, "isTTY", {
+      value: false,
+      configurable: true,
+    });
+
+    tracker = new ParallelProgressTracker(["npm"]);
+    tracker.start();
+    tracker.update("npm", "complete", { size: 1024 });
+    tracker.stop();
+
+    const output = vi
+      .mocked(console.log)
+      .mock.calls.map((call) => call.join(" "))
+      .join("\n");
+    expect(output).toContain("Scanning 1 cache types");
+    expect(output).toContain("Scan complete");
+    expect(output).not.toContain("\x1b[");
   });
 
   it("should track individual scanner durations", () => {

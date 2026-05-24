@@ -10,83 +10,107 @@ import {
 } from "../utils/cli";
 import { cacheManager } from "../cleaners";
 import { config } from "../config";
-import ora from "ora";
+import inquirer from "inquirer";
+
+function parseCsvOption(value?: string | string[]): string[] | undefined {
+  if (!value) return undefined;
+
+  const parsed = (Array.isArray(value) ? value.join(",") : value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return parsed.length > 0 ? parsed : undefined;
+}
+
+function parseTypes(value?: string | string[]): CacheType[] | undefined {
+  return parseCsvOption(value) as CacheType[] | undefined;
+}
+
+function parseSubCaches(
+  value?: string | string[],
+): Map<string, string[]> | undefined {
+  const pairs = parseCsvOption(value);
+  if (!pairs) return undefined;
+
+  const subCachesToClear = new Map<string, string[]>();
+
+  for (const pair of pairs) {
+    const [cleanerName, categoryId] = pair
+      .split(":")
+      .map((part) => part.trim());
+    if (!cleanerName || !categoryId) continue;
+
+    if (!subCachesToClear.has(cleanerName)) {
+      subCachesToClear.set(cleanerName, []);
+    }
+    subCachesToClear.get(cleanerName)!.push(categoryId);
+  }
+
+  return subCachesToClear.size > 0 ? subCachesToClear : undefined;
+}
+
+function canPromptForConfirmation(): boolean {
+  return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+}
+
+async function confirmCleanup(): Promise<boolean> {
+  try {
+    const { confirmed } = await inquirer.prompt<{ confirmed: boolean }>([
+      {
+        type: "confirm",
+        name: "confirmed",
+        message: "Proceed with cache cleanup?",
+        default: false,
+      },
+    ]);
+
+    return confirmed;
+  } catch {
+    return false;
+  }
+}
 
 export async function cleanCommand(options: CommandOptions): Promise<void> {
   try {
-    if (options.dryRun) {
-      printInfo(`DRY RUN: Showing what would be cleaned...`);
-    } else {
-      printInfo(`${symbols.soap} Starting cleanup process...`);
-    }
+    const dryRun = Boolean(options.dryRun);
 
-    // Parse types if specified
-    const types: CacheType[] | undefined = options.types
-      ? ((Array.isArray(options.types)
-          ? options.types.join(",")
-          : options.types
-        )
-          .split(",")
-          .map((t) => t.trim()) as CacheType[])
-      : undefined;
+    const types = parseTypes(options.types);
+    const exclude = parseCsvOption(options.exclude);
+    const include = parseCsvOption(options.include);
+    const subCachesToClear = parseSubCaches(options.subCaches);
 
-    // Parse exclude list if specified
-    const exclude: string[] | undefined = options.exclude
-      ? (Array.isArray(options.exclude)
-          ? options.exclude.join(",")
-          : options.exclude
-        )
-          .split(",")
-          .map((t) => t.trim())
-      : undefined;
+    if (dryRun) {
+      printInfo(
+        "Dry run: showing what would be cleaned. No files will be deleted.",
+      );
+    } else if (!options.force && config.shouldRequireConfirmation()) {
+      printWarning("This will permanently delete cache files.");
+      printInfo("Use --dry-run to preview or --force to skip this prompt.");
 
-    // Parse include list if specified
-    const include: string[] | undefined = options.include
-      ? (Array.isArray(options.include)
-          ? options.include.join(",")
-          : options.include
-        )
-          .split(",")
-          .map((t) => t.trim())
-      : undefined;
+      if (!canPromptForConfirmation()) {
+        printWarning(
+          "Confirmation is required, but this terminal cannot prompt.",
+        );
+        printInfo(
+          "No caches were cleaned. Re-run with --force to clean or --dry-run to preview.",
+        );
+        return;
+      }
 
-    // Parse sub-caches if specified
-    let subCachesToClear: Map<string, string[]> | undefined;
-    if (options.subCaches) {
-      subCachesToClear = new Map<string, string[]>();
-      const pairs = (
-        Array.isArray(options.subCaches)
-          ? options.subCaches.join(",")
-          : options.subCaches
-      ).split(",");
-      for (const pair of pairs) {
-        const [cleanerName, categoryId] = pair.trim().split(":");
-        if (cleanerName && categoryId) {
-          if (!subCachesToClear.has(cleanerName)) {
-            subCachesToClear.set(cleanerName, []);
-          }
-          subCachesToClear.get(cleanerName)!.push(categoryId);
-        }
+      const confirmed = await confirmCleanup();
+      if (!confirmed) {
+        printInfo("Operation cancelled. No caches were cleaned.");
+        return;
       }
     }
 
-    // Check if user wants confirmation and we're not in force mode
-    if (
-      !options.dryRun &&
-      !options.force &&
-      config.shouldRequireConfirmation()
-    ) {
-      printWarning(
-        "This will permanently delete cache files. Use --dry-run to preview or --force to skip confirmation.",
-      );
-      printInfo(
-        "For now, running in dry-run mode to show what would be cleaned...",
-      );
-      options.dryRun = true;
+    if (!dryRun) {
+      printInfo("Starting cleanup process...");
     }
 
     // Get cache info first if showing sizes
-    if (options.sizes && !options.dryRun) {
+    if (options.sizes && !dryRun) {
       // Use real-time parallel progress tracking for size scanning
       printInfo("Scanning cache sizes...");
       try {
@@ -107,23 +131,22 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
     }
 
     // Clean the caches
-    const cleanSpinner = ora(
-      options.dryRun ? "Analyzing caches..." : "Cleaning caches...",
-    ).start();
     let results;
     try {
+      printInfo(
+        dryRun ? "Analyzing selected caches..." : "Scanning selected caches...",
+      );
       results = await cacheManager.cleanAllCaches({
-        dryRun: options.dryRun,
+        dryRun,
         types,
         exclude,
         include,
-        subCachesToClear, // Pass sub-caches option
-        showProgress: false, // Don't show progress during clean (spinner is enough)
+        subCachesToClear,
+        showProgress: Boolean(process.stdout.isTTY),
       });
-      cleanSpinner.stop();
     } catch (error) {
-      cleanSpinner.fail(
-        options.dryRun ? "Failed to analyze caches" : "Failed to clean caches",
+      printError(
+        dryRun ? "Failed to analyze caches" : "Failed to clean caches",
       );
       throw error;
     }
@@ -133,13 +156,15 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
     let successCount = 0;
     let errorCount = 0;
 
-    console.log(); // Add some space
+    if (results.length > 0) {
+      console.log();
+    }
 
     for (const result of results) {
       if (result.success) {
         // In dry-run mode, sizeBefore shows what would be cleaned
         // In actual clean mode, it shows what was cleaned
-        const freed = options.dryRun
+        const freed = dryRun
           ? result.sizeBefore || 0
           : (result.sizeBefore || 0) - (result.sizeAfter || 0);
         totalFreed += freed;
@@ -147,8 +172,9 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
 
         if (freed > 0) {
           const freedFormatted = formatSizeWithColor(freed);
+          const action = dryRun ? "would be freed" : "freed";
           printSuccess(
-            `${result.name}: ${freedFormatted} ${options.dryRun ? "would be" : ""} freed ${symbols.bubbles}`,
+            `${result.name}: ${freedFormatted} ${action} ${symbols.bubbles}`,
           );
         } else {
           printInfo(`${result.name}: No cache data found`);
@@ -159,13 +185,15 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
       }
     }
 
-    console.log(); // Add some space
+    if (results.length > 0) {
+      console.log();
+    }
 
     // Summary
     if (totalFreed > 0) {
       const totalFreedFormatted = formatSizeWithColor(totalFreed);
       printSuccess(
-        `Total ${options.dryRun ? "potential " : ""}space freed: ${totalFreedFormatted}`,
+        `Total ${dryRun ? "potential " : ""}space freed: ${totalFreedFormatted}`,
       );
     }
 
@@ -175,12 +203,10 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
       );
     }
 
-    if (successCount > 0 && !options.dryRun) {
+    if (successCount > 0 && !dryRun) {
       printCleanComplete("Your dev environment is now squeaky clean!");
-    } else if (options.dryRun) {
-      printInfo(
-        `${symbols.soap} Run without --dry-run to actually clean these caches`,
-      );
+    } else if (dryRun) {
+      printInfo("Run without --dry-run to actually clean these caches");
     } else {
       printInfo("No caches were cleaned");
     }
