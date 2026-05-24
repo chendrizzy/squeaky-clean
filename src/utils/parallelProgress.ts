@@ -51,7 +51,7 @@ export class ParallelProgressTracker {
     this.isActive = true;
 
     if (!this.useDynamicDisplay) {
-      console.log(pc.dim(`Scanning ${this.scanners.size} cache types...`));
+      console.log(`Scanning ${this.scanners.size} cache types...`);
       return;
     }
 
@@ -157,21 +157,15 @@ export class ParallelProgressTracker {
     ).length;
 
     if (!isFinal) {
-      lines.push(
-        pc.dim(
-          `Scanning ${this.scanners.size} cache types (${activeCount} active, ${completeCount} complete, ${errorCount} errors) [${elapsed}s]`,
-        ),
-      );
+      const text = `Scanning ${this.scanners.size} cache types (${activeCount} active, ${completeCount} complete, ${errorCount} errors) [${elapsed}s]`;
+      lines.push(this.shouldUseColors() ? pc.dim(text) : text);
     } else {
       const totalSize = Array.from(this.scanners.values()).reduce(
         (sum, s) => sum + (s.size || 0),
         0,
       );
-      lines.push(
-        pc.green(
-          `✓ Scan complete: ${completeCount}/${this.scanners.size} caches (${this.formatSize(totalSize)}) in ${elapsed}s`,
-        ),
-      );
+      const text = `✓ Scan complete: ${completeCount}/${this.scanners.size} caches (${this.formatSize(totalSize)}) in ${elapsed}s`;
+      lines.push(this.shouldUseColors() ? pc.green(text) : text);
     }
 
     // Scanner status lines
@@ -203,7 +197,7 @@ export class ParallelProgressTracker {
     scanner: ScannerState,
     isFinal: boolean,
   ): string | null {
-    const useColors = config.shouldUseColors();
+    const useColors = this.shouldUseColors();
     const name = scanner.name.padEnd(this.maxNameLength);
 
     // Skip pending scanners in final display
@@ -291,6 +285,10 @@ export class ParallelProgressTracker {
     const size = (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0);
 
     return `${size} ${sizes[i]}`;
+  }
+
+  private shouldUseColors(): boolean {
+    return this.useDynamicDisplay && config.shouldUseColors();
   }
 
   /**
