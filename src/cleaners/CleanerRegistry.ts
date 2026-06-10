@@ -79,15 +79,12 @@ export class CleanerRegistry {
    * Get available cleaners (ones that are installed)
    */
   async getAvailableCleaners(): Promise<CleanerModule[]> {
-    const available: CleanerModule[] = [];
+    const cleaners = this.getAllCleaners();
+    const availability = await Promise.all(
+      cleaners.map((cleaner) => cleaner.isAvailable().catch(() => false)),
+    );
 
-    for (const cleaner of this.getAllCleaners()) {
-      if (await cleaner.isAvailable()) {
-        available.push(cleaner);
-      }
-    }
-
-    return available;
+    return cleaners.filter((_, i) => availability[i]);
   }
 
   /**

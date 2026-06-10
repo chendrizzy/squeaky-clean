@@ -1,6 +1,5 @@
 import path from "path";
 import * as os from "os";
-import execa from "execa";
 import { promises as fs } from "fs";
 import {
   CacheCategory,
@@ -12,6 +11,7 @@ import {
 import { getDirectorySize, pathExists, safeRmrf } from "../utils/fs";
 import { printVerbose } from "../utils/cli";
 import { minimatch } from "minimatch";
+import { commandExists } from "../utils/which";
 
 class MavenCleaner implements CleanerModule {
   name = "maven";
@@ -56,12 +56,7 @@ class MavenCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    try {
-      await execa("mvn", ["-v"]);
-      return true;
-    } catch {
-      return false;
-    }
+    return commandExists("mvn");
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

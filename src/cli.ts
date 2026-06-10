@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 
+// Widen libuv's threadpool (default 4) before any fs work initializes it:
+// dozens of cleaners stat/readdir in parallel and would otherwise serialize.
+if (!process.env.UV_THREADPOOL_SIZE) {
+  process.env.UV_THREADPOOL_SIZE = "16";
+}
+
 import { Command } from "commander";
 import { readFileSync } from "fs";
 import { join } from "path";

@@ -3,6 +3,7 @@ import { vol } from "memfs";
 import { DockerCleaner } from "../../cleaners/docker.js";
 import { resetMocks } from "../testUtils.js";
 import execa from "execa";
+import { commandExists } from "../../utils/which.js";
 
 // Mock execa to handle both CommonJS require() and ES6 import styles
 vi.mock("execa", () => {
@@ -14,6 +15,12 @@ vi.mock("execa", () => {
   };
 });
 
+// Availability is now a PATH lookup (no process spawn), so mock it directly.
+vi.mock("../../utils/which.js", () => ({
+  commandExists: vi.fn(),
+  anyCommandExists: vi.fn(),
+}));
+
 describe("DockerCleaner", () => {
   let cleaner: DockerCleaner;
 
@@ -21,57 +28,33 @@ describe("DockerCleaner", () => {
     resetMocks();
     cleaner = new DockerCleaner();
     vi.clearAllMocks();
+    // Default: Docker client is on PATH (available).
+    vi.mocked(commandExists).mockResolvedValue(true);
+    // Default: daemon socket exists, so getDockerSystemInfo() proceeds to
+    // the (mocked) docker CLI calls instead of short-circuiting.
+    vol.mkdirSync("/var/run", { recursive: true });
+    vol.writeFileSync("/var/run/docker.sock", "");
   });
 
   describe("isAvailable", () => {
     it("should return true when Docker server is running", async () => {
-      vi.mocked(execa).mockResolvedValueOnce({
-        stdout: "24.0.7",
-        stderr: "",
-        exitCode: 0,
-        failed: false,
-        killed: false,
-        signal: undefined,
-        timedOut: false,
-        command: "docker version --format {{.Server.Version}}",
-        escapedCommand: "docker version --format {{.Server.Version}}",
-      } as any);
+      vi.mocked(commandExists).mockResolvedValue(true);
 
       const available = await cleaner.isAvailable();
       expect(available).toBe(true);
-      expect(vi.mocked(execa)).toHaveBeenCalledWith(
-        "docker",
-        ["version", "--format", "{{.Server.Version}}"],
-        { timeout: 10000 },
-      );
+      expect(vi.mocked(commandExists)).toHaveBeenCalledWith("docker");
     });
 
     it("should return true when Docker is installed but server not running", async () => {
-      // First call fails (server not running)
-      vi.mocked(execa).mockRejectedValueOnce(
-        new Error("Cannot connect to the Docker daemon"),
-      );
-      // Second call succeeds (docker --version works)
-      vi.mocked(execa).mockResolvedValueOnce({
-        stdout: "Docker version 24.0.7",
-        stderr: "",
-        exitCode: 0,
-        failed: false,
-        killed: false,
-        signal: undefined,
-        timedOut: false,
-        command: "docker --version",
-        escapedCommand: "docker --version",
-      } as any);
+      // Client installed (on PATH) even though the daemon may be down.
+      vi.mocked(commandExists).mockResolvedValue(true);
 
       const available = await cleaner.isAvailable();
       expect(available).toBe(true);
     });
 
     it("should return false when Docker is not installed", async () => {
-      vi.mocked(execa).mockRejectedValue(
-        new Error("command not found: docker"),
-      );
+      vi.mocked(commandExists).mockResolvedValue(false);
 
       const available = await cleaner.isAvailable();
       expect(available).toBe(false);
@@ -80,9 +63,7 @@ describe("DockerCleaner", () => {
 
   describe("getCacheInfo", () => {
     it("should return empty info when Docker is not available", async () => {
-      vi.mocked(execa).mockRejectedValue(
-        new Error("command not found: docker"),
-      );
+      vi.mocked(commandExists).mockResolvedValue(false);
 
       const info = await cleaner.getCacheInfo();
 
@@ -98,11 +79,7 @@ describe("DockerCleaner", () => {
     });
 
     it("should parse Docker system df output correctly", async () => {
-      // Mock isAvailable to return true
-      vi.mocked(execa).mockResolvedValueOnce({
-        stdout: "24.0.7",
-        exitCode: 0,
-      } as any);
+      // isAvailable() now uses commandExists (mocked true in beforeEach).
 
       // Mock system df command
       vi.mocked(execa).mockResolvedValueOnce({
@@ -126,11 +103,7 @@ describe("DockerCleaner", () => {
     });
 
     it("should handle Docker command errors gracefully", async () => {
-      // Mock isAvailable to return true
-      vi.mocked(execa).mockResolvedValueOnce({
-        stdout: "24.0.7",
-        exitCode: 0,
-      } as any);
+      // isAvailable() now uses commandExists (mocked true in beforeEach).
 
       // Mock both system df command and networks command to fail
       vi.mocked(execa).mockRejectedValueOnce(
@@ -149,13 +122,8 @@ describe("DockerCleaner", () => {
   });
 
   describe("clear", () => {
-    beforeEach(() => {
-      // Mock isAvailable to return true
-      vi.mocked(execa).mockResolvedValueOnce({
-        stdout: "24.0.7",
-        exitCode: 0,
-      } as any);
-    });
+    // isAvailable() now uses commandExists (mocked true in the outer beforeEach),
+    // so no leading execa mock is needed here.
 
     it("should perform dry run without actual cleanup", async () => {
       // Mock getCacheInfo call inside clear
@@ -220,11 +188,8 @@ describe("DockerCleaner", () => {
     });
 
     it("should handle Docker not available", async () => {
-      // Override the default mock to simulate Docker not available
-      vi.mocked(execa).mockReset();
-      vi.mocked(execa).mockRejectedValue(
-        new Error("command not found: docker"),
-      );
+      // Simulate Docker not installed (not on PATH)
+      vi.mocked(commandExists).mockResolvedValue(false);
 
       const result = await cleaner.clear();
 

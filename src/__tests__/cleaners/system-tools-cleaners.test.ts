@@ -5,10 +5,11 @@ import flutterCleaner from "../../cleaners/flutter";
 import pipCleaner from "../../cleaners/pip";
 import execa from "execa";
 import { pathExists, getDirectorySize, safeRmrf } from "../../utils/fs.js";
+import { commandExists, anyCommandExists } from "../../utils/which";
 import { cacheManager } from "../../utils/cache";
 import * as os from "os";
 
-// Mock execa
+// Mock execa (still used by getCacheInfo paths, e.g. docker system df)
 vi.mock("execa", () => {
   const mockExeca = vi.fn();
   return {
@@ -16,6 +17,12 @@ vi.mock("execa", () => {
     __esModule: true,
   };
 });
+
+// Mock PATH-based availability lookups (isAvailable no longer spawns processes)
+vi.mock("../../utils/which", () => ({
+  commandExists: vi.fn(),
+  anyCommandExists: vi.fn(),
+}));
 
 // Mock filesystem utilities
 vi.mock("../../utils/fs.js", () => {
@@ -50,16 +57,15 @@ describe("System Tools Cache Cleaners - Basic Tests", () => {
     vi.mocked(pathExists).mockResolvedValue(false);
     vi.mocked(getDirectorySize).mockResolvedValue(0);
     vi.mocked(safeRmrf).mockResolvedValue(undefined);
+
+    // Default: no tools on PATH (deterministic; tests opt-in per command)
+    vi.mocked(commandExists).mockResolvedValue(false);
+    vi.mocked(anyCommandExists).mockResolvedValue(false);
   });
 
   // Mock command utilities
   const mockCommandSuccess = (command: string, output: string) => {
     mockedCommands.set(command, { output });
-    updateExecaMock();
-  };
-
-  const mockCommandError = (command: string, error: string) => {
-    mockedCommands.set(command, { error });
     updateExecaMock();
   };
 
@@ -96,31 +102,28 @@ describe("System Tools Cache Cleaners - Basic Tests", () => {
 
   describe("DockerCleaner", () => {
     it("should detect Docker installation", async () => {
-      mockCommandSuccess(
-        "docker version --format {{.Server.Version}}",
-        "20.10.0",
+      vi.mocked(commandExists).mockImplementation(
+        async (cmd) => cmd === "docker",
       );
 
       const detected = await dockerCleaner.isAvailable();
       expect(detected).toBe(true);
+      expect(commandExists).toHaveBeenCalledWith("docker");
     });
 
     it("should not detect Docker when command fails", async () => {
-      mockCommandError(
-        "docker version --format {{.Server.Version}}",
-        "command not found: docker",
-      );
-      mockCommandError("docker --version", "command not found: docker");
-
+      // commandExists defaults to false (docker not on PATH)
       const detected = await dockerCleaner.isAvailable();
       expect(detected).toBe(false);
+      expect(commandExists).toHaveBeenCalledWith("docker");
     });
 
     it("should parse Docker system df output correctly", async () => {
-      mockCommandSuccess(
-        "docker version --format {{.Server.Version}}",
-        "24.0.7",
+      vi.mocked(commandExists).mockImplementation(
+        async (cmd) => cmd === "docker",
       );
+      // Daemon socket exists, so the pre-check lets the CLI queries run
+      vi.mocked(pathExists).mockResolvedValue(true);
       mockCommandSuccess(
         "docker system df --format table {{.Type}}\\t{{.TotalCount}}\\t{{.Size}}\\t{{.Reclaimable}}",
         "TYPE\tTOTAL\tSIZE\tRECLAIMABLE\nImages\t8\t1.2GB\t600MB\nContainers\t4\t300MB\t150MB\nLocal Volumes\t3\t800MB\t400MB\nBuild Cache\t12\t2.5GB\t2GB",
@@ -141,15 +144,17 @@ describe("System Tools Cache Cleaners - Basic Tests", () => {
 
   describe("GradleCleaner", () => {
     it("should detect Gradle with gradle command", async () => {
-      mockCommandSuccess("gradle --version", "Gradle 8.4");
+      vi.mocked(commandExists).mockImplementation(
+        async (cmd) => cmd === "gradle",
+      );
 
       const detected = await gradleCleaner.isAvailable();
       expect(detected).toBe(true);
+      expect(commandExists).toHaveBeenCalledWith("gradle");
     });
 
     it("should not detect Gradle when command fails and no .gradle directory", async () => {
-      mockCommandError("gradle --version", "command not found: gradle");
-      mockCommandError("./gradlew --version", "command not found: ./gradlew");
+      // gradle not on PATH (default) and no ~/.gradle directory
       vi.mocked(pathExists).mockResolvedValue(false); // No .gradle directory
 
       const detected = await gradleCleaner.isAvailable();
@@ -165,18 +170,17 @@ describe("System Tools Cache Cleaners - Basic Tests", () => {
 
   describe("FlutterCleaner", () => {
     it("should detect Flutter installation", async () => {
-      mockCommandSuccess(
-        "flutter --version",
-        "Flutter 3.16.0 • channel stable • https://github.com/flutter/flutter.git",
+      vi.mocked(commandExists).mockImplementation(
+        async (cmd) => cmd === "flutter",
       );
 
       const detected = await flutterCleaner.isAvailable();
       expect(detected).toBe(true);
+      expect(commandExists).toHaveBeenCalledWith("flutter");
     });
 
     it("should not detect Flutter when command fails", async () => {
-      mockCommandError("flutter --version", "command not found: flutter");
-
+      // flutter not on PATH (default) and no pub-cache directory (pathExists false)
       const detected = await flutterCleaner.isAvailable();
       expect(detected).toBe(false);
     });
@@ -190,30 +194,27 @@ describe("System Tools Cache Cleaners - Basic Tests", () => {
 
   describe("PipCleaner", () => {
     it("should detect Python pip installation", async () => {
-      mockCommandSuccess(
-        "pip --version",
-        "pip 23.3.1 from /usr/local/lib/python3.11/site-packages/pip (python 3.11)",
+      vi.mocked(anyCommandExists).mockImplementation(async (...cmds) =>
+        cmds.includes("pip"),
       );
 
       const detected = await pipCleaner.isAvailable();
       expect(detected).toBe(true);
+      expect(anyCommandExists).toHaveBeenCalled();
     });
 
     it("should detect Python3 pip installation", async () => {
-      mockCommandError("pip --version", "command not found: pip");
-      mockCommandSuccess(
-        "pip3 --version",
-        "pip 23.3.1 from /usr/local/lib/python3.11/site-packages/pip (python 3.11)",
+      vi.mocked(anyCommandExists).mockImplementation(async (...cmds) =>
+        cmds.includes("pip3"),
       );
 
       const detected = await pipCleaner.isAvailable();
       expect(detected).toBe(true);
+      expect(anyCommandExists).toHaveBeenCalled();
     });
 
     it("should not detect pip when both commands fail", async () => {
-      mockCommandError("pip --version", "command not found: pip");
-      mockCommandError("pip3 --version", "command not found: pip3");
-
+      // anyCommandExists defaults to false and no pip cache dir (pathExists false)
       const detected = await pipCleaner.isAvailable();
       expect(detected).toBe(false);
     });

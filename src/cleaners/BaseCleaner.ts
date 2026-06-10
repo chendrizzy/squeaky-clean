@@ -9,12 +9,9 @@ import {
 import { existsSync, statSync } from "fs";
 import { rm } from "fs/promises";
 import { basename, resolve } from "path";
-import { exec } from "child_process";
-import { promisify } from "util";
 import { minimatch } from "minimatch";
 import { printVerbose } from "../utils/cli";
-
-const execAsync = promisify(exec);
+import { getCachedDirectorySize } from "../utils/fs";
 
 export abstract class BaseCleaner implements CleanerModule {
   abstract name: string;
@@ -280,16 +277,9 @@ export abstract class BaseCleaner implements CleanerModule {
   protected async getDirectorySize(path: string): Promise<number> {
     if (!existsSync(path)) return 0;
 
-    try {
-      // Use du command for accurate size calculation
-      const { stdout } = await execAsync(
-        `du -sk "${path}" 2>/dev/null || echo "0"`,
-      );
-      const sizeKB = parseInt(stdout.split("\t")[0]) || 0;
-      return sizeKB * 1024;
-    } catch {
-      return 0;
-    }
+    // Shared cached sizer: getCacheCategories() reuses sizes that
+    // getCacheInfo() already computed instead of re-walking each path.
+    return getCachedDirectorySize(path);
   }
 
   /**

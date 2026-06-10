@@ -10,6 +10,7 @@ import * as os from "os";
 import { pathExists, getDirectorySize, safeRmrf } from "../utils/fs";
 import execa from "execa";
 import { printVerbose, symbols } from "../utils/cli";
+import { commandExists } from "../utils/which";
 
 export class TurboCleaner implements CleanerModule {
   name = "turbo";
@@ -230,12 +231,18 @@ export class TurboCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    // Check if Turbo is installed globally or there are Turbo caches/repos
-    const version = await this.getTurboVersion();
-    const caches = await this.findTurboCaches();
-    const hasRepos = await this.hasTurboRepos();
+    // Turbo binary on PATH (no process spawn, never invokes npx)
+    if (await commandExists("turbo")) {
+      return true;
+    }
 
-    return version !== null || caches.length > 0 || hasRepos;
+    // Otherwise look for known Turbo caches or repos on disk
+    const caches = await this.findTurboCaches();
+    if (caches.length > 0) {
+      return true;
+    }
+
+    return this.hasTurboRepos();
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

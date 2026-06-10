@@ -1,6 +1,5 @@
 import path from "path";
 import * as os from "os";
-import execa from "execa";
 import { promises as fs } from "fs";
 import {
   CacheCategory,
@@ -11,6 +10,7 @@ import {
 } from "../types";
 import { getDirectorySize, pathExists, safeRmrf } from "../utils/fs";
 import { printVerbose } from "../utils/cli";
+import { commandExists } from "../utils/which";
 import { minimatch } from "minimatch";
 
 class CocoaPodsCleaner implements CleanerModule {
@@ -52,14 +52,10 @@ class CocoaPodsCleaner implements CleanerModule {
 
   async isAvailable(): Promise<boolean> {
     if (process.platform !== "darwin") return false;
-    try {
-      await execa("pod", ["--version"]);
-      return true;
-    } catch {
-      // Still consider available if caches exist even without CLI
-      const categories = await this.buildCategories();
-      return categories.length > 0;
-    }
+    if (await commandExists("pod")) return true;
+    // Still consider available if caches exist even without CLI
+    const categories = await this.buildCategories();
+    return categories.length > 0;
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

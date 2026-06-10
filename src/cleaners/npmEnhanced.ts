@@ -1,7 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
 import * as os from "os";
-import execa from "execa";
 import {
   CacheInfo,
   ClearResult,
@@ -10,6 +9,7 @@ import {
 } from "../types";
 import { pathExists } from "../utils/fs";
 import { printVerbose } from "../utils/cli";
+import { commandExists } from "../utils/which";
 import { BaseCleaner } from "./BaseCleaner";
 import { statSync, existsSync } from "fs";
 import { minimatch } from "minimatch";
@@ -56,13 +56,7 @@ export class NpmEnhancedCleaner extends BaseCleaner {
   }
 
   async isAvailable(): Promise<boolean> {
-    try {
-      printVerbose("Checking if npm is installed...");
-      await execa("npm", ["--version"]);
-      return true;
-    } catch {
-      return false;
-    }
+    return commandExists("npm");
   }
 
   async getCacheCategories(): Promise<CacheCategory[]> {

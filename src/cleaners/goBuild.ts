@@ -6,6 +6,7 @@ import * as os from "os";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { printVerbose } from "../utils/cli";
+import { commandExists } from "../utils/which";
 
 const execAsync = promisify(exec);
 
@@ -61,23 +62,21 @@ export class GoBuildCleaner extends BaseCleaner {
   }
 
   async isAvailable(): Promise<boolean> {
-    try {
-      // Check if Go is installed
-      const result = await execAsync("go version");
-      printVerbose(`Found Go: ${result.stdout.trim()}`);
+    if (await commandExists("go")) {
+      printVerbose("Found Go on PATH");
       return true;
-    } catch {
-      // Check if Go cache directories exist
-      const homeDir = os.homedir();
-      const goCacheDir =
-        process.platform === "darwin"
-          ? path.join(homeDir, "Library", "Caches", "go-build")
-          : process.platform === "win32"
-            ? path.join(homeDir, "AppData", "Local", "go-build")
-            : path.join(homeDir, ".cache", "go-build");
-
-      return existsSync(goCacheDir);
     }
+
+    // Check if Go cache directories exist
+    const homeDir = os.homedir();
+    const goCacheDir =
+      process.platform === "darwin"
+        ? path.join(homeDir, "Library", "Caches", "go-build")
+        : process.platform === "win32"
+          ? path.join(homeDir, "AppData", "Local", "go-build")
+          : path.join(homeDir, ".cache", "go-build");
+
+    return existsSync(goCacheDir);
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

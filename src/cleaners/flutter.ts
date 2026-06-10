@@ -10,6 +10,7 @@ import * as os from "os";
 import { pathExists, getDirectorySize, safeRmrf } from "../utils/fs";
 import execa from "execa";
 import { printVerbose, symbols } from "../utils/cli";
+import { commandExists } from "../utils/which";
 import { minimatch } from "minimatch";
 
 class FlutterCleaner implements CleanerModule {
@@ -209,10 +210,9 @@ class FlutterCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    // Check if Flutter is installed
-    const version = await this.getFlutterVersion();
-    if (version) {
-      printVerbose(`Found Flutter: ${version}`);
+    // Check if Flutter is installed (PATH lookup, no process spawn)
+    if (await commandExists("flutter")) {
+      printVerbose("Found Flutter on PATH");
       return true;
     }
 

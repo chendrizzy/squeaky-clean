@@ -8,44 +8,13 @@ import * as path from "path";
 import * as os from "os";
 import { pathExists, getDirectorySize, safeRmrf } from "../utils/fs";
 import execa from "execa";
+import { anyCommandExists } from "../utils/which";
 import { printVerbose, symbols } from "../utils/cli";
 
 class PipCleaner implements CleanerModule {
   name = "pip";
   type = "package-manager" as const;
   description = "Python pip package manager caches and temporary files";
-
-  private async getPythonVersion(): Promise<string | null> {
-    // Try python3 first, then python
-    const pythonCommands = ["python3", "python"];
-
-    for (const cmd of pythonCommands) {
-      try {
-        const result = await execa(cmd, ["--version"]);
-        return result.stdout.trim() || result.stderr.trim();
-      } catch {
-        // Continue to next command
-      }
-    }
-
-    return null;
-  }
-
-  private async getPipVersion(): Promise<string | null> {
-    // Try pip3 first, then pip
-    const pipCommands = ["pip3", "pip"];
-
-    for (const cmd of pipCommands) {
-      try {
-        const result = await execa(cmd, ["--version"]);
-        return result.stdout.trim();
-      } catch {
-        // Continue to next command
-      }
-    }
-
-    return null;
-  }
 
   private async getPipCachePaths(): Promise<string[]> {
     const paths: string[] = [];
@@ -203,17 +172,10 @@ class PipCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    // Check if Python is installed
-    const pythonVersion = await this.getPythonVersion();
-    if (pythonVersion) {
-      printVerbose(`Found Python: ${pythonVersion}`);
-      return true;
-    }
-
-    // Check if pip is installed
-    const pipVersion = await this.getPipVersion();
-    if (pipVersion) {
-      printVerbose(`Found pip: ${pipVersion}`);
+    // Check if Python or pip is on PATH (no process spawn).
+    // Tries pip3 then pip (plus python3/python) without booting interpreters.
+    if (await anyCommandExists("python3", "python", "pip3", "pip")) {
+      printVerbose("Found Python/pip on PATH");
       return true;
     }
 

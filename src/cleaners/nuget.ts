@@ -1,6 +1,5 @@
 import path from "path";
 import * as os from "os";
-import execa from "execa";
 import { promises as fs } from "fs";
 import {
   CacheCategory,
@@ -12,6 +11,7 @@ import {
 import { getDirectorySize, pathExists, safeRmrf } from "../utils/fs";
 import { printVerbose } from "../utils/cli";
 import { minimatch } from "minimatch";
+import { anyCommandExists } from "../utils/which";
 
 class NugetCleaner implements CleanerModule {
   name = "nuget";
@@ -69,17 +69,7 @@ class NugetCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    try {
-      await execa("dotnet", ["--info"]);
-      return true;
-    } catch {
-      try {
-        await execa("nuget", ["help"]);
-        return true;
-      } catch {
-        return false;
-      }
-    }
+    return anyCommandExists("dotnet", "nuget");
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

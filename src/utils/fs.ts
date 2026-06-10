@@ -1,7 +1,12 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { rimraf } from "rimraf";
 import { cacheManager } from "./cache";
+
+const execFileAsync = promisify(execFile);
+const isWindows = process.platform === "win32";
 
 export async function pathExists(filePath: string): Promise<boolean> {
   try {
@@ -22,78 +27,157 @@ const withTimeout = <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
   ]);
 };
 
-export async function getDirectorySize(
-  dirPath: string,
-  skipLargeDirectories: boolean = false,
-): Promise<number> {
-  // Wrap the actual calculation with an 8-second timeout to prevent hangs
-  try {
-    return await withTimeout(
-      calculateDirectorySize(dirPath, skipLargeDirectories),
-      8000,
-    );
-  } catch (error) {
-    if (error instanceof Error && error.message === "Timeout") {
-      // Use estimated size for directories that take too long
-      return getEstimatedDirectorySize(dirPath);
+/**
+ * Simple counting semaphore to bound concurrent expensive operations
+ * (child process spawns, deep directory walks) across all cleaners.
+ */
+class Semaphore {
+  private queue: Array<() => void> = [];
+  private available: number;
+
+  constructor(max: number) {
+    this.available = max;
+  }
+
+  async acquire(): Promise<void> {
+    if (this.available > 0) {
+      this.available--;
+      return;
     }
-    return 0;
+    await new Promise<void>((resolve) => this.queue.push(resolve));
+  }
+
+  release(): void {
+    const next = this.queue.shift();
+    if (next) {
+      next();
+    } else {
+      this.available++;
+    }
   }
 }
 
-async function calculateDirectorySize(
-  dirPath: string,
-  skipLargeDirectories: boolean = false,
-): Promise<number> {
+// All cleaners scan in parallel; cap how many sizing operations hit the
+// disk at once so they share bandwidth instead of thrashing.
+const sizingSemaphore = new Semaphore(8);
+
+/**
+ * Compute directory size with native `du` (single C-speed process per path,
+ * no per-file syscalls from JS). Returns null when du is unavailable or
+ * fails so callers can fall back to the JS walker.
+ */
+async function duDirectorySize(dirPath: string): Promise<number | null> {
+  await sizingSemaphore.acquire();
   try {
-    const stats = await fs.stat(dirPath);
-
-    if (!stats.isDirectory()) {
-      return stats.size;
+    const { stdout } = await execFileAsync("du", ["-sk", "--", dirPath], {
+      timeout: 60000,
+      maxBuffer: 1024 * 1024,
+    });
+    return parseDuOutput(stdout);
+  } catch (error) {
+    // du exits non-zero when some subdirectories are unreadable but still
+    // prints the total it could measure - use that partial result.
+    const stdout = (error as { stdout?: string })?.stdout;
+    if (stdout) {
+      const size = parseDuOutput(stdout);
+      if (size !== null) return size;
     }
+    return null;
+  } finally {
+    sizingSemaphore.release();
+  }
+}
 
-    // For very large cache directories, return estimated size instead of calculating exact size
-    if (skipLargeDirectories) {
-      return getEstimatedDirectorySize(dirPath);
-    }
+/** Exported for tests: parse `du -sk` output ("<KB>\t<path>") into bytes. */
+export function parseDuOutput(stdout: string): number | null {
+  const sizeKB = parseInt(stdout.split("\t")[0], 10);
+  if (Number.isNaN(sizeKB)) return null;
+  return sizeKB * 1024;
+}
 
-    let totalSize = 0;
-    const stack = [dirPath];
-    let processedCount = 0;
-    const maxItems = 10000; // Limit total items processed to prevent memory issues
+/**
+ * Pure-JS fallback walker (Windows, or if du fails). Uses dirent type info
+ * from readdir to avoid one stat() per entry, and walks directories with
+ * bounded concurrency instead of one item at a time.
+ */
+async function walkDirectorySize(rootDir: string): Promise<number> {
+  let totalSize = 0;
+  let activeWalkers = 0;
+  const pendingDirs: string[] = [rootDir];
+  const maxConcurrentDirs = 16;
 
-    while (stack.length > 0 && processedCount < maxItems) {
-      const currentDir = stack.pop()!;
-
+  await new Promise<void>((resolveWalk) => {
+    const processDir = async (dir: string): Promise<void> => {
       try {
-        const items = await fs.readdir(currentDir);
-
-        for (const item of items) {
-          if (processedCount >= maxItems) break;
-
-          const itemPath = path.join(currentDir, item);
-          try {
-            const itemStats = await fs.stat(itemPath);
-
-            if (itemStats.isDirectory()) {
-              stack.push(itemPath);
-            } else {
-              totalSize += itemStats.size;
-            }
-
-            processedCount++;
-          } catch {
-            // Skip items we can't access (permissions, etc.)
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        const statTasks: Promise<void>[] = [];
+        for (const entry of entries) {
+          const entryPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            pendingDirs.push(entryPath);
+          } else {
+            // lstat: count symlinks themselves, never follow them
+            statTasks.push(
+              fs.lstat(entryPath).then(
+                (s) => {
+                  totalSize += s.size;
+                },
+                () => {},
+              ),
+            );
           }
         }
+        await Promise.all(statTasks);
       } catch {
         // Skip directories we can't access
       }
-    }
+    };
 
-    return totalSize;
+    const pump = (): void => {
+      while (pendingDirs.length > 0 && activeWalkers < maxConcurrentDirs) {
+        const dir = pendingDirs.pop()!;
+        activeWalkers++;
+        processDir(dir).finally(() => {
+          activeWalkers--;
+          pump();
+        });
+      }
+      if (pendingDirs.length === 0 && activeWalkers === 0) {
+        resolveWalk();
+      }
+    };
+
+    pump();
+  });
+
+  return totalSize;
+}
+
+export async function getDirectorySize(
+  dirPath: string,
+  // Kept for API compatibility; sizing is now fast enough that estimation
+  // shortcuts are no longer needed.
+  _skipLargeDirectories: boolean = false,
+): Promise<number> {
+  try {
+    const stats = await fs.stat(dirPath);
+    if (!stats.isDirectory()) {
+      return stats.size;
+    }
   } catch {
     return 0;
+  }
+
+  if (!isWindows) {
+    const duSize = await duDirectorySize(dirPath);
+    if (duSize !== null) return duSize;
+  }
+
+  try {
+    return await withTimeout(walkDirectorySize(dirPath), 60000);
+  } catch {
+    // Last resort: sampled estimate rather than hanging forever
+    return getEstimatedDirectorySize(dirPath);
   }
 }
 

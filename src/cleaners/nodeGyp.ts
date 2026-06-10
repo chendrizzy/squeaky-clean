@@ -3,11 +3,8 @@ import { CacheInfo, CacheCategory, CacheType } from "../types";
 import { existsSync, statSync } from "fs";
 import path from "path";
 import * as os from "os";
-import { exec } from "child_process";
-import { promisify } from "util";
 import { printVerbose } from "../utils/cli";
-
-const execAsync = promisify(exec);
+import { commandExists } from "../utils/which";
 
 export class NodeGypCleaner extends BaseCleaner {
   name = "node-gyp";
@@ -64,16 +61,14 @@ export class NodeGypCleaner extends BaseCleaner {
   }
 
   async isAvailable(): Promise<boolean> {
-    try {
-      // Check if node-gyp is installed
-      await execAsync("node-gyp --version");
+    if (await commandExists("node-gyp")) {
       return true;
-    } catch {
-      // Check if node-gyp cache directory exists
-      const homeDir = os.homedir();
-      const nodeGypDir = path.join(homeDir, ".node-gyp");
-      return existsSync(nodeGypDir);
     }
+
+    // Check if node-gyp cache directory exists
+    const homeDir = os.homedir();
+    const nodeGypDir = path.join(homeDir, ".node-gyp");
+    return existsSync(nodeGypDir);
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

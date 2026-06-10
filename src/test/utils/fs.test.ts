@@ -9,6 +9,7 @@ import {
   pathExists,
   getDirectorySize,
   getEstimatedDirectorySize,
+  parseDuOutput,
   safeRmrf,
   createDirectoryIfNotExists,
   isWritable,
@@ -83,16 +84,14 @@ describe("File System Utilities", () => {
       expect(size).toBe(15);
     });
 
-    it("should respect item limit to prevent memory issues", async () => {
-      // Create more than the maxItems limit
+    it("should size large directories completely (no item cap)", async () => {
       vol.mkdirSync("/test/bigdir", { recursive: true });
       for (let i = 0; i < 20000; i++) {
         vol.writeFileSync(`/test/bigdir/file${i}.txt`, "content");
       }
 
       const size = await getDirectorySize("/test/bigdir");
-      expect(size).toBeGreaterThan(0);
-      expect(size).toBeLessThan(20000 * 7); // Should stop before processing all files
+      expect(size).toBe(20000 * 7); // Every file counted, no truncation
     });
 
     it("should use estimated size when skipLargeDirectories is true", async () => {
@@ -106,6 +105,25 @@ describe("File System Utilities", () => {
     it("should return 0 for non-existing paths", async () => {
       const size = await getDirectorySize("/non/existing/path");
       expect(size).toBe(0);
+    });
+  });
+
+  describe("parseDuOutput", () => {
+    it("parses du -sk output into bytes", () => {
+      expect(parseDuOutput("123\t/some/path\n")).toBe(123 * 1024);
+    });
+
+    it("parses zero-size output", () => {
+      expect(parseDuOutput("0\t/empty/dir\n")).toBe(0);
+    });
+
+    it("returns null for unparseable output", () => {
+      expect(parseDuOutput("")).toBeNull();
+      expect(parseDuOutput("du: cannot access")).toBeNull();
+    });
+
+    it("uses the first line of multi-line output (du -s total)", () => {
+      expect(parseDuOutput("42\t/a\n7\t/b\n")).toBe(42 * 1024);
     });
   });
 

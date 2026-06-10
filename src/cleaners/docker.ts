@@ -1,4 +1,6 @@
 import execa from "execa";
+import * as os from "os";
+import path from "path";
 import {
   CacheInfo,
   ClearResult,
@@ -7,7 +9,8 @@ import {
 } from "../types";
 import { printVerbose } from "../utils/cli";
 import { minimatch } from "minimatch";
-import { checkToolAvailability } from "../utils/cache";
+import { commandExists } from "../utils/which";
+import { pathExists } from "../utils/fs";
 
 export class DockerCleaner implements CleanerModule {
   name = "docker";
@@ -15,30 +18,10 @@ export class DockerCleaner implements CleanerModule {
   description = "Docker images, containers, volumes, networks, and build cache";
 
   async isAvailable(): Promise<boolean> {
-    return checkToolAvailability("docker", async () => {
-      try {
-        printVerbose("Checking if Docker is installed and running...");
-        const result = await execa(
-          "docker",
-          ["version", "--format", "{{.Server.Version}}"],
-          { timeout: 10000 },
-        );
-        if (result.exitCode === 0 && result.stdout) {
-          printVerbose(`Found Docker server version: ${result.stdout.trim()}`);
-          return true;
-        }
-        return false;
-      } catch (error) {
-        // Docker might be installed but not running
-        try {
-          await execa("docker", ["--version"], { timeout: 5000 });
-          printVerbose("Docker is installed but server might not be running");
-          return true;
-        } catch {
-          return false;
-        }
-      }
-    });
+    // PATH lookup only (no process spawn). Mirrors the previous behaviour of
+    // reporting available when the Docker client is installed, even if the
+    // daemon is not running.
+    return commandExists("docker");
   }
 
   async getDockerSystemInfo(): Promise<{
@@ -56,6 +39,23 @@ export class DockerCleaner implements CleanerModule {
       networks: { count: 0 },
     };
 
+    // Cheap daemon liveness probe: without a Docker socket every CLI call
+    // below would hang to its full timeout (was 40s per scan). One stat
+    // answers it. Windows named pipes can't be checked this way - skip.
+    if (process.platform !== "win32") {
+      const sockets = [
+        path.join(os.homedir(), ".docker", "run", "docker.sock"),
+        "/var/run/docker.sock",
+      ];
+      const socketChecks = await Promise.all(sockets.map(pathExists));
+      if (!socketChecks.some(Boolean)) {
+        printVerbose(
+          "Docker daemon socket not found - skipping system queries",
+        );
+        return info;
+      }
+    }
+
     try {
       // Get system df info (most comprehensive)
       const systemDf = await execa(
@@ -66,7 +66,7 @@ export class DockerCleaner implements CleanerModule {
           "--format",
           "table {{.Type}}\\t{{.TotalCount}}\\t{{.Size}}\\t{{.Reclaimable}}",
         ],
-        { timeout: 30000 },
+        { timeout: 10000 },
       );
       const lines = systemDf.stdout.split("\n").slice(1); // Skip header
 
@@ -100,7 +100,7 @@ export class DockerCleaner implements CleanerModule {
       const networks = await execa(
         "docker",
         ["network", "ls", "--filter", "type=custom", "--format", "{{.ID}}"],
-        { timeout: 10000 },
+        { timeout: 5000 },
       );
       info.networks.count = networks.stdout
         .split("\n")

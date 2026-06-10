@@ -1,6 +1,5 @@
 import path from "path";
 import * as os from "os";
-import execa from "execa";
 import { promises as fs } from "fs";
 import {
   CacheCategory,
@@ -11,6 +10,7 @@ import {
 } from "../types";
 import { getDirectorySize, pathExists, safeRmrf } from "../utils/fs";
 import { printVerbose } from "../utils/cli";
+import { commandExists } from "../utils/which";
 import { minimatch } from "minimatch";
 
 class PoetryCleaner implements CleanerModule {
@@ -63,12 +63,7 @@ class PoetryCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    try {
-      await execa("poetry", ["--version"]);
-      return true;
-    } catch {
-      return false;
-    }
+    return commandExists("poetry");
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

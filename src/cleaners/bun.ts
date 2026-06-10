@@ -7,23 +7,14 @@ import {
 import * as path from "path";
 import * as os from "os";
 import { pathExists, getDirectorySize, safeRmrf } from "../utils/fs";
-import execa from "execa";
 import { printVerbose, symbols } from "../utils/cli";
+import { commandExists } from "../utils/which";
 import { minimatch } from "minimatch";
 
 class BunCleaner implements CleanerModule {
   name = "bun";
   type = "package-manager" as const;
   description = "Bun runtime and package manager caches";
-
-  private async getBunVersion(): Promise<string | null> {
-    try {
-      const result = await execa("bun", ["--version"]);
-      return result.stdout.trim();
-    } catch {
-      return null;
-    }
-  }
 
   private async getBunCachePaths(): Promise<string[]> {
     const paths: string[] = [];
@@ -74,8 +65,7 @@ class BunCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    const version = await this.getBunVersion();
-    return version !== null;
+    return commandExists("bun");
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

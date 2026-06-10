@@ -10,6 +10,7 @@ import {
 } from "../types";
 import { getDirectorySize, pathExists, safeRmrf } from "../utils/fs";
 import { printVerbose } from "../utils/cli";
+import { commandExists } from "../utils/which";
 import { minimatch } from "minimatch";
 
 export class GradleCleaner implements CleanerModule {
@@ -101,36 +102,29 @@ export class GradleCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    try {
-      printVerbose("Checking if Gradle is available...");
-
-      // Check for gradle command with timeout
-      try {
-        await execa("gradle", ["--version"], { timeout: 5000 }); // 5 second timeout
-        printVerbose("Found gradle command in PATH");
-        return true;
-      } catch {
-        // Try gradlew
-        try {
-          await execa("./gradlew", ["--version"], { timeout: 5000 }); // 5 second timeout
-          printVerbose("Found gradlew in current directory");
-          return true;
-        } catch {
-          // Check for Gradle user directory (indicates Gradle usage)
-          const homeDir = os.homedir();
-          const gradleHome = path.join(homeDir, ".gradle");
-
-          if (await pathExists(gradleHome)) {
-            printVerbose(`Found Gradle user directory: ${gradleHome}`);
-            return true;
-          }
-        }
-      }
-
-      return false;
-    } catch {
-      return false;
+    // Gradle binary on PATH (no process spawn; never boots a JVM via ./gradlew)
+    if (await commandExists("gradle")) {
+      printVerbose("Found gradle command in PATH");
+      return true;
     }
+
+    // A project-local wrapper script also indicates Gradle usage
+    // (file presence only - never execute it, that boots a JVM).
+    const wrapperPath = path.join(process.cwd(), "gradlew");
+    if (await pathExists(wrapperPath)) {
+      printVerbose(`Found Gradle wrapper: ${wrapperPath}`);
+      return true;
+    }
+
+    // A Gradle user home directory indicates Gradle usage even without the
+    // binary on PATH (e.g. project-local wrappers).
+    const gradleHome = path.join(os.homedir(), ".gradle");
+    if (await pathExists(gradleHome)) {
+      printVerbose(`Found Gradle user directory: ${gradleHome}`);
+      return true;
+    }
+
+    return false;
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

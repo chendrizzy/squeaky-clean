@@ -1,7 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
 import * as os from "os";
-import execa from "execa";
 import {
   CacheInfo,
   ClearResult,
@@ -16,6 +15,7 @@ import {
   safeRmrf,
 } from "../utils/fs";
 import { printVerbose } from "../utils/cli";
+import { commandExists } from "../utils/which";
 
 export class PlaywrightCleaner implements CleanerModule {
   name = "playwright";
@@ -105,13 +105,8 @@ export class PlaywrightCleaner implements CleanerModule {
       }
     }
 
-    // Also check if playwright is installed via npm
-    try {
-      await execa("npx", ["playwright", "--version"], { timeout: 5000 });
-      return true;
-    } catch {
-      return false;
-    }
+    // Also check if the playwright CLI is on PATH (no process spawn, never npx)
+    return commandExists("playwright");
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

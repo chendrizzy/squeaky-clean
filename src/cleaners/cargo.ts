@@ -1,6 +1,5 @@
 import path from "path";
 import * as os from "os";
-import execa from "execa";
 import { promises as fs } from "fs";
 import {
   CacheCategory,
@@ -11,6 +10,7 @@ import {
 } from "../types";
 import { getDirectorySize, pathExists, safeRmrf } from "../utils/fs";
 import { printVerbose } from "../utils/cli";
+import { commandExists } from "../utils/which";
 import { minimatch } from "minimatch";
 
 class CargoCleaner implements CleanerModule {
@@ -69,12 +69,7 @@ class CargoCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    try {
-      await execa("cargo", ["--version"]);
-      return true;
-    } catch {
-      return false;
-    }
+    return commandExists("cargo");
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

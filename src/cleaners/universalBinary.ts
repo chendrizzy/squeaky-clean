@@ -12,6 +12,7 @@ import {
 } from "../types";
 import { pathExists } from "../utils/fs";
 import { printVerbose } from "../utils/cli";
+import { commandExists } from "../utils/which";
 
 const execAsync = promisify(exec);
 
@@ -30,6 +31,20 @@ const SKIP_EXECUTABLES = new Set([
   "launchd",
   "kernel",
 ]);
+
+// Mach-O cputype values (CPU_ARCH_ABI64 flag = 0x01000000)
+const CPU_TYPE_NAMES: Record<number, string> = {
+  0x00000007: "i386",
+  0x01000007: "x86_64",
+  0x0000000c: "arm",
+  0x0100000c: "arm64",
+  0x00000012: "ppc",
+  0x01000012: "ppc64",
+};
+
+function cpuTypeName(cputype: number): string {
+  return CPU_TYPE_NAMES[cputype] ?? `cpu_0x${cputype.toString(16)}`;
+}
 
 interface UniversalBinaryInfo {
   appPath: string;
@@ -55,106 +70,122 @@ export class UniversalBinaryCleaner implements CleanerModule {
       return false;
     }
 
-    try {
-      const { stdout } = await execAsync("uname -m");
-      const arch = stdout.trim();
-      if (arch !== "arm64") {
-        printVerbose(
-          `Universal Binary cleaner requires Apple Silicon (arm64), found: ${arch}`,
-        );
-        return false;
-      }
-
-      // Verify lipo is available
-      await execAsync("which lipo");
-      return true;
-    } catch {
+    const arch = os.arch();
+    if (arch !== "arm64") {
+      printVerbose(
+        `Universal Binary cleaner requires Apple Silicon (arm64), found: ${arch}`,
+      );
       return false;
     }
+
+    // Verify lipo is available
+    return commandExists("lipo");
   }
 
-  private async findExecutablesInApp(appPath: string): Promise<string[]> {
-    const executables: string[] = [];
+  /**
+   * Read Mach-O architecture info straight from the file's header bytes -
+   * what `file` + `lipo -info` report, without two process spawns per file.
+   * Returns [] when the file is not a Mach-O binary.
+   */
+  private async readMachOArchitectures(binaryPath: string): Promise<string[]> {
+    let file;
+    try {
+      file = await fs.open(binaryPath, "r");
+      const buffer = Buffer.alloc(1024);
+      const { bytesRead } = await file.read(buffer, 0, 1024, 0);
+      if (bytesRead < 8) return [];
+
+      const beMagic = buffer.readUInt32BE(0);
+
+      // Fat (universal) binary: big-endian header listing each arch slice
+      if (beMagic === 0xcafebabe || beMagic === 0xcafebabf) {
+        const count = buffer.readUInt32BE(4);
+        // Java .class files share the CAFEBABE magic; their version field
+        // here is always far larger than any real architecture count.
+        if (count === 0 || count > 30) return [];
+
+        const entrySize = beMagic === 0xcafebabf ? 32 : 20;
+        const architectures: string[] = [];
+        for (let i = 0; i < count; i++) {
+          const offset = 8 + i * entrySize;
+          if (offset + 4 > bytesRead) break;
+          architectures.push(cpuTypeName(buffer.readUInt32BE(offset)));
+        }
+        return architectures;
+      }
+
+      // Thin Mach-O (little-endian on modern macOS, big-endian on PPC-era)
+      const leMagic = buffer.readUInt32LE(0);
+      if (leMagic === 0xfeedface || leMagic === 0xfeedfacf) {
+        return [cpuTypeName(buffer.readUInt32LE(4))];
+      }
+      if (beMagic === 0xfeedface || beMagic === 0xfeedfacf) {
+        return [cpuTypeName(buffer.readUInt32BE(4))];
+      }
+
+      return [];
+    } catch {
+      return [];
+    } finally {
+      await file?.close().catch(() => {});
+    }
+  }
+
+  private async scanApp(appPath: string): Promise<UniversalBinaryInfo[]> {
+    const found: UniversalBinaryInfo[] = [];
     const macosPath = path.join(appPath, "Contents", "MacOS");
 
+    let entries: string[];
     try {
-      if (!(await pathExists(macosPath))) {
-        return [];
-      }
-
-      const entries = await fs.readdir(macosPath);
-      for (const entry of entries) {
-        const fullPath = path.join(macosPath, entry);
-        try {
-          const stat = await fs.stat(fullPath);
-          if (stat.isFile()) {
-            // Check if it's an executable (not a script or config)
-            const { stdout } = await execAsync(
-              `file "${fullPath}" 2>/dev/null`,
-            );
-            if (
-              stdout.includes("Mach-O") &&
-              !SKIP_EXECUTABLES.has(path.basename(fullPath))
-            ) {
-              executables.push(fullPath);
-            }
-          }
-        } catch {
-          // Skip files we can't stat
-        }
-      }
+      entries = await fs.readdir(macosPath);
     } catch {
-      // Skip apps we can't read
+      return found; // No Contents/MacOS directory or unreadable
     }
 
-    return executables;
-  }
+    for (const entry of entries) {
+      if (SKIP_EXECUTABLES.has(entry)) continue;
 
-  private async checkIfUniversal(
-    binaryPath: string,
-  ): Promise<{ isUniversal: boolean; architectures: string[] }> {
-    try {
-      const { stdout } = await execAsync(`lipo -info "${binaryPath}" 2>&1`);
+      const binaryPath = path.join(macosPath, entry);
+      try {
+        const stat = await fs.stat(binaryPath);
+        if (!stat.isFile()) continue;
 
-      // Parse lipo output: "Architectures in the fat file: /path are: x86_64 arm64"
-      // or "Non-fat file: /path is architecture: arm64"
-      if (stdout.includes("Architectures in the fat file")) {
-        const archMatch = stdout.match(/are:\s*(.+)$/m);
-        if (archMatch) {
-          const architectures = archMatch[1].trim().split(/\s+/);
-          return {
-            isUniversal: architectures.length > 1,
-            architectures,
-          };
-        }
+        const architectures =
+          await this.readMachOArchitectures(binaryPath);
+        const isUniversal = architectures.length > 1;
+        if (!isUniversal || !architectures.includes("arm64")) continue;
+
+        // Estimate savings as the x86 slices' share of the binary size
+        const totalSize = stat.size;
+        const x86Archs = architectures.filter(
+          (a) => a.includes("x86") || a.includes("i386"),
+        );
+        const potentialSavings = Math.round(
+          (totalSize * x86Archs.length) / architectures.length,
+        );
+
+        found.push({
+          appPath,
+          appName: path.basename(appPath, ".app"),
+          binaryPath,
+          totalSize,
+          architectures,
+          potentialSavings,
+        });
+
+        printVerbose(
+          `Found Universal Binary: ${path.basename(appPath)} (${architectures.join(", ")}) - potential savings: ${(potentialSavings / (1024 * 1024)).toFixed(1)} MB`,
+        );
+      } catch {
+        // Skip files we can't read
       }
-
-      // Single architecture
-      const singleArchMatch = stdout.match(/is architecture:\s*(\w+)/);
-      if (singleArchMatch) {
-        return {
-          isUniversal: false,
-          architectures: [singleArchMatch[1]],
-        };
-      }
-
-      return { isUniversal: false, architectures: [] };
-    } catch {
-      return { isUniversal: false, architectures: [] };
     }
-  }
 
-  private async getBinarySize(binaryPath: string): Promise<number> {
-    try {
-      const stat = await fs.stat(binaryPath);
-      return stat.size;
-    } catch {
-      return 0;
-    }
+    return found;
   }
 
   private async scanForUniversalBinaries(): Promise<UniversalBinaryInfo[]> {
-    const universalBinaries: UniversalBinaryInfo[] = [];
+    const appPaths: string[] = [];
 
     for (const appDir of APP_DIRECTORIES) {
       if (!(await pathExists(appDir))) {
@@ -166,46 +197,28 @@ export class UniversalBinaryCleaner implements CleanerModule {
       try {
         const entries = await fs.readdir(appDir);
         for (const entry of entries) {
-          if (!entry.endsWith(".app")) {
-            continue;
-          }
-
-          const appPath = path.join(appDir, entry);
-          const executables = await this.findExecutablesInApp(appPath);
-
-          for (const execPath of executables) {
-            const { isUniversal, architectures } =
-              await this.checkIfUniversal(execPath);
-
-            if (isUniversal && architectures.includes("arm64")) {
-              const totalSize = await this.getBinarySize(execPath);
-              // Estimate savings as roughly half the binary size (x86_64 portion)
-              const x86Archs = architectures.filter(
-                (a) => a.includes("x86") || a.includes("i386"),
-              );
-              const potentialSavings = Math.round(
-                (totalSize * x86Archs.length) / architectures.length,
-              );
-
-              universalBinaries.push({
-                appPath,
-                appName: path.basename(appPath, ".app"),
-                binaryPath: execPath,
-                totalSize,
-                architectures,
-                potentialSavings,
-              });
-
-              printVerbose(
-                `Found Universal Binary: ${entry} (${architectures.join(", ")}) - potential savings: ${(potentialSavings / (1024 * 1024)).toFixed(1)} MB`,
-              );
-            }
+          if (entry.endsWith(".app")) {
+            appPaths.push(path.join(appDir, entry));
           }
         }
       } catch (error) {
         printVerbose(`Error scanning ${appDir}: ${error}`);
       }
     }
+
+    // Scan apps concurrently; each app is a handful of small header reads
+    const universalBinaries: UniversalBinaryInfo[] = [];
+    let nextIndex = 0;
+    const workers = Array.from(
+      { length: Math.min(8, appPaths.length) },
+      async () => {
+        while (nextIndex < appPaths.length) {
+          const appPath = appPaths[nextIndex++];
+          universalBinaries.push(...(await this.scanApp(appPath)));
+        }
+      },
+    );
+    await Promise.all(workers);
 
     return universalBinaries;
   }

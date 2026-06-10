@@ -15,21 +15,12 @@ import {
 } from "../utils/fs";
 import execa from "execa";
 import { printVerbose, symbols } from "../utils/cli";
-import { checkToolAvailability } from "../utils/cache";
+import { commandExists } from "../utils/which";
 
 class YarnCleaner implements CleanerModule {
   name = "yarn";
   type = "package-manager" as const;
   description = "Yarn package manager caches and global store";
-
-  private async getYarnVersion(): Promise<string | null> {
-    try {
-      const result = await execa("yarn", ["--version"]);
-      return result.stdout.trim();
-    } catch {
-      return null;
-    }
-  }
 
   private async getYarnCachePaths(): Promise<string[]> {
     const paths: string[] = [];
@@ -183,10 +174,7 @@ class YarnCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    return checkToolAvailability("yarn", async () => {
-      const version = await this.getYarnVersion();
-      return version !== null;
-    });
+    return commandExists("yarn");
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

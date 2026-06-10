@@ -10,6 +10,7 @@ import * as os from "os";
 import { pathExists, getDirectorySize, safeRmrf } from "../utils/fs";
 import execa from "execa";
 import { printVerbose, symbols } from "../utils/cli";
+import { commandExists } from "../utils/which";
 
 export class NxCleaner implements CleanerModule {
   name = "nx";
@@ -211,12 +212,18 @@ export class NxCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    // Check if NX is installed globally or there are NX caches/workspaces
-    const version = await this.getNxVersion();
-    const caches = await this.findNxCaches();
-    const hasWorkspaces = await this.hasNxWorkspaces();
+    // NX binary on PATH (no process spawn, never invokes npx)
+    if (await commandExists("nx")) {
+      return true;
+    }
 
-    return version !== null || caches.length > 0 || hasWorkspaces;
+    // Otherwise look for known NX caches or workspaces on disk
+    const caches = await this.findNxCaches();
+    if (caches.length > 0) {
+      return true;
+    }
+
+    return this.hasNxWorkspaces();
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

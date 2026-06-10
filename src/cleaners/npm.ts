@@ -10,14 +10,13 @@ import {
 } from "../types";
 import {
   getCachedDirectorySize,
-  getCachedEstimatedDirectorySize,
   pathExists,
   safeRmrf,
   invalidateSizeCachePrefix,
 } from "../utils/fs";
 import { printVerbose } from "../utils/cli";
 import { minimatch } from "minimatch";
-import { checkToolAvailability } from "../utils/cache";
+import { commandExists } from "../utils/which";
 
 export class NpmCleaner implements CleanerModule {
   name = "npm";
@@ -65,15 +64,7 @@ export class NpmCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    return checkToolAvailability("npm", async () => {
-      try {
-        printVerbose("Checking if npm is installed...");
-        await execa("npm", ["--version"]);
-        return true;
-      } catch {
-        return false;
-      }
-    });
+    return commandExists("npm");
   }
 
   async getCacheInfo(): Promise<CacheInfo> {
@@ -89,12 +80,10 @@ export class NpmCleaner implements CleanerModule {
         existingPaths.push(cachePath);
 
         try {
-          // Use cached size calculations for performance (2-minute TTL)
-          const isMainNpmCache =
-            cachePath.includes(".npm") && !cachePath.includes("node_modules");
-          const size = isMainNpmCache
-            ? await getCachedEstimatedDirectorySize(cachePath)
-            : await getCachedDirectorySize(cachePath, true);
+          // Use cached size calculations for performance (2-minute TTL).
+          // The underlying sizer now uses native `du`, so an accurate size
+          // is fast enough even for the large main npm cache.
+          const size = await getCachedDirectorySize(cachePath);
           totalSize += size;
 
           const stats = await fs.stat(cachePath);
@@ -102,9 +91,7 @@ export class NpmCleaner implements CleanerModule {
             lastModified = stats.mtime;
           }
 
-          printVerbose(
-            `Found npm cache at ${cachePath} (${size} bytes${isMainNpmCache ? " estimated" : ""})`,
-          );
+          printVerbose(`Found npm cache at ${cachePath} (${size} bytes)`);
         } catch (error) {
           printVerbose(`Error checking ${cachePath}: ${error}`);
         }

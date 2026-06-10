@@ -14,21 +14,12 @@ import {
 } from "../utils/fs";
 import execa from "execa";
 import { printVerbose, symbols } from "../utils/cli";
-import { checkToolAvailability } from "../utils/cache";
+import { commandExists } from "../utils/which";
 
 class PnpmCleaner implements CleanerModule {
   name = "pnpm";
   type = "package-manager" as const;
   description = "PNPM package manager store and caches";
-
-  private async getPnpmVersion(): Promise<string | null> {
-    try {
-      const result = await execa("pnpm", ["--version"]);
-      return result.stdout.trim();
-    } catch {
-      return null;
-    }
-  }
 
   private async getPnpmCachePaths(): Promise<string[]> {
     const paths: string[] = [];
@@ -76,10 +67,7 @@ class PnpmCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    return checkToolAvailability("pnpm", async () => {
-      const version = await this.getPnpmVersion();
-      return version !== null;
-    });
+    return commandExists("pnpm");
   }
 
   async getCacheInfo(): Promise<CacheInfo> {
