@@ -291,3 +291,47 @@ jobs:
             git commit -m "Update squeaky-clean to v${VERSION}"
             git push origin main
           fi
+
+      # Keep the in-repo Formula/squeaky-clean.rb in sync with the tap so the
+      # formula committed to this repo never drifts (it had been stuck on an
+      # old version because nothing updated it). Guarded to workflow_dispatch
+      # so it runs once on a main checkout (the tag-push trigger is detached).
+      - name: Sync in-repo Homebrew formula
+        if: ${{ github.event_name == 'workflow_dispatch' && steps.release.outputs.prerelease != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          TARBALL_URL="https://registry.npmjs.org/squeaky-clean/-/squeaky-clean-${VERSION}.tgz"
+          TARBALL_FILE=$(mktemp)
+          trap 'rm -f "$TARBALL_FILE"' EXIT
+
+          # The tap step above already waited for npm propagation, so the
+          # tarball is available now.
+          if ! curl -fsSL "$TARBALL_URL" -o "$TARBALL_FILE"; then
+            echo "ERROR: could not download $TARBALL_URL"
+            exit 1
+          fi
+          SHA256=$(shasum -a 256 "$TARBALL_FILE" | awk '{print $1}')
+          if [ -z "$SHA256" ]; then
+            echo "ERROR: failed to compute sha256 for in-repo formula"
+            exit 1
+          fi
+
+          # Position on an up-to-date main (checkout may be detached/behind the
+          # chore(release) commit that version-bump just pushed).
+          git fetch origin main
+          git switch -C main origin/main
+
+          sed -i "s|url \"https://registry.npmjs.org/squeaky-clean/-/squeaky-clean-.*\.tgz\"|url \"${TARBALL_URL}\"|" Formula/squeaky-clean.rb
+          sed -i "s/sha256 \"[a-f0-9]*\"/sha256 \"${SHA256}\"/" Formula/squeaky-clean.rb
+
+          git add Formula/squeaky-clean.rb
+          if git diff --cached --quiet; then
+            echo "In-repo Homebrew formula already up to date."
+          else
+            # [skip ci] + version-bump's `paths-ignore: Formula/**` prevent
+            # this push from triggering another release.
+            git commit -m "chore: sync Homebrew formula to v${VERSION} [skip ci]"
+            git push origin main
+          fi
