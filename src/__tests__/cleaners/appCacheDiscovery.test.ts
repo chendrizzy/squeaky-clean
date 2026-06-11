@@ -228,8 +228,17 @@ describe("AppCacheDiscoveryCleaner", () => {
   });
 
   describe("linux discovery (xdg-config, flatpak, snap)", () => {
+    const savedXdg: Record<string, string | undefined> = {};
+
     beforeEach(() => {
       vi.mocked(os.platform).mockReturnValue("linux");
+      // Pin XDG dirs to the mocked home: CI runs on real Linux where the
+      // runner exports XDG_CONFIG_HOME/XDG_CACHE_HOME, which would redirect
+      // discovery away from these fixtures (process.env is NOT mocked).
+      for (const key of ["XDG_CACHE_HOME", "XDG_CONFIG_HOME"]) {
+        savedXdg[key] = process.env[key];
+        delete process.env[key];
+      }
       vol.fromJSON({
         // ~/.config Electron/Chromium app caches (not under ~/.cache)
         [`${H}/.config/SomeChatApp/Cache/f`]: "x",
@@ -244,6 +253,10 @@ describe("AppCacheDiscoveryCleaner", () => {
     afterEach(() => {
       // Restore the default platform; clearAllMocks keeps mockReturnValue.
       vi.mocked(os.platform).mockReturnValue("darwin");
+      for (const key of ["XDG_CACHE_HOME", "XDG_CONFIG_HOME"]) {
+        if (savedXdg[key] === undefined) delete process.env[key];
+        else process.env[key] = savedXdg[key];
+      }
     });
 
     it("discovers ~/.config child caches, Flatpak, and Snap caches", async () => {
