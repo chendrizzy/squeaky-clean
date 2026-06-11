@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { vol } from "memfs";
+import * as os from "os";
 import { AppCacheDiscoveryCleaner } from "../../cleaners/appCacheDiscovery";
 import { getCachedDirectorySize } from "../../utils/fs";
 
@@ -183,6 +184,36 @@ describe("AppCacheDiscoveryCleaner", () => {
       });
 
       expect(result.clearedCategories).toContain(EXPECTED_IDS.huggingface);
+    });
+  });
+
+  describe("linux discovery (xdg-config, flatpak, snap)", () => {
+    beforeEach(() => {
+      vi.mocked(os.platform).mockReturnValue("linux");
+      vol.fromJSON({
+        // ~/.config Electron/Chromium app caches (not under ~/.cache)
+        [`${H}/.config/SomeChatApp/Cache/f`]: "x",
+        [`${H}/.config/SomeChatApp/GPUCache/f`]: "x",
+        // Flatpak per-app cache: ~/.var/app/<id>/cache
+        [`${H}/.var/app/com.example.App/cache/f`]: "x",
+        // Snap per-app cache: ~/snap/<name>/current/.cache
+        [`${H}/snap/somesnap/current/.cache/f`]: "x",
+      });
+    });
+
+    afterEach(() => {
+      // Restore the default platform; clearAllMocks keeps mockReturnValue.
+      vi.mocked(os.platform).mockReturnValue("darwin");
+    });
+
+    it("discovers ~/.config child caches, Flatpak, and Snap caches", async () => {
+      const ids = (
+        await new AppCacheDiscoveryCleaner().getCacheCategories()
+      ).map((c) => c.id);
+
+      expect(ids).toContain("app-caches:xdg-config/somechatapp/gpucache");
+      expect(ids).toContain("app-caches:flatpak/com.example.app/cache");
+      expect(ids).toContain("app-caches:snap/somesnap/current/.cache");
     });
   });
 });

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as os from "os";
 import {
   classifyCachePath,
   getDiscoveryRoots,
@@ -234,5 +235,16 @@ describe("getDiscoveryRoots", () => {
     expect(roots).toContain(`${H}/Library/Application Support`);
     expect(roots).toContain(`${H}/Library/Logs`);
     expect(roots).toContain(`${H}/.cache`);
+  });
+
+  it("drops relative roots when os.homedir() is empty", () => {
+    // A stripped-env / service account can yield an empty home; path.join then
+    // produces relative roots like "Library/Caches" that must not be returned.
+    vi.mocked(os.homedir).mockReturnValueOnce("");
+
+    const roots = getDiscoveryRoots();
+
+    expect(roots).toEqual([]);
+    expect(roots.every((r) => r.startsWith("/"))).toBe(true);
   });
 });

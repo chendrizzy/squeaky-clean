@@ -119,6 +119,35 @@ describe("DockerCleaner", () => {
       expect(info.size).toBe(0);
       expect(info.paths).toEqual(["Docker System (0 items)"]);
     });
+
+    it("detects a rootless Docker socket via XDG_RUNTIME_DIR", async () => {
+      // Remove the rootful socket so only the rootless one can satisfy the
+      // liveness probe; without the fix the daemon would read as down (size 0).
+      vol.unlinkSync("/var/run/docker.sock");
+      const prevXdg = process.env.XDG_RUNTIME_DIR;
+      process.env.XDG_RUNTIME_DIR = "/run/user/1000";
+      vol.mkdirSync("/run/user/1000", { recursive: true });
+      vol.writeFileSync("/run/user/1000/docker.sock", "");
+
+      try {
+        vi.mocked(execa).mockResolvedValueOnce({
+          stdout: "TYPE\tTOTAL\tSIZE\tRECLAIMABLE\nImages\t1\t1GB\t800MB",
+          exitCode: 0,
+        } as any);
+        vi.mocked(execa).mockResolvedValueOnce({
+          stdout: "",
+          exitCode: 0,
+        } as any);
+
+        const info = await cleaner.getCacheInfo();
+
+        expect(vi.mocked(execa)).toHaveBeenCalled();
+        expect(info.size).toBeGreaterThan(0);
+      } finally {
+        if (prevXdg === undefined) delete process.env.XDG_RUNTIME_DIR;
+        else process.env.XDG_RUNTIME_DIR = prevXdg;
+      }
+    });
   });
 
   describe("clear", () => {

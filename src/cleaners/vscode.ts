@@ -220,18 +220,27 @@ export class VSCodeCleaner implements CleanerModule {
         // macOS
         "/Applications/Visual Studio Code.app",
         "/Applications/Visual Studio Code - Insiders.app",
-        // Windows
-        path.join(
-          process.env.PROGRAMFILES || "",
-          "Microsoft VS Code",
-          "Code.exe",
-        ),
-        path.join(
-          process.env.LOCALAPPDATA || "",
-          "Programs",
-          "Microsoft VS Code",
-          "Code.exe",
-        ),
+        // Windows - only when the env var is set; an unset PROGRAMFILES/
+        // LOCALAPPDATA would join to a relative path checked against cwd.
+        ...(process.env.PROGRAMFILES
+          ? [
+              path.join(
+                process.env.PROGRAMFILES,
+                "Microsoft VS Code",
+                "Code.exe",
+              ),
+            ]
+          : []),
+        ...(process.env.LOCALAPPDATA
+          ? [
+              path.join(
+                process.env.LOCALAPPDATA,
+                "Programs",
+                "Microsoft VS Code",
+                "Code.exe",
+              ),
+            ]
+          : []),
         // Linux
         "/usr/bin/code",
         "/snap/code/current/usr/share/code/code",

@@ -27,11 +27,26 @@ const APP_CHILD_KINDS_DARWIN = [
   "CachedData",
 ];
 const APP_CHILD_KINDS_WIN32 = ["Cache", "Code Cache", "GPUCache"];
+const APP_CHILD_KINDS_LINUX = [
+  "Cache",
+  "Code Cache",
+  "GPUCache",
+  "DawnCache",
+  "GrShaderCache",
+];
 
 /** Upper bound on candidates sized/reported in a single discovery pass. */
 // Real systems show ~470 candidates (this dev machine); 800 covers heavy
 // setups while still bounding pathological directory layouts.
 const MAX_CANDIDATES = 800;
+
+/**
+ * Hard ceiling on candidates SIZED in one pass. Above MAX_CANDIDATES we still
+ * size everything up to this many and then keep the largest MAX_CANDIDATES by
+ * size, so the biggest caches are never dropped merely for appearing late in
+ * readdir order. Above this ceiling we fall back to directory-order slicing.
+ */
+const HARD_MAX_CANDIDATES = 4000;
 
 /** Discovery results are reused for this long within one scan. */
 const DISCOVERY_TTL_MS = 2 * 60 * 1000;
@@ -83,6 +98,7 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
 
   private cachedCategories: CacheCategory[] | null = null;
   private discoveredAt = 0;
+  private discoveryInFlight: Promise<CacheCategory[]> | null = null;
 
   async isAvailable(): Promise<boolean> {
     for (const root of getDiscoveryRoots()) {
@@ -119,7 +135,25 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
     if (this.cachedCategories && now - this.discoveredAt < DISCOVERY_TTL_MS) {
       return this.cachedCategories;
     }
+    // Memoize the in-flight run: getCacheInfo() and getCacheCategories() are
+    // often called back-to-back within one scan; without this each would kick
+    // off a full filesystem discovery, because the TTL cache is only populated
+    // once the first run finishes.
+    if (this.discoveryInFlight) return this.discoveryInFlight;
 
+    this.discoveryInFlight = this.runDiscovery()
+      .then((categories) => {
+        this.cachedCategories = categories;
+        this.discoveredAt = Date.now();
+        return categories;
+      })
+      .finally(() => {
+        this.discoveryInFlight = null;
+      });
+    return this.discoveryInFlight;
+  }
+
+  private async runDiscovery(): Promise<CacheCategory[]> {
     const candidates = await this.collectCandidates();
 
     const kept: Array<
@@ -136,12 +170,16 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
       kept.push({ ...candidate, safety: verdict, reason });
     }
 
-    let bounded = kept;
-    if (kept.length > MAX_CANDIDATES) {
+    // Size everything (up to a hard ceiling) BEFORE bounding, so that when
+    // there are more than MAX_CANDIDATES we keep the largest by size rather
+    // than whichever came first in readdir order - the biggest caches are
+    // exactly the ones worth surfacing.
+    let toSize = kept;
+    if (kept.length > HARD_MAX_CANDIDATES) {
       printVerbose(
-        `app-caches: truncating discovery to ${MAX_CANDIDATES} of ${kept.length} candidates`,
+        `app-caches: ${kept.length} candidates exceed the hard cap; sizing the first ${HARD_MAX_CANDIDATES} in directory order`,
       );
-      bounded = kept.slice(0, MAX_CANDIDATES);
+      toSize = kept.slice(0, HARD_MAX_CANDIDATES);
     }
 
     // Size all candidates concurrently; getCachedDirectorySize internally
@@ -149,8 +187,8 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
     // budget: 10s per directory so one enormous tree (100GB+ model caches)
     // cannot stall the shared sizing queue - oversized outliers fall back
     // to a sampled estimate, which is fine for discovery display.
-    const categories = await Promise.all(
-      bounded.map(async (candidate): Promise<CacheCategory> => {
+    let categories = await Promise.all(
+      toSize.map(async (candidate): Promise<CacheCategory> => {
         const size = await getCachedDirectorySize(candidate.dir, false, 10000);
         let lastModified: Date | undefined;
         let ageInDays: number | undefined;
@@ -179,8 +217,19 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
       }),
     );
 
-    this.cachedCategories = categories;
-    this.discoveredAt = now;
+    // Keep the largest MAX_CANDIDATES once sized, so truncation never hides a
+    // big cache behind hundreds of tiny ones. Order is otherwise preserved
+    // (no re-sort) when we are under the cap.
+    if (categories.length > MAX_CANDIDATES) {
+      printVerbose(
+        `app-caches: keeping the ${MAX_CANDIDATES} largest of ${categories.length} discovered caches`,
+      );
+      categories = categories
+        .slice()
+        .sort((a, b) => (b.size ?? 0) - (a.size ?? 0))
+        .slice(0, MAX_CANDIDATES);
+    }
+
     return categories;
   }
 
@@ -211,8 +260,9 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
       nameLabel: string,
       skipDirs: string[] = [],
     ): Promise<void> => {
+      const skipLower = skipDirs.map((d) => d.toLowerCase());
       for (const app of await listSubdirs(root)) {
-        if (skipDirs.includes(app)) continue;
+        if (skipLower.includes(app.toLowerCase())) continue;
         for (const kind of kinds) {
           const dir = path.join(root, app, kind);
           if (!(await isDirectory(dir))) continue;
@@ -267,9 +317,41 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
     } else {
       const xdgCache = process.env.XDG_CACHE_HOME || path.join(home, ".cache");
       await addSubdirs(xdgCache, "xdg-cache");
+
+      // Linux Electron/Chromium apps keep caches under the config dir
+      // (~/.config/<App>/Cache, Code Cache, ...), not only ~/.cache.
+      const xdgConfig =
+        process.env.XDG_CONFIG_HOME || path.join(home, ".config");
+      await addAppChildren(
+        xdgConfig,
+        "xdg-config",
+        APP_CHILD_KINDS_LINUX,
+        "Config",
+      );
+
+      // Flatpak per-app caches: ~/.var/app/<id>/cache
+      await addAppChildren(
+        path.join(home, ".var", "app"),
+        "flatpak",
+        ["cache"],
+        "Flatpak",
+      );
+
+      // Snap per-app caches: ~/snap/<name>/current/.cache and common/.cache
+      // ("current" is a symlink to the active revision; isDirectory() stats
+      // through it).
+      await addAppChildren(
+        path.join(home, "snap"),
+        "snap",
+        [path.join("current", ".cache"), path.join("common", ".cache")],
+        "Snap",
+      );
     }
 
-    return candidates;
+    // Drop any non-absolute candidate: an empty os.homedir() (stripped env)
+    // would otherwise produce paths resolved against the current directory,
+    // including the win32 Temp path built from an unset LOCALAPPDATA.
+    return candidates.filter((candidate) => path.isAbsolute(candidate.dir));
   }
 }
 

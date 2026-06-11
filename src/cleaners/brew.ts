@@ -42,10 +42,18 @@ async function findBrewCacheDir(): Promise<string | null> {
  * keeps only its most recently modified one; the rest are "old versions".
  */
 async function estimateOldVersionsSize(): Promise<number> {
+  // HOMEBREW_PREFIX first so custom and Linuxbrew installs aren't missed; the
+  // Set dedupes it against the defaults so a matching prefix isn't scanned
+  // (and double-counted) twice.
   const prefixes = [
-    "/opt/homebrew",
-    "/usr/local",
-    "/home/linuxbrew/.linuxbrew",
+    ...new Set(
+      [
+        process.env.HOMEBREW_PREFIX,
+        "/opt/homebrew",
+        "/usr/local",
+        "/home/linuxbrew/.linuxbrew",
+      ].filter((p): p is string => Boolean(p)),
+    ),
   ];
   let total = 0;
 

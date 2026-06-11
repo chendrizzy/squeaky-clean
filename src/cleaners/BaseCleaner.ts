@@ -76,11 +76,16 @@ export abstract class BaseCleaner implements CleanerModule {
           return true;
         }
       } else {
-        // It's an exact path or directory
+        // It's an exact path or directory. Compare case-insensitively: on
+        // case-insensitive filesystems (default macOS/Windows) a case-
+        // mismatched pattern must still protect the path - a missed match
+        // here would let explicitly-protected data be deleted.
         const normalizedProtected = resolve(protectedPattern);
+        const candidate = normalizedPath.toLowerCase();
+        const protectedLower = normalizedProtected.toLowerCase();
         if (
-          normalizedPath === normalizedProtected ||
-          normalizedPath.startsWith(normalizedProtected + "/")
+          candidate === protectedLower ||
+          candidate.startsWith(protectedLower + "/")
         ) {
           printVerbose(`Path ${path} is protected: ${protectedPattern}`);
           return true;

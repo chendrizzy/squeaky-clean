@@ -24,6 +24,9 @@ async function findOnPath(command: string): Promise<boolean> {
   const extensions = isWindows
     ? (process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD")
         .split(";")
+        // Trim each entry: a PATHEXT like ".COM; .EXE" would otherwise yield
+        // a leading-space extension and build candidate paths that never match.
+        .map((ext) => ext.trim())
         .filter(Boolean)
     : [""];
 

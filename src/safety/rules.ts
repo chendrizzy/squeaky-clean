@@ -460,23 +460,31 @@ export function classifyCachePath(absolutePath: string): RuleMatch {
  */
 export function getDiscoveryRoots(): string[] {
   const home = os.homedir();
+  let roots: string[];
   switch (os.platform()) {
     case "darwin":
-      return [
+      roots = [
         path.join(home, "Library", "Caches"),
         path.join(home, "Library", "Application Support", "Caches"),
         path.join(home, "Library", "Application Support"),
         path.join(home, "Library", "Logs"),
         path.join(home, ".cache"),
       ];
+      break;
     case "win32": {
       const local =
         process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
       const roaming =
         process.env.APPDATA || path.join(home, "AppData", "Roaming");
-      return [local, roaming];
+      roots = [local, roaming];
+      break;
     }
     default:
-      return [process.env.XDG_CACHE_HOME || path.join(home, ".cache")];
+      roots = [process.env.XDG_CACHE_HOME || path.join(home, ".cache")];
   }
+
+  // Drop any relative root. An empty os.homedir() (stripped env in some CI or
+  // service accounts) would otherwise yield paths like "Library/Caches" that
+  // resolve against the current working directory.
+  return roots.filter((root) => path.isAbsolute(root));
 }

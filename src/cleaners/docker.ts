@@ -44,6 +44,14 @@ export class DockerCleaner implements CleanerModule {
     // answers it. Windows named pipes can't be checked this way - skip.
     if (process.platform !== "win32") {
       const sockets = [
+        // Explicit override: DOCKER_HOST=unix:///path/to/docker.sock
+        ...(process.env.DOCKER_HOST?.startsWith("unix://")
+          ? [process.env.DOCKER_HOST.slice("unix://".length)]
+          : []),
+        // Rootless Docker default: $XDG_RUNTIME_DIR/docker.sock
+        ...(process.env.XDG_RUNTIME_DIR
+          ? [path.join(process.env.XDG_RUNTIME_DIR, "docker.sock")]
+          : []),
         path.join(os.homedir(), ".docker", "run", "docker.sock"),
         "/var/run/docker.sock",
       ];

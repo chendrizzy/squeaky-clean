@@ -150,6 +150,14 @@ export class UniversalBinaryCleaner implements CleanerModule {
         const stat = await fs.stat(binaryPath);
         if (!stat.isFile()) continue;
 
+        // Skip macOS dataless/offloaded files (iCloud "Optimize Mac Storage"):
+        // blocks===0 with size>0 means the bytes aren't local, and reading the
+        // header would force a download just to inspect the architecture.
+        if (stat.blocks === 0 && stat.size > 0) {
+          printVerbose(`Skipping dataless (offloaded) binary: ${binaryPath}`);
+          continue;
+        }
+
         const architectures =
           await this.readMachOArchitectures(binaryPath);
         const isUniversal = architectures.length > 1;

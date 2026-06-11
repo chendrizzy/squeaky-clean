@@ -74,7 +74,9 @@ async function duDirectorySize(
 ): Promise<number | null> {
   await sizingSemaphore.acquire();
   try {
-    const { stdout } = await execFileAsync("du", ["-sk", "--", dirPath], {
+    // No "--" end-of-options marker: BusyBox du (Alpine) rejects it, and every
+    // path we size is absolute so it can never be misread as a flag.
+    const { stdout } = await execFileAsync("du", ["-sk", dirPath], {
       timeout: timeoutMs,
       maxBuffer: 1024 * 1024,
     });
@@ -105,21 +107,33 @@ export function parseDuOutput(stdout: string): number | null {
  * from readdir to avoid one stat() per entry, and walks directories with
  * bounded concurrency instead of one item at a time.
  */
+// Recursion depth cap: real cache trees are shallow, and bounding depth stops
+// a symlink/junction cycle (Windows junctions report as directories) from
+// looping forever if the symlink guard below is ever bypassed.
+const MAX_WALK_DEPTH = 64;
+
 async function walkDirectorySize(rootDir: string): Promise<number> {
   let totalSize = 0;
   let activeWalkers = 0;
-  const pendingDirs: string[] = [rootDir];
+  const pendingDirs: Array<{ dir: string; depth: number }> = [
+    { dir: rootDir, depth: 0 },
+  ];
   const maxConcurrentDirs = 16;
 
   await new Promise<void>((resolveWalk) => {
-    const processDir = async (dir: string): Promise<void> => {
+    const processDir = async (dir: string, depth: number): Promise<void> => {
       try {
         const entries = await fs.readdir(dir, { withFileTypes: true });
         const statTasks: Promise<void>[] = [];
         for (const entry of entries) {
           const entryPath = path.join(dir, entry.name);
-          if (entry.isDirectory()) {
-            pendingDirs.push(entryPath);
+          // Never recurse through a symlink/junction: it can escape the tree,
+          // double-count shared targets, or cycle (Windows junctions report
+          // isDirectory()===true). Count the link itself as a leaf instead.
+          if (entry.isDirectory() && !entry.isSymbolicLink()) {
+            if (depth < MAX_WALK_DEPTH) {
+              pendingDirs.push({ dir: entryPath, depth: depth + 1 });
+            }
           } else {
             // lstat: count symlinks themselves, never follow them
             statTasks.push(
@@ -140,9 +154,9 @@ async function walkDirectorySize(rootDir: string): Promise<number> {
 
     const pump = (): void => {
       while (pendingDirs.length > 0 && activeWalkers < maxConcurrentDirs) {
-        const dir = pendingDirs.pop()!;
+        const { dir, depth } = pendingDirs.pop()!;
         activeWalkers++;
-        processDir(dir).finally(() => {
+        processDir(dir, depth).finally(() => {
           activeWalkers--;
           pump();
         });
