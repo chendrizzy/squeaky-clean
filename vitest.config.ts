@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig, configDefaults } from 'vitest/config';
 import { resolve } from 'path';
 
 export default defineConfig({
@@ -6,6 +6,9 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     setupFiles: ['./src/test/setup.ts'],
+    // Real-OS tests run under a separate config (vitest.os.config.ts) with no
+    // mocks; exclude them here so the mocked suite never picks them up.
+    exclude: [...configDefaults.exclude, 'src/__tests__/os/**'],
     // Long-running integration tests require extended timeouts
     testTimeout: 120000, // 2 minutes default
     hookTimeout: 60000, // 1 minute for hooks

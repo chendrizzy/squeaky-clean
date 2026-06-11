@@ -37,7 +37,13 @@ jobs:
       
       - name: Run unit tests
         run: npm test
-      
+
+      - name: Run OS-behavior tests (real filesystem)
+        # Real du/walker sizing, real PATH/PATHEXT, env-driven discovery against
+        # real temp dirs - validates actual Linux/Windows/macOS behavior that the
+        # memfs-mocked unit suite cannot.
+        run: npm run test:os
+
       - name: Run E2E tests (optional)
         continue-on-error: true
         run: npm run test:e2e 2>/dev/null || echo "E2E tests not yet configured"
