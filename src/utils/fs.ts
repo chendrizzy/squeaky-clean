@@ -58,19 +58,24 @@ class Semaphore {
 }
 
 // All cleaners scan in parallel; cap how many sizing operations hit the
-// disk at once so they share bandwidth instead of thrashing.
-const sizingSemaphore = new Semaphore(8);
+// disk at once so they share bandwidth instead of thrashing. 16 permits:
+// system-wide discovery queues hundreds of directories, and SSD metadata
+// walks parallelize well past 8.
+const sizingSemaphore = new Semaphore(16);
 
 /**
  * Compute directory size with native `du` (single C-speed process per path,
  * no per-file syscalls from JS). Returns null when du is unavailable or
  * fails so callers can fall back to the JS walker.
  */
-async function duDirectorySize(dirPath: string): Promise<number | null> {
+async function duDirectorySize(
+  dirPath: string,
+  timeoutMs: number = 60000,
+): Promise<number | null> {
   await sizingSemaphore.acquire();
   try {
     const { stdout } = await execFileAsync("du", ["-sk", "--", dirPath], {
-      timeout: 60000,
+      timeout: timeoutMs,
       maxBuffer: 1024 * 1024,
     });
     return parseDuOutput(stdout);
@@ -158,6 +163,11 @@ export async function getDirectorySize(
   // Kept for API compatibility; sizing is now fast enough that estimation
   // shortcuts are no longer needed.
   _skipLargeDirectories: boolean = false,
+  // Per-directory sizing budget. Survey-style callers (broad discovery over
+  // hundreds of dirs, some enormous) pass a small budget so one giant tree
+  // cannot stall the shared sizing queue; on timeout the sampled estimate
+  // is used instead.
+  timeoutMs: number = 60000,
 ): Promise<number> {
   try {
     const stats = await fs.stat(dirPath);
@@ -169,12 +179,12 @@ export async function getDirectorySize(
   }
 
   if (!isWindows) {
-    const duSize = await duDirectorySize(dirPath);
+    const duSize = await duDirectorySize(dirPath, timeoutMs);
     if (duSize !== null) return duSize;
   }
 
   try {
-    return await withTimeout(walkDirectorySize(dirPath), 60000);
+    return await withTimeout(walkDirectorySize(dirPath), timeoutMs);
   } catch {
     // Last resort: sampled estimate rather than hanging forever
     return getEstimatedDirectorySize(dirPath);
@@ -333,10 +343,11 @@ export async function clearPaths(paths: string[]): Promise<void> {
 export async function getCachedDirectorySize(
   dirPath: string,
   skipLargeDirectories: boolean = false,
+  timeoutMs?: number,
 ): Promise<number> {
   return cacheManager.getCachedSize(
     dirPath,
-    () => getDirectorySize(dirPath, skipLargeDirectories),
+    () => getDirectorySize(dirPath, skipLargeDirectories, timeoutMs),
     120000, // 2-minute TTL
   );
 }

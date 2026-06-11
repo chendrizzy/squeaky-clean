@@ -7,6 +7,7 @@ Complete guide to configuring Squeaky Clean for your development environment.
 - [Quick Start](#quick-start)
 - [Interactive Configuration Wizard](#interactive-configuration-wizard)
 - [Command-Line Configuration](#command-line-configuration)
+- [Cleaning Profiles & Safety Tiers](#cleaning-profiles--safety-tiers)
 - [Configuration File Reference](#configuration-file-reference)
 - [Best Practices](#best-practices)
 - [Troubleshooting](#troubleshooting)
@@ -218,6 +219,74 @@ squeaky config --enable npm yarn pnpm webpack vite
 
 ---
 
+## Cleaning Profiles & Safety Tiers
+
+Every cache category is classified into a safety tier (`safe`, `probably-safe`, `caution`, `manual`), and the active cleaning profile decides which tiers `squeaky clean` is allowed to touch.
+
+### Setting and Persisting a Profile
+
+```bash
+# Show the active profile and all available profiles
+squeaky profile
+
+# Persist a profile for all future runs
+squeaky profile conservative
+squeaky profile balanced
+squeaky profile aggressive
+```
+
+Persisting a profile writes the `activeProfile` key to your configuration file:
+
+```json
+{
+  "activeProfile": "conservative"
+}
+```
+
+| Profile | Tiers cleaned |
+|---------|---------------|
+| `conservative` | safe |
+| `balanced` (default) | safe, probably-safe |
+| `aggressive` | safe, probably-safe, caution |
+
+### How Profiles Interact with Configuration
+
+The safety tiers for a `clean` run are resolved with this precedence (highest first):
+
+1. `squeaky clean --safety <tiers>` - explicit tier list, overrides everything
+2. `squeaky clean --profile <name>` - per-run profile
+3. `activeProfile` in your configuration file (set via `squeaky profile <name>`)
+4. The built-in default profile (`balanced`)
+
+The `manual` tier belongs to no profile. Manual-tier categories always require explicit per-category consent—interactively when prompted, or via `squeaky clean --allow-manual <ids>`. The `--force` flag does not bypass this consent gate.
+
+### System-Wide App Cache Discovery (`app-caches`)
+
+The `app-caches` cleaner scans system-wide cache locations (e.g. `~/Library/Caches`, Electron app caches, `~/Library/Logs`, `~/.cache`) and classifies every discovered cache through the safety-tier rules. It is **enabled by default** via the `tools["app-caches"]` toggle in your configuration:
+
+```json
+{
+  "tools": {
+    "app-caches": true
+  }
+}
+```
+
+The full-system scan is heavier than the dev-only scan. To disable it:
+
+```bash
+# Disable persistently
+squeaky config --disable app-caches
+
+# Re-enable later
+squeaky config --enable app-caches
+
+# Or just skip it for one run
+squeaky clean --all --exclude app-caches
+```
+
+---
+
 ## Configuration File Reference
 
 ### Location
@@ -322,6 +391,7 @@ squeaky config
 - **Browser tools**: May affect browsing experience
 - **JetBrains IDEs**: May remove useful caches
 - **Docker**: Can remove containers and images you might need
+- **App Caches** (`app-caches`): Discovered caches are tier-gated per category; review `caution`/`manual` items before cleaning, and disable it entirely if you prefer the fast dev-only scan
 
 #### Environment-Specific
 - **Xcode**: Only enable on macOS development machines
@@ -456,6 +526,8 @@ For non-standard installations, add custom paths (future feature):
 ```
 
 ### Configuration Profiles
+
+> **Note:** This is about maintaining separate configuration *files* per environment. It is unrelated to [cleaning profiles](#cleaning-profiles--safety-tiers) (`conservative`/`balanced`/`aggressive`), which are set with `squeaky profile <name>`.
 
 For different environments, maintain separate config files:
 

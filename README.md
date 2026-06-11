@@ -23,6 +23,8 @@ Essentially a *"universal cachectl"*—**smart** *(sort of)*, **safe** (at least
 - **🔧 Highly Configurable**: Choose exactly which caches to clean and when
 - **📊 Size Analytics**: See how much space each cache is using before cleaning
 - **🛡️ Safe by Default**: Dry-run mode to preview what will be cleaned (v0.1.0+ defaults to dry-run)
+- **🚦 Safety Tiers & Cleaning Profiles**: Every cache classified `safe` → `manual`; pick a `conservative`, `balanced`, or `aggressive` profile
+- **🔎 System-Wide App Cache Discovery**: Finds non-developer app caches (Electron, GPU/shader, logs) guarded by a built-in safety database
 - **⚡ Performance**: Parallel cleaning operations for maximum speed
 - **🔄 Auto-clean Mode**: Schedule automatic cache cleaning based on your preferences
 - **📱 Cross-platform**: Works on macOS, Linux, and Windows
@@ -177,6 +179,7 @@ squeaky clean --config my-config.json --dry-run
 | `sizes` | Show cache sizes without clearing | - |
 | `categories` | Show detailed cache categories with usage patterns | `cats` |
 | `config` | Manage configuration | - |
+| `profile` | Show or set the active cleaning profile (`conservative`, `balanced`, `aggressive`) | - |
 | `doctor` | Check system and diagnose issues | - |
 | `auto` | Configure automatic cleaning | - |
 | `update` | Check for and install updates | - |
@@ -189,6 +192,7 @@ squeaky clean --config my-config.json --dry-run
 - `-a, --all` - Clean all configured caches
 - `-t, --types <types>` - Comma-separated list of cache types
 - `-e, --exclude <tools>` - Comma-separated list of tools to exclude
+- `--include <tools>` - Comma-separated list of tools to include (overrides `--all` and `--exclude`)
 - `-d, --dry-run` - Show what would be cleaned without actually cleaning
 - `-f, --force` - Skip confirmation prompts
 - `-s, --sizes` - Show cache sizes before cleaning
@@ -201,6 +205,12 @@ squeaky clean --config my-config.json --dry-run
 - `--use-case <case>` - Target specific use cases (`development`, `testing`, `production`, `experimental`, `archived`)
 - `--priority <level>` - Clean only specified priority (`critical`, `important`, `normal`, `low`)
 - `--categories <ids>` - Clean specific category IDs (comma-separated)
+- `--sub-caches <cleaner:category,...>` - Clean specific sub-caches within a cleaner (e.g., `xcode:DerivedData,npm:logs`)
+
+**🚦 Safety & Profile Options:**
+- `--profile <name>` - Cleaning profile to apply (`conservative`, `balanced`, `aggressive`)
+- `--safety <tiers>` - Comma-separated safety tiers to clean (`safe`, `probably-safe`, `caution`, `manual`); overrides `--profile`
+- `--allow-manual <ids>` - Comma-separated category IDs consenting to manual-tier cleaning
 
 #### `categories` Options
 
@@ -226,6 +236,60 @@ squeaky clean --config my-config.json --dry-run
 - `--config <path>` - Use custom configuration file
 - `--version` - Show version number
 - `-h, --help` - Display help
+
+## 🚦 Safety Tiers & Cleaning Profiles
+
+Every cache category is classified into one of four safety tiers, and the active cleaning profile decides which tiers get cleaned:
+
+| Tier | Meaning |
+|------|---------|
+| `safe` | Regenerated transparently; no observable downside to cleaning |
+| `probably-safe` | Regenerable; apps may start slower or re-download data once |
+| `caution` | May lose useful state (offline content, large re-downloads) or upset running apps |
+| `manual` | User-data adjacent; requires explicit per-item confirmation, never cleaned implicitly |
+
+| Profile | Tiers cleaned | Description |
+|---------|---------------|-------------|
+| `conservative` | safe | Only caches that are definitely safe to clean |
+| `balanced` (default) | safe, probably-safe | Safe caches plus regenerable ones that may cost a slower next launch |
+| `aggressive` | safe, probably-safe, caution | Everything except manual-confirmation items |
+
+```bash
+# View the active profile (and all available profiles)
+squeaky profile
+
+# Persist a profile as the default for future runs
+squeaky profile conservative
+
+# Apply a profile for a single run
+squeaky clean --all --profile aggressive
+
+# Override with an explicit tier list (beats --profile)
+squeaky clean --all --safety safe,caution
+```
+
+**Manual tier = explicit consent.** Manual-tier categories (e.g. 100GB+ ML model stores) are *never* cleaned implicitly—no profile includes them, and `--force` cannot bypass the consent gate. Consent per category interactively when prompted, or pass category IDs explicitly:
+
+```bash
+# Find category IDs first, then consent explicitly
+squeaky categories --tool app-caches
+squeaky clean --include app-caches --allow-manual <category-id>
+```
+
+### 🔎 System-Wide App Cache Discovery (`app-caches`)
+
+The `app-caches` cleaner discovers *non-developer* application caches across the whole system: `~/Library/Caches`, Electron `Cache`/`GPUCache`/`Code Cache` dirs under `~/Library/Application Support`, `~/Library/Logs`, and `~/.cache` on macOS; XDG cache dirs on Linux; `LOCALAPPDATA`/`APPDATA` on Windows. A built-in safety database:
+
+- **Hard-excludes** dangerous lookalikes (iCloud/CloudKit sync state, Mail, Photos, device backups, Docker's VM disk, Signal, password managers)—never shown, never cleaned
+- **Skips** paths already covered by the dedicated tool cleaners (no double counting)
+- **Classifies** everything else by tier (GPU/shader caches = `safe`, chat app caches = `caution`, huge ML model stores = `manual`)
+
+Heads-up: the full-system scan is heavier than the dev-only scan (roughly ~25s warm / ~80s cold on a large system). To keep the fast dev-only scan:
+
+```bash
+squeaky clean --all --exclude app-caches   # skip for one run
+squeaky config --disable app-caches        # disable persistently
+```
 
 ## 🛠️ Supported Tools
 
@@ -273,6 +337,7 @@ squeaky clean --config my-config.json --dry-run
 |------|----------------|
 | **Docker** | Unused containers, images, volumes |
 | **Gradle** | `~/.gradle/caches`, `.gradle/` |
+| **App Caches** (`app-caches`) | System-wide discovered application caches, classified by [safety tier](#-safety-tiers--cleaning-profiles) |
 
 ## ⚙️ Configuration
 

@@ -1,4 +1,10 @@
-import { CleanerModule, CacheInfo, ClearResult, CacheType } from "../types";
+import {
+  CleanerModule,
+  CacheInfo,
+  ClearResult,
+  CacheType,
+  CacheSelectionCriteria,
+} from "../types";
 import { config } from "../config";
 import { printVerbose, symbols } from "../utils/cli";
 import { minimatch } from "minimatch";
@@ -50,6 +56,7 @@ import dockerCleaner from "./docker";
 import gradleCleaner from "./gradle";
 import universalBinaryCleaner from "./universalBinary";
 import shipitCleaner from "./shipit";
+import appCachesCleaner from "./appCacheDiscovery";
 
 export class CacheManager {
   private cleaners: Map<string, CleanerModule>;
@@ -103,6 +110,7 @@ export class CacheManager {
     this.cleaners.set("gradle", gradleCleaner);
     this.cleaners.set("universal-binary", universalBinaryCleaner);
     this.cleaners.set("shipit", shipitCleaner);
+    this.cleaners.set("app-caches", appCachesCleaner);
   }
 
   /**
@@ -247,6 +255,7 @@ export class CacheManager {
       exclude?: string[];
       include?: string[];
       subCachesToClear?: Map<string, string[]>; // New option
+      criteria?: CacheSelectionCriteria; // Granular selection incl. safety tiers
       showProgress?: boolean;
     } = {},
   ): Promise<ClearResult[]> {
@@ -299,6 +308,7 @@ export class CacheManager {
               options.dryRun,
               cacheInfoForCleaner,
               protectedPaths,
+              options.criteria?.allowManualIds,
             );
           } else {
             // Fallback if clearByCategory is not implemented for this cleaner
@@ -307,7 +317,7 @@ export class CacheManager {
             );
             result = await cleaner.clear(
               options.dryRun,
-              undefined,
+              options.criteria,
               cacheInfoForCleaner,
               protectedPaths,
             );
@@ -315,7 +325,7 @@ export class CacheManager {
         } else {
           result = await cleaner.clear(
             options.dryRun,
-            undefined,
+            options.criteria,
             cacheInfoForCleaner,
             protectedPaths,
           );

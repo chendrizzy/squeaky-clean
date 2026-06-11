@@ -13,6 +13,7 @@ vi.mock("../../cleaners/index.js", () => ({
   cacheManager: {
     cleanAllCaches: vi.fn(),
     getAllCacheInfo: vi.fn(),
+    getEnabledCleaners: vi.fn(),
   },
   cleaners: [],
   CacheManager: vi.fn(),
@@ -250,6 +251,50 @@ describe("clean command", () => {
     expect(cacheManager.cleanAllCaches).toHaveBeenCalledWith(
       expect.objectContaining({ dryRun: true }),
     );
+  });
+
+  it("skips manual-tier categories in non-TTY force runs and lists them", async () => {
+    const { cleanCommand } = await import("../../commands/clean.js");
+
+    const manualCategory = {
+      id: "fakeapp:manual-cache",
+      name: "Manual Cache",
+      description: "should require manual user confirmation before cleaning",
+      paths: ["/home/testuser/Library/Caches/fakeapp"],
+      size: 2048,
+      priority: "normal" as const,
+      safety: "manual" as const,
+      useCase: "development" as const,
+    };
+    const fakeCleaner = {
+      name: "fakeapp",
+      type: "system",
+      description: "fake cleaner exposing a manual-tier category",
+      isAvailable: vi.fn().mockResolvedValue(true),
+      getCacheInfo: vi.fn(),
+      getCacheCategories: vi.fn().mockResolvedValue([manualCategory]),
+      clear: vi.fn(),
+      clearByCategory: vi.fn(),
+    };
+    vi.mocked(cacheManager.getEnabledCleaners).mockReturnValue([
+      fakeCleaner as any,
+    ]);
+
+    // Non-TTY (set in beforeEach) + --force: manual categories can neither be
+    // prompted for nor auto-confirmed, so they must be skipped with a notice.
+    await cleanCommand({ include: "fakeapp" as any, force: true });
+
+    expect(inquirer.prompt).not.toHaveBeenCalled();
+    expect(cacheManager.cleanAllCaches).toHaveBeenCalledTimes(1);
+
+    // allowManualIds stays empty: force never grants manual consent.
+    const callOptions = vi.mocked(cacheManager.cleanAllCaches).mock.calls[0][0];
+    expect(callOptions.criteria?.allowManualIds).toEqual([]);
+
+    const output = getConsoleOutput();
+    expect(output).toContain("Skipped (requires manual confirmation):");
+    expect(output).toContain("Manual Cache [fakeapp:manual-cache]");
+    expect(output).toContain("--allow-manual");
   });
 
   it("formats clean result logs without extra spaces", async () => {

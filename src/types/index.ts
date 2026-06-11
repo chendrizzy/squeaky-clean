@@ -1,3 +1,12 @@
+// Safety classification for cache categories:
+// - "safe": regenerable transparently; cleaning has no observable downside
+// - "probably-safe": regenerable, but next launch may be slower or re-download
+// - "caution": can lose useful state (offline content, long re-downloads) or
+//   misbehave if the owning app is running
+// - "manual": user-data adjacent; requires explicit per-item confirmation and
+//   is never cleaned implicitly (not even with --force)
+export type SafetyTier = "safe" | "probably-safe" | "caution" | "manual";
+
 // Cache category for granular control
 export interface CacheCategory {
   id: string;
@@ -8,6 +17,7 @@ export interface CacheCategory {
   lastAccessed?: Date;
   lastModified?: Date;
   priority: "critical" | "important" | "normal" | "low";
+  safety?: SafetyTier;
   useCase:
     | "development"
     | "testing"
@@ -54,6 +64,12 @@ export interface CacheSelectionCriteria {
   priorities?: Array<"critical" | "important" | "normal" | "low">;
   projectSpecific?: boolean;
   categories?: string[];
+  // Allowed safety tiers; categories outside these tiers are skipped.
+  safetyTiers?: SafetyTier[];
+  // Explicit per-category consent for "manual" tier categories. A manual
+  // category is only cleaned when its id appears here - force flags do not
+  // bypass this.
+  allowManualIds?: string[];
 }
 
 export interface ClearResult {
@@ -141,6 +157,9 @@ export interface UserConfig {
     docker: boolean;
     gradle: boolean;
     "universal-binary": boolean;
+    // Optional so existing literal configs/profiles stay assignable; the
+    // default config enables it.
+    "app-caches"?: boolean;
   };
 
   // Granular tool settings (new)
@@ -169,6 +188,9 @@ export interface UserConfig {
     backupBeforeClearing: boolean;
     excludeSystemCritical: boolean;
     preserveActiveDevelopment?: boolean; // new
+    // Highest safety tier cleaned without per-item confirmation.
+    // Derived from the active cleaning profile when unset.
+    maxTier?: SafetyTier;
   };
 
   // Custom paths
@@ -220,6 +242,7 @@ export interface CleanerModule {
     dryRun?: boolean,
     cacheInfo?: CacheInfo,
     protectedPaths?: string[],
+    allowManualIds?: string[],
   ) => Promise<ClearResult>;
 }
 
@@ -243,6 +266,10 @@ export interface CommandOptions {
   showCategories?: boolean; // show available categories
   config?: boolean;
   sizes?: boolean;
+  // Safety / cleaning-profile options
+  profile?: string; // conservative | balanced | aggressive
+  safety?: string; // comma-separated safety tiers to include
+  allowManual?: string[]; // category ids confirmed for manual-tier cleaning
 }
 
 export interface CacheSizeInfo {

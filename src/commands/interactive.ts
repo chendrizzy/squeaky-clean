@@ -9,10 +9,37 @@ import {
   printHeader,
 } from "../utils/cli";
 import { config } from "../config";
-import { CacheType } from "../types";
+import { CacheCategory, CacheType } from "../types";
+import {
+  SAFETY_TIER_INFO,
+  SAFETY_TIER_ORDER,
+  effectiveSafety,
+} from "../safety";
 
 interface InteractiveOptions {
   verbose?: boolean;
+}
+
+/**
+ * Colored safety badge for a cleaner: the WORST (most restricted) tier among
+ * its categories. Cleaners without category data get no badge.
+ */
+function safetyBadge(cache: { categories?: CacheCategory[] }): string {
+  const categories = cache.categories;
+  if (!categories || categories.length === 0) return "";
+
+  let worstIndex = -1;
+  for (const category of categories) {
+    const index = SAFETY_TIER_ORDER.indexOf(effectiveSafety(category));
+    if (index > worstIndex) worstIndex = index;
+  }
+  if (worstIndex < 0) return "";
+
+  const info = SAFETY_TIER_INFO[SAFETY_TIER_ORDER[worstIndex]];
+  const colorFn =
+    (pc as unknown as Record<string, (text: string) => string>)[info.color] ??
+    ((text: string) => text);
+  return ` ${colorFn(`[${info.label}]`)}`;
 }
 
 function getCacheEmoji(type: CacheType): string {
@@ -108,7 +135,7 @@ export const interactiveCommand = new Command("interactive")
         const size = formatSizeWithColor(cache.size);
         const emoji = getCacheEmoji(cache.type);
         console.log(
-          `   ${emoji} ${pc.bold(cache.name)} - ${size} - ${pc.gray(cache.description)}`,
+          `   ${emoji} ${pc.bold(cache.name)}${safetyBadge(cache)} - ${size} - ${pc.gray(cache.description)}`,
         );
       });
 
@@ -161,7 +188,7 @@ export const interactiveCommand = new Command("interactive")
             name: "caches",
             message: "Select caches to clean:",
             choices: availableCaches.map((cache: any) => ({
-              name: `${getCacheEmoji(cache.type)} ${cache.name} (${formatSizeWithColor(cache.size)}) - ${cache.description}`,
+              name: `${getCacheEmoji(cache.type)} ${cache.name}${safetyBadge(cache)} (${formatSizeWithColor(cache.size)}) - ${cache.description}`,
               value: cache.name,
             })),
           },

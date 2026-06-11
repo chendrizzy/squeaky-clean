@@ -56,6 +56,7 @@ export const defaultConfig: UserConfig = {
     docker: false, // More conservative - Docker cleanup affects containers
     gradle: true,
     "universal-binary": false, // More conservative - modifies application binaries
+    "app-caches": true, // Discovered app caches are tier-gated per category
   },
 
   safety: {
@@ -222,7 +223,7 @@ class ConfigManager {
   // Specific getters for convenience
   isToolEnabled(tool: keyof UserConfig["tools"]): boolean {
     const config = this.get();
-    return config.tools?.[tool] ?? defaultConfig.tools[tool];
+    return config.tools?.[tool] ?? defaultConfig.tools[tool] ?? false;
   }
 
   isCacheTypeEnabled(type: keyof UserConfig["enabledCaches"]): boolean {
@@ -272,6 +273,15 @@ class ConfigManager {
   getProtectedPaths(): string[] {
     const config = this.get();
     return config.protectedPaths ?? [];
+  }
+
+  // Cleaning profile persistence
+  getActiveProfile(): string | undefined {
+    return this.get().activeProfile;
+  }
+
+  setActiveProfile(name: string): void {
+    this.set({ activeProfile: name });
   }
 
   /**

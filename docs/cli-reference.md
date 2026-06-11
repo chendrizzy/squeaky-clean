@@ -57,6 +57,7 @@ squeaky --version
 
 ### Core Commands
 - [`config`](#squeaky-config) - Configuration management with interactive wizard
+- [`profile`](#squeaky-profile) - Show or set the active cleaning profile
 - [`clean`](#squeaky-clean) - Clean development caches
 - [`list`](#squeaky-list) - List available caches
 - [`sizes`](#squeaky-sizes) - Show cache sizes
@@ -180,7 +181,33 @@ squeaky config --reset
 **Build Tools**: `webpack`, `vite`, `nx`, `turbo`, `flutter`, `gradle`
 **IDEs**: `vscode`, `xcode`, `androidstudio`, `jetbrains`
 **Browsers**: `chrome`, `firefox`
-**System Tools**: `docker`
+**System Tools**: `docker`, `app-caches`
+
+---
+
+### `squeaky profile`
+
+Show or set the active cleaning profile. The profile decides which [safety tiers](#safety--profile-options) are cleaned without per-item confirmation.
+
+```bash
+# Show the active profile and all available profiles
+squeaky profile
+
+# Persist a profile (stored as activeProfile in your config)
+squeaky profile conservative
+squeaky profile balanced
+squeaky profile aggressive
+```
+
+**Available Profiles:**
+
+| Profile | Tiers cleaned | Description |
+|---------|---------------|-------------|
+| `conservative` | safe | Only caches that are definitely safe to clean |
+| `balanced` (default) | safe, probably-safe | Safe caches plus regenerable ones that may cost a slower next launch |
+| `aggressive` | safe, probably-safe, caution | Everything except manual-confirmation items |
+
+The persisted profile applies to every `squeaky clean` run unless overridden per run with `clean --profile <name>` or `clean --safety <tiers>`.
 
 ---
 
@@ -242,6 +269,17 @@ squeaky clean --exclude chrome,docker
 squeaky clean --types package-manager --exclude yarn
 ```
 
+##### `--include <tools>`
+Clean only the listed tools (comma-separated). Overrides `--all` and `--exclude`.
+
+```bash
+# Run only the system-wide app cache discovery cleaner
+squeaky clean --include app-caches
+
+# Only npm and docker
+squeaky clean --include npm,docker
+```
+
 ##### `-d, --dry-run`
 Preview what would be cleaned without actually cleaning.
 
@@ -273,6 +311,83 @@ squeaky clean --all --sizes
 
 # Combine with dry-run for size reports
 squeaky clean --all --sizes --dry-run
+```
+
+#### Granular Selection Options
+
+These options filter *which* cache categories get cleaned:
+
+##### `--older-than <age>` / `--newer-than <age>`
+Filter by cache age (e.g., `7d`, `2w`, `1m`).
+
+```bash
+squeaky clean --older-than 7d
+```
+
+##### `--larger-than <size>` / `--smaller-than <size>`
+Filter by cache size (e.g., `100MB`, `1GB`).
+
+```bash
+squeaky clean --larger-than 500MB
+```
+
+##### `--use-case <case>`
+Target specific use cases: `development`, `testing`, `production`, `experimental`, `archived`.
+
+##### `--priority <level>`
+Clean only the specified priority: `critical`, `important`, `normal`, `low`.
+
+##### `--categories <ids>`
+Clean specific category IDs (comma-separated). Use `squeaky categories` to discover IDs.
+
+```bash
+squeaky categories --tool npm
+squeaky clean --categories npm-logs,npm-metrics
+```
+
+##### `--sub-caches <cleaner:category,...>`
+Clean specific sub-caches within a cleaner.
+
+```bash
+squeaky clean --sub-caches xcode:DerivedData,npm:logs
+```
+
+#### Safety & Profile Options
+
+Every cache category carries one of four safety tiers:
+
+| Tier | Meaning |
+|------|---------|
+| `safe` | Regenerated transparently; no observable downside to cleaning |
+| `probably-safe` | Regenerable; apps may start slower or re-download data once |
+| `caution` | May lose useful state (offline content, large re-downloads) or upset running apps |
+| `manual` | User-data adjacent; requires explicit per-item confirmation, never cleaned implicitly |
+
+##### `--profile <name>`
+Cleaning profile to apply for this run: `conservative`, `balanced`, or `aggressive`. Overrides the persisted profile (see [`squeaky profile`](#squeaky-profile)).
+
+```bash
+squeaky clean --all --profile conservative
+```
+
+##### `--safety <tiers>`
+Comma-separated safety tiers to clean (`safe`, `probably-safe`, `caution`, `manual`). Overrides `--profile` and the persisted profile.
+
+```bash
+squeaky clean --all --safety safe,caution
+```
+
+##### `--allow-manual <ids>`
+Comma-separated category IDs consenting to manual-tier cleaning.
+
+Manual-tier categories are **never cleaned implicitly**: no profile includes them, and `--force` cannot bypass the consent gate. Consent per category interactively when prompted, or pass IDs explicitly:
+
+```bash
+# Find manual-tier category IDs first
+squeaky categories --tool app-caches
+
+# Then consent explicitly
+squeaky clean --include app-caches --allow-manual <category-id>
 ```
 
 ---
@@ -512,6 +627,26 @@ squeaky clean --all --force
 
 # Size-aware cleaning
 squeaky clean --all --sizes
+```
+
+### Safety & Profile Examples
+
+```bash
+# View or persist the active cleaning profile
+squeaky profile
+squeaky profile conservative
+
+# Per-run profile override
+squeaky clean --all --profile aggressive
+
+# Explicit tier list (beats --profile)
+squeaky clean --all --safety safe,caution
+
+# System-wide app cache discovery only, with manual-tier consent
+squeaky clean --include app-caches --allow-manual <category-id>
+
+# Keep the fast dev-only scan (skip system-wide discovery)
+squeaky clean --all --exclude app-caches
 ```
 
 ### Automation Examples

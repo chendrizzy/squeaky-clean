@@ -9,8 +9,23 @@ if (!process.env.UV_THREADPOOL_SIZE) {
 import { Command } from "commander";
 import { readFileSync } from "fs";
 import { join } from "path";
+import pc from "picocolors";
 import { config } from "./config";
 import { printHeader, printError, showBootPristine } from "./utils/cli";
+import { SAFETY_TIER_ORDER, SAFETY_TIER_INFO } from "./safety";
+
+// One line per safety tier: colored label + summary. Shown in --help output
+// so users can understand what each tier means before cleaning.
+function safetyTierLegend(): string {
+  const lines = SAFETY_TIER_ORDER.map((tier) => {
+    const info = SAFETY_TIER_INFO[tier];
+    const colorFn =
+      (pc as unknown as Record<string, (text: string) => string>)[info.color] ??
+      ((text: string) => text);
+    return `  ${colorFn(info.label.padEnd(14))} ${info.summary}`;
+  });
+  return `\nSafety Tiers:\n${lines.join("\n")}\n`;
+}
 
 const program = new Command();
 
@@ -113,6 +128,37 @@ program
     "--sub-caches <cleaner:category,...>",
     "clean specific sub-caches within a cleaner (e.g., xcode:DerivedData,npm:logs)",
   )
+  .option(
+    "--profile <name>",
+    "cleaning profile to apply (conservative, balanced, aggressive)",
+  )
+  .option(
+    "--safety <tiers>",
+    "comma-separated safety tiers to clean (safe,probably-safe,caution,manual); overrides --profile",
+  )
+  .option(
+    "--allow-manual <ids>",
+    "comma-separated category IDs consenting to manual-tier cleaning",
+  )
+  .addHelpText(
+    "after",
+    () =>
+      `${safetyTierLegend()}
+Profiles:
+  conservative   cleans: safe
+  balanced       cleans: safe, probably-safe (default)
+  aggressive     cleans: safe, probably-safe, caution
+
+Manual-tier categories are never cleaned implicitly; consent per category
+with --allow-manual <ids> or confirm interactively.
+
+Examples:
+  $ squeaky clean --all --profile conservative
+  $ squeaky clean --all --safety safe,caution
+  $ squeaky clean --include app-caches --allow-manual app-caches:dot-cache/huggingface
+    (find manual-tier category IDs with: squeaky categories)
+`,
+  )
   .action(async (options) => {
     try {
       printHeader("Cache Cleaning");
@@ -123,6 +169,24 @@ program
     } catch (error) {
       printError(
         `Failed to clean caches: ${error instanceof Error ? error.message : error}`,
+      );
+      process.exit(1);
+    }
+  });
+
+// Profile command - show or set the active cleaning profile
+program
+  .command("profile [name]")
+  .description(
+    "show or set the active cleaning profile (conservative, balanced, aggressive)",
+  )
+  .action(async (name?: string) => {
+    try {
+      const { profileCommand } = await import("./commands/profile");
+      await profileCommand(name);
+    } catch (error) {
+      printError(
+        `Failed to manage profile: ${error instanceof Error ? error.message : error}`,
       );
       process.exit(1);
     }
@@ -440,10 +504,14 @@ Cache Types:
 Configuration:
   Config stored at: ~/.config/squeaky-clean/config.json
   Use 'squeaky config' to customize preferences
+  Use 'squeaky profile' to view or set the active cleaning profile
 
 ✨ Make your development environment squeaky clean! ✨
 `,
 );
+
+// Safety tier legend so `squeaky --help` teaches the safety model.
+program.addHelpText("after", () => safetyTierLegend());
 
 // Error handling
 program.configureOutput({

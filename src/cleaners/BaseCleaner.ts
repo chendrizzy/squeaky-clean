@@ -7,11 +7,12 @@ import {
   CacheSelectionCriteria,
 } from "../types";
 import { existsSync, statSync } from "fs";
-import { rm } from "fs/promises";
-import { basename, resolve } from "path";
+import { rm, readdir } from "fs/promises";
+import { basename, join, resolve } from "path";
 import { minimatch } from "minimatch";
 import { printVerbose } from "../utils/cli";
 import { getCachedDirectorySize } from "../utils/fs";
+import { effectiveSafety } from "../safety";
 
 export abstract class BaseCleaner implements CleanerModule {
   abstract name: string;
@@ -170,11 +171,22 @@ export abstract class BaseCleaner implements CleanerModule {
     dryRun?: boolean,
     _cacheInfo?: CacheInfo,
     protectedPaths?: string[],
+    allowManualIds?: string[],
   ): Promise<ClearResult> {
     const categories = await this.getCacheCategories();
-    const selectedCategories = categories.filter((c) =>
-      categoryIds.includes(c.id),
-    );
+    const selectedCategories = categories.filter((c) => {
+      if (!categoryIds.includes(c.id)) return false;
+      // Manual tier needs explicit consent beyond id selection - checkbox
+      // defaults or --categories alone are not confirmation.
+      if (effectiveSafety(c) !== "manual") return true;
+      const allowed = allowManualIds?.includes(c.id) ?? false;
+      if (!allowed) {
+        printVerbose(
+          `Skipping ${c.id}: manual tier requires explicit confirmation`,
+        );
+      }
+      return allowed;
+    });
 
     let totalSizeBefore = 0;
     let clearedPaths: string[] = [];
@@ -221,9 +233,32 @@ export abstract class BaseCleaner implements CleanerModule {
     categories: CacheCategory[],
     criteria?: CacheSelectionCriteria,
   ): CacheCategory[] {
-    if (!criteria) return categories;
+    // Manual-tier gate applies even without criteria: a manual category is
+    // only cleanable with explicit per-id consent via allowManualIds.
+    // Force/yes flags never populate that list, so they cannot bypass it.
+    const gated = categories.filter((category) => {
+      if (effectiveSafety(category) !== "manual") return true;
+      const allowed = criteria?.allowManualIds?.includes(category.id) ?? false;
+      if (!allowed) {
+        printVerbose(
+          `Skipping ${category.id}: manual tier requires explicit confirmation`,
+        );
+      }
+      return allowed;
+    });
 
-    return categories.filter((category) => {
+    if (!criteria) return gated;
+
+    return gated.filter((category) => {
+      // Safety tier filtering. Manual categories that reached this point
+      // carry explicit consent, so the tier filter does not re-drop them.
+      if (criteria.safetyTiers && criteria.safetyTiers.length > 0) {
+        const tier = effectiveSafety(category);
+        if (tier !== "manual" && !criteria.safetyTiers.includes(tier)) {
+          return false;
+        }
+      }
+
       // Age filtering
       if (
         criteria.olderThanDays !== undefined &&
@@ -289,12 +324,22 @@ export abstract class BaseCleaner implements CleanerModule {
     if (!existsSync(path)) return;
 
     try {
-      // Use native Node.js fs operations for better security
-      // This eliminates any potential for command injection
-      await rm(path, {
-        recursive: true, // Handles directories recursively
-        force: true, // Ignores errors if file doesn't exist
-      });
+      // Native Node.js fs operations: no shell, no injection surface.
+      // For directories, delete CONTENTS but keep the directory itself -
+      // apps expect their cache dir to still exist on next launch and can
+      // fail with ENOENT if it vanishes.
+      const stats = statSync(path);
+      if (!stats.isDirectory()) {
+        await rm(path, { force: true });
+        return;
+      }
+
+      const entries = await readdir(path);
+      await Promise.all(
+        entries.map((entry) =>
+          rm(join(path, entry), { recursive: true, force: true }),
+        ),
+      );
     } catch (error) {
       console.error(`Failed to clear ${path}:`, error);
     }

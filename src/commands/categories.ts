@@ -2,6 +2,16 @@ import { cacheManager } from "../cleaners";
 import { printHeader, printInfo, printSuccess, formatSize } from "../utils/cli";
 import pc from "picocolors";
 import { CacheCategory } from "../types";
+import { SAFETY_TIER_INFO, effectiveSafety } from "../safety";
+
+// Colored safety tier badge for a category (e.g. [SAFE], [MANUAL]).
+function tierBadge(category: CacheCategory): string {
+  const info = SAFETY_TIER_INFO[effectiveSafety(category)];
+  const colorFn =
+    (pc as unknown as Record<string, (text: string) => string>)[info.color] ??
+    ((text: string) => text);
+  return colorFn(`[${info.label}]`);
+}
 
 interface CategoriesOptions {
   tool?: string;
@@ -90,7 +100,9 @@ export async function categoriesCommand(
               ? pc.magenta(`[${path.basename(cat.projectPath)}]`)
               : "";
 
-          console.log(`    ${priorityColor("●")} ${pc.bold(cat.name)}`);
+          console.log(
+            `    ${priorityColor("●")} ${pc.bold(cat.name)} ${tierBadge(cat)}`,
+          );
           console.log(`      ID: ${pc.gray(cat.id)}`);
           console.log(`      Size: ${sizeText} ${ageText} ${projectText}`);
           console.log(`      Priority: ${priorityColor(cat.priority)}`);
