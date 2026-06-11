@@ -24,7 +24,7 @@ Essentially a *"universal cachectl"*—**smart** *(sort of)*, **safe** (at least
 - **📊 Size Analytics**: See how much space each cache is using before cleaning
 - **🛡️ Safe by Default**: Dry-run mode to preview what will be cleaned (v0.1.0+ defaults to dry-run)
 - **🚦 Safety Tiers & Cleaning Profiles**: Every cache classified `safe` → `manual`; pick a `conservative`, `balanced`, or `aggressive` profile
-- **🔎 System-Wide App Cache Discovery**: Finds non-developer app caches (Electron, GPU/shader, logs) guarded by a built-in safety database
+- **🔎 System-Wide App Cache Discovery**: Finds non-developer app caches (Electron, GPU/shader, sandboxed/Flatpak/Snap apps, logs) guarded by a built-in safety database
 - **⚡ Performance**: Parallel cleaning operations for maximum speed
 - **🔄 Auto-clean Mode**: Schedule automatic cache cleaning based on your preferences
 - **📱 Cross-platform**: Works on macOS, Linux, and Windows
@@ -278,13 +278,19 @@ squeaky clean --include app-caches --allow-manual <category-id>
 
 ### 🔎 System-Wide App Cache Discovery (`app-caches`)
 
-The `app-caches` cleaner discovers *non-developer* application caches across the whole system: `~/Library/Caches`, Electron `Cache`/`GPUCache`/`Code Cache` dirs under `~/Library/Application Support`, `~/Library/Logs`, and `~/.cache` on macOS; XDG cache dirs on Linux; `LOCALAPPDATA`/`APPDATA` on Windows. A built-in safety database:
+The `app-caches` cleaner discovers *non-developer* application caches across the whole system:
+
+- **macOS**: `~/Library/Caches`, Electron `Cache`/`GPUCache`/`Code Cache` dirs under `~/Library/Application Support`, sandboxed-app caches under `~/Library/Containers/*/Data/Library/Caches` and `~/Library/Group Containers/*/Library/Caches`, `~/Library/Logs`, and `~/.cache`
+- **Linux**: `~/.cache` (XDG), Electron caches under `~/.config/*`, plus Flatpak (`~/.var/app/*/cache`) and Snap (`~/snap/*/{current,common}/.cache`) app caches
+- **Windows**: `LOCALAPPDATA`/`APPDATA` (Electron `Cache`/`GPUCache`/`Code Cache`) and the user `Temp` directory
+
+A built-in safety database:
 
 - **Hard-excludes** dangerous lookalikes (iCloud/CloudKit sync state, Mail, Photos, device backups, Docker's VM disk, Signal, password managers)—never shown, never cleaned
 - **Skips** paths already covered by the dedicated tool cleaners (no double counting)
 - **Classifies** everything else by tier (GPU/shader caches = `safe`, chat app caches = `caution`, huge ML model stores = `manual`)
 
-Heads-up: the full-system scan is heavier than the dev-only scan (roughly ~25s warm / ~80s cold on a large system). To keep the fast dev-only scan:
+Heads-up: the full-system scan is heavier than the dev-only scan (tens of seconds on a large system, and more on Macs with many sandboxed apps). The largest caches are always surfaced even when the candidate list is capped. To keep the fast dev-only scan:
 
 ```bash
 squeaky clean --all --exclude app-caches   # skip for one run

@@ -81,6 +81,16 @@ async function isDirectory(dir: string): Promise<boolean> {
   }
 }
 
+/** Cheap non-empty check: one readdir, far cheaper than sizing with du. */
+async function dirHasEntries(dir: string): Promise<boolean> {
+  try {
+    const entries = await fsp.readdir(dir);
+    return entries.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * System-wide application cache discovery. Scans well-known platform cache
  * roots, classifies every candidate through the safety rule engine
@@ -170,26 +180,41 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
       kept.push({ ...candidate, safety: verdict, reason });
     }
 
+    // Drop empty cache dirs before sizing: most discovered candidates -
+    // especially sandboxed-app containers, ~99% of which are empty on a real
+    // Mac - have nothing to reclaim, and a single readdir is far cheaper than
+    // spawning du for each. This keeps the full-system scan fast even with
+    // thousands of container candidates.
+    const nonEmpty: typeof kept = [];
+    for (let i = 0; i < kept.length; i += 64) {
+      const chunk = kept.slice(i, i + 64);
+      const present = await Promise.all(chunk.map((c) => dirHasEntries(c.dir)));
+      chunk.forEach((candidate, idx) => {
+        if (present[idx]) nonEmpty.push(candidate);
+      });
+    }
+
     // Size everything (up to a hard ceiling) BEFORE bounding, so that when
     // there are more than MAX_CANDIDATES we keep the largest by size rather
     // than whichever came first in readdir order - the biggest caches are
     // exactly the ones worth surfacing.
-    let toSize = kept;
-    if (kept.length > HARD_MAX_CANDIDATES) {
+    let toSize = nonEmpty;
+    if (nonEmpty.length > HARD_MAX_CANDIDATES) {
       printVerbose(
-        `app-caches: ${kept.length} candidates exceed the hard cap; sizing the first ${HARD_MAX_CANDIDATES} in directory order`,
+        `app-caches: ${nonEmpty.length} non-empty candidates exceed the hard cap; sizing the first ${HARD_MAX_CANDIDATES} in directory order`,
       );
-      toSize = kept.slice(0, HARD_MAX_CANDIDATES);
+      toSize = nonEmpty.slice(0, HARD_MAX_CANDIDATES);
     }
 
     // Size all candidates concurrently; getCachedDirectorySize internally
     // caps concurrent du invocations, so this fan-out is safe. Survey
-    // budget: 10s per directory so one enormous tree (100GB+ model caches)
-    // cannot stall the shared sizing queue - oversized outliers fall back
-    // to a sampled estimate, which is fine for discovery display.
+    // budget: 4s per directory so big caches (browser/Electron trees, model
+    // stores) cannot stall the shared sizing queue - outliers fall back to a
+    // sampled estimate, which is fine for discovery display (real freed bytes
+    // are measured at clean time, not here).
     let categories = await Promise.all(
       toSize.map(async (candidate): Promise<CacheCategory> => {
-        const size = await getCachedDirectorySize(candidate.dir, false, 10000);
+        const size = await getCachedDirectorySize(candidate.dir, false, 4000);
         let lastModified: Date | undefined;
         let ageInDays: number | undefined;
         try {
@@ -275,6 +300,26 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
       }
     };
 
+    // Sandboxed-app caches live inside each app's container, under a fixed
+    // Caches subpath - never the app's Data root. The bundle id is a path
+    // segment, so the same safety rules (never/claimed/manual/...) apply.
+    const addContainerCaches = async (
+      root: string,
+      relPrefix: string,
+      cacheRelPath: string[],
+      label: string,
+    ): Promise<void> => {
+      for (const bundle of await listSubdirs(root)) {
+        const dir = path.join(root, bundle, ...cacheRelPath);
+        if (!(await isDirectory(dir))) continue;
+        candidates.push({
+          dir,
+          relId: `${relPrefix}/${bundle}`,
+          name: `${label}: ${bundle}`,
+        });
+      }
+    };
+
     if (platform === "darwin") {
       await addSubdirs(path.join(home, "Library", "Caches"), "library-caches");
       await addSubdirs(
@@ -292,6 +337,21 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
       await addSubdirs(path.join(home, "Library", "Logs"), "logs");
       // ~/.cache may be a symlink; readdir uses it as-is (never resolved).
       await addSubdirs(path.join(home, ".cache"), "dot-cache");
+      // Sandboxed / Mac App Store apps keep caches in their container, not
+      // ~/Library/Caches (CleanMyMac-parity coverage). Only the Caches
+      // subpath is targeted, never the app's Data root.
+      await addContainerCaches(
+        path.join(home, "Library", "Containers"),
+        "containers",
+        ["Data", "Library", "Caches"],
+        "Container",
+      );
+      await addContainerCaches(
+        path.join(home, "Library", "Group Containers"),
+        "group-containers",
+        ["Library", "Caches"],
+        "Group Container",
+      );
     } else if (platform === "win32") {
       const local =
         process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");

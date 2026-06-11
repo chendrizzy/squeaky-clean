@@ -57,11 +57,12 @@ class Semaphore {
   }
 }
 
-// All cleaners scan in parallel; cap how many sizing operations hit the
-// disk at once so they share bandwidth instead of thrashing. 16 permits:
-// system-wide discovery queues hundreds of directories, and SSD metadata
-// walks parallelize well past 8.
-const sizingSemaphore = new Semaphore(16);
+// All cleaners scan in parallel; cap how many sizing operations hit the disk
+// at once so they share bandwidth instead of thrashing. 32 permits: du sizing
+// is I/O-bound and scales well on SSDs (measured ~96s@16 -> ~65s@32 sizing
+// 500+ real caches), while staying conservative enough not to thrash lower-end
+// or loaded machines. System-wide discovery queues hundreds of directories.
+const sizingSemaphore = new Semaphore(32);
 
 /**
  * Compute directory size with native `du` (single C-speed process per path,
@@ -71,7 +72,7 @@ const sizingSemaphore = new Semaphore(16);
 async function duDirectorySize(
   dirPath: string,
   timeoutMs: number = 60000,
-): Promise<number | null> {
+): Promise<number | "timeout" | null> {
   await sizingSemaphore.acquire();
   try {
     // No "--" end-of-options marker: BusyBox du (Alpine) rejects it, and every
@@ -82,13 +83,18 @@ async function duDirectorySize(
     });
     return parseDuOutput(stdout);
   } catch (error) {
+    const e = error as { stdout?: string; killed?: boolean; signal?: string };
     // du exits non-zero when some subdirectories are unreadable but still
     // prints the total it could measure - use that partial result.
-    const stdout = (error as { stdout?: string })?.stdout;
-    if (stdout) {
-      const size = parseDuOutput(stdout);
+    if (e.stdout) {
+      const size = parseDuOutput(e.stdout);
       if (size !== null) return size;
     }
+    // Killed by the timeout: the tree is too large to finish in budget. Signal
+    // "timeout" so the caller estimates instead of running the (even slower)
+    // JS walker over the same tree.
+    if (e.killed || e.signal === "SIGTERM") return "timeout";
+    // du missing or otherwise errored: let the caller fall back to the walker.
     return null;
   } finally {
     sizingSemaphore.release();
@@ -194,13 +200,19 @@ export async function getDirectorySize(
 
   if (!isWindows) {
     const duSize = await duDirectorySize(dirPath, timeoutMs);
-    if (duSize !== null) return duSize;
+    if (typeof duSize === "number") return duSize;
+    // du timed out on a tree too large to finish in budget: estimate rather
+    // than run the (even slower) JS walker over the same tree. Exact bytes are
+    // not needed for discovery display, and this avoids a second timeout.
+    if (duSize === "timeout") return getEstimatedDirectorySize(dirPath);
+    // duSize === null: du is unavailable/errored - fall through to the walker.
   }
 
+  // Windows (no du) or du unavailable: bounded JS walker, estimate as a last
+  // resort.
   try {
     return await withTimeout(walkDirectorySize(dirPath), timeoutMs);
   } catch {
-    // Last resort: sampled estimate rather than hanging forever
     return getEstimatedDirectorySize(dirPath);
   }
 }

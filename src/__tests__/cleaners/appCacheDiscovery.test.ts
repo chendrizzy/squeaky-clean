@@ -126,6 +126,46 @@ describe("AppCacheDiscoveryCleaner", () => {
       expect(slack?.description.length).toBeGreaterThan(slack!.paths[0].length);
     });
 
+    it("discovers sandboxed caches under Containers and Group Containers", async () => {
+      vol.fromJSON({
+        // Sandboxed app: only the Caches subpath under Data is a cache.
+        [`${H}/Library/Containers/com.acme.Editor/Data/Library/Caches/blob`]:
+          "x",
+        // App group container cache.
+        [`${H}/Library/Group Containers/group.com.acme/Library/Caches/blob`]:
+          "x",
+      });
+
+      const ids = (
+        await new AppCacheDiscoveryCleaner().getCacheCategories()
+      ).map((c) => c.id);
+
+      expect(ids).toContain("app-caches:containers/com.acme.editor");
+      expect(ids).toContain("app-caches:group-containers/group.com.acme");
+    });
+
+    it("never surfaces an app's container Data root, only its Caches", async () => {
+      vol.fromJSON({
+        [`${H}/Library/Containers/com.acme.Editor/Data/Documents/secret.txt`]:
+          "x",
+        [`${H}/Library/Containers/com.acme.Editor/Data/Library/Caches/blob`]:
+          "x",
+      });
+
+      const paths = (
+        await new AppCacheDiscoveryCleaner().getCacheCategories()
+      ).flatMap((c) => c.paths);
+
+      // The discovered path is the Caches dir; the Data root / Documents are
+      // never candidates.
+      expect(paths).toContain(
+        `${H}/Library/Containers/com.acme.Editor/Data/Library/Caches`,
+      );
+      expect(
+        paths.some((p) => p.endsWith("/Data") || p.includes("/Documents")),
+      ).toBe(false);
+    });
+
     it("caches discovery on the instance within the TTL", async () => {
       const cleaner = new AppCacheDiscoveryCleaner();
       const first = await cleaner.getCacheCategories();
