@@ -37,7 +37,10 @@ describe(`getDirectorySize (real filesystem, ${os.platform()})`, () => {
     await fs.mkdir(path.join(d, "sub", "deeper"), { recursive: true });
     await fs.writeFile(path.join(d, "top.bin"), Buffer.alloc(2048));
     await fs.writeFile(path.join(d, "sub", "mid.bin"), Buffer.alloc(4096));
-    await fs.writeFile(path.join(d, "sub", "deeper", "low.bin"), Buffer.alloc(8192));
+    await fs.writeFile(
+      path.join(d, "sub", "deeper", "low.bin"),
+      Buffer.alloc(8192),
+    );
 
     const size = await getDirectorySize(d);
     expect(size).toBeGreaterThanOrEqual(2048 + 4096 + 8192);

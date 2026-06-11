@@ -158,8 +158,7 @@ export class UniversalBinaryCleaner implements CleanerModule {
           continue;
         }
 
-        const architectures =
-          await this.readMachOArchitectures(binaryPath);
+        const architectures = await this.readMachOArchitectures(binaryPath);
         const isUniversal = architectures.length > 1;
         if (!isUniversal || !architectures.includes("arm64")) continue;
 

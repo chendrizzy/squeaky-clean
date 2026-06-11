@@ -28,8 +28,8 @@ describe(`commandExists (real PATH, ${os.platform()})`, () => {
   });
 
   it("anyCommandExists returns false when none resolve", async () => {
-    expect(
-      await anyCommandExists("squeaky-nope-aaa", "squeaky-nope-bbb"),
-    ).toBe(false);
+    expect(await anyCommandExists("squeaky-nope-aaa", "squeaky-nope-bbb")).toBe(
+      false,
+    );
   });
 });

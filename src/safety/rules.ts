@@ -318,9 +318,8 @@ const RULES: ClassificationRule[] = [
     // Exact segment match: "spotify-ui-widgets" or "my-spotify-backup"
     // must NOT be pulled into the manual tier.
     test: (ctx) =>
-      ctx.segments.some(
-        (s) => s === "spotify" || s === "com.spotify.client",
-      ) && ctx.segments.some((s) => s === "persistentcache"),
+      ctx.segments.some((s) => s === "spotify" || s === "com.spotify.client") &&
+      ctx.segments.some((s) => s === "persistentcache"),
     verdict: "manual",
     reason: "Spotify PersistentCache; offline downloads may live here",
   },

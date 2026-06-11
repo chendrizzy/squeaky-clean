@@ -7,12 +7,7 @@ import {
   SAFETY_TIER_INFO,
   isCleaningProfileName,
 } from "../safety";
-import {
-  printHeader,
-  printError,
-  printInfo,
-  printSuccess,
-} from "../utils/cli";
+import { printHeader, printError, printInfo, printSuccess } from "../utils/cli";
 
 type ColorFn = (text: string) => string;
 

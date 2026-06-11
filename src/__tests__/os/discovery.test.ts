@@ -30,10 +30,20 @@ beforeAll(async () => {
   else setEnv("HOME", tmpHome);
 
   if (platform === "darwin") {
-    await writeFixture(path.join(tmpHome, "Library", "Caches", "com.example.coolapp"));
+    await writeFixture(
+      path.join(tmpHome, "Library", "Caches", "com.example.coolapp"),
+    );
     // Sandboxed-app container cache (only the Caches subpath is a candidate).
     await writeFixture(
-      path.join(tmpHome, "Library", "Containers", "com.example.Sandboxed", "Data", "Library", "Caches"),
+      path.join(
+        tmpHome,
+        "Library",
+        "Containers",
+        "com.example.Sandboxed",
+        "Data",
+        "Library",
+        "Caches",
+      ),
       4096,
     );
   } else if (platform === "win32") {
@@ -47,7 +57,10 @@ beforeAll(async () => {
     setEnv("XDG_CONFIG_HOME", path.join(tmpHome, ".config"));
     await writeFixture(path.join(xdgCache, "coolapp"));
     // Flatpak per-app cache.
-    await writeFixture(path.join(tmpHome, ".var", "app", "com.example.App", "cache"), 4096);
+    await writeFixture(
+      path.join(tmpHome, ".var", "app", "com.example.App", "cache"),
+      4096,
+    );
   }
 });
 
@@ -67,7 +80,9 @@ describe(`app-cache discovery (real filesystem, ${platform})`, () => {
     // At least one fixture was sized (real du/walker) to a non-zero value.
     expect(cats.some((c) => (c.size ?? 0) > 0)).toBe(true);
     for (const c of cats) {
-      expect(["safe", "probably-safe", "caution", "manual"]).toContain(c.safety);
+      expect(["safe", "probably-safe", "caution", "manual"]).toContain(
+        c.safety,
+      );
     }
   });
 
