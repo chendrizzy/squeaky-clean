@@ -63,13 +63,15 @@ export abstract class BaseCleaner implements CleanerModule {
   ): boolean {
     if (!protectedPaths.length) return false;
 
-    const normalizedPath = resolve(path);
+    // Normalize separators to forward slashes so matching is consistent on
+    // Windows, where resolve() yields backslash paths.
+    const normalizedPath = resolve(path).replace(/\\/g, "/");
 
     for (const protectedPattern of protectedPaths) {
       // Support both exact paths and glob patterns
       if (protectedPattern.includes("*") || protectedPattern.includes("?")) {
         // It's a glob pattern
-        if (minimatch(normalizedPath, protectedPattern)) {
+        if (minimatch(normalizedPath, protectedPattern.replace(/\\/g, "/"))) {
           printVerbose(
             `Path ${path} is protected by pattern: ${protectedPattern}`,
           );
@@ -80,7 +82,10 @@ export abstract class BaseCleaner implements CleanerModule {
         // case-insensitive filesystems (default macOS/Windows) a case-
         // mismatched pattern must still protect the path - a missed match
         // here would let explicitly-protected data be deleted.
-        const normalizedProtected = resolve(protectedPattern);
+        const normalizedProtected = resolve(protectedPattern).replace(
+          /\\/g,
+          "/",
+        );
         const candidate = normalizedPath.toLowerCase();
         const protectedLower = normalizedProtected.toLowerCase();
         if (

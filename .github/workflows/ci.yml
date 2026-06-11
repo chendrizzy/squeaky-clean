@@ -35,7 +35,12 @@ jobs:
       - name: Build project
         run: npm run build
       
-      - name: Run unit tests
+      - name: Run unit tests (mocked suite)
+        # The mocked suite uses memfs, which models POSIX paths; on Windows the
+        # real path.join / PATH-delimiter / resolve() semantics make these
+        # fixtures inapplicable. Real Windows behavior is covered by the
+        # OS-behavior suite and the smoke test below.
+        if: runner.os != 'Windows'
         run: npm test
 
       - name: Run OS-behavior tests (real filesystem)
