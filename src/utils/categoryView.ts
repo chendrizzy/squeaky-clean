@@ -1,5 +1,6 @@
 import pc from "picocolors";
 import {
+  AppCacheGroupAxis,
   AppCacheGroupBy,
   CacheCategory,
   CategoryBreakdownEntry,
@@ -11,6 +12,7 @@ import {
   effectiveSafety,
 } from "../safety";
 import { formatSize } from "./cli";
+import { normalizeHierarchy } from "./groupHierarchy";
 
 /**
  * Minimal view shape shared by full CacheCategory objects (the `categories`
@@ -28,7 +30,8 @@ export interface CategoryViewItem {
 }
 
 export interface CategoryViewOptions {
-  groupBy: AppCacheGroupBy;
+  /** A single axis, "none", or an ordered hierarchy (e.g. ["tier","kind","app"]). */
+  groupBy: AppCacheGroupBy | AppCacheGroupAxis[];
   useColor: boolean;
   emojiMode: "on" | "off" | "minimal";
   /** Leading indent applied to every emitted line. */
@@ -86,67 +89,12 @@ function kindOf(id: string): string {
   return body.split("/")[0] || body;
 }
 
-function bucketKey(item: CategoryViewItem, groupBy: AppCacheGroupBy): string {
-  switch (groupBy) {
-    case "app":
-      return item.appKey || item.name || item.id;
-    case "tier":
-      return item.safety;
-    case "kind":
-      return kindOf(item.id);
-    case "none":
-    default:
-      return "";
-  }
-}
-
 export interface CategoryGroup {
   key: string;
   label: string;
   tier?: SafetyTier;
   items: CategoryViewItem[];
   total: number;
-}
-
-/**
- * Group view items for display. Items within a group are sorted largest-first;
- * groups are sorted largest-first too, except "tier" which orders groups by
- * safety severity so the riskiest caches surface up front.
- */
-export function groupCategories(
-  items: CategoryViewItem[],
-  groupBy: AppCacheGroupBy,
-): CategoryGroup[] {
-  const buckets = new Map<string, CategoryViewItem[]>();
-  for (const item of items) {
-    const key = bucketKey(item, groupBy);
-    const arr = buckets.get(key);
-    if (arr) arr.push(item);
-    else buckets.set(key, [item]);
-  }
-
-  const groups: CategoryGroup[] = [];
-  for (const [key, groupItems] of buckets) {
-    const sorted = groupItems
-      .slice()
-      .sort((a, b) => (b.size || 0) - (a.size || 0));
-    const total = sorted.reduce((sum, i) => sum + (i.size || 0), 0);
-    const tier = groupBy === "tier" ? (key as SafetyTier) : undefined;
-    const label =
-      groupBy === "tier" ? SAFETY_TIER_INFO[key as SafetyTier].label : key;
-    groups.push({ key, label, tier, items: sorted, total });
-  }
-
-  if (groupBy === "tier") {
-    groups.sort(
-      (a, b) =>
-        SAFETY_TIER_ORDER.indexOf(a.key as SafetyTier) -
-        SAFETY_TIER_ORDER.indexOf(b.key as SafetyTier),
-    );
-  } else {
-    groups.sort((a, b) => b.total - a.total);
-  }
-  return groups;
 }
 
 const KIND_EMOJI: Record<string, string> = {
@@ -165,60 +113,157 @@ const KIND_EMOJI: Record<string, string> = {
   appdata: "📁",
 };
 
+function axisBucketKey(
+  item: CategoryViewItem,
+  axis: AppCacheGroupAxis,
+): string {
+  switch (axis) {
+    case "tier":
+      return item.safety;
+    case "kind":
+      return kindOf(item.id);
+    case "app":
+    default:
+      return item.appKey || item.name || item.id;
+  }
+}
+
+/**
+ * Group items by a single axis. Items within a group are sorted largest-first;
+ * tier groups order by safety severity (so the riskiest surface up front),
+ * every other axis orders groups largest-first.
+ */
+export function groupByAxis(
+  items: CategoryViewItem[],
+  axis: AppCacheGroupAxis,
+): CategoryGroup[] {
+  const buckets = new Map<string, CategoryViewItem[]>();
+  for (const item of items) {
+    const key = axisBucketKey(item, axis);
+    const arr = buckets.get(key);
+    if (arr) arr.push(item);
+    else buckets.set(key, [item]);
+  }
+
+  const groups: CategoryGroup[] = [];
+  for (const [key, groupItems] of buckets) {
+    const sorted = groupItems
+      .slice()
+      .sort((a, b) => (b.size || 0) - (a.size || 0));
+    const total = sorted.reduce((sum, i) => sum + (i.size || 0), 0);
+    const tier = axis === "tier" ? (key as SafetyTier) : undefined;
+    const label =
+      axis === "tier" ? SAFETY_TIER_INFO[key as SafetyTier].label : key;
+    groups.push({ key, label, tier, items: sorted, total });
+  }
+
+  if (axis === "tier") {
+    groups.sort(
+      (a, b) =>
+        SAFETY_TIER_ORDER.indexOf(a.key as SafetyTier) -
+        SAFETY_TIER_ORDER.indexOf(b.key as SafetyTier),
+    );
+  } else {
+    groups.sort((a, b) => b.total - a.total);
+  }
+  return groups;
+}
+
+/**
+ * Single-level grouping by a single axis (or "none" = one flat bucket sorted by
+ * size). Kept for callers/tests that group on one axis; multi-level nesting is
+ * handled by renderCategoryTree.
+ */
+export function groupCategories(
+  items: CategoryViewItem[],
+  groupBy: AppCacheGroupBy,
+): CategoryGroup[] {
+  if (groupBy === "none") {
+    const sorted = items.slice().sort((a, b) => (b.size || 0) - (a.size || 0));
+    if (sorted.length === 0) return [];
+    const total = sorted.reduce((sum, i) => sum + (i.size || 0), 0);
+    return [{ key: "", label: "", items: sorted, total }];
+  }
+  return groupByAxis(items, groupBy);
+}
+
+function renderLevel(
+  items: CategoryViewItem[],
+  axes: AppCacheGroupAxis[],
+  options: CategoryViewOptions,
+  depth: number,
+  tierInHierarchy: boolean,
+): string[] {
+  const { useColor, emojiMode } = options;
+  const indent = (options.indent ?? "") + "  ".repeat(depth);
+  const lines: string[] = [];
+  if (items.length === 0) return lines;
+
+  // Leaves: list the individual caches, largest first.
+  if (axes.length === 0) {
+    const sorted = items.slice().sort((a, b) => (b.size || 0) - (a.size || 0));
+    for (const item of sorted) {
+      const sizeStr = colorFor("cyan", formatSize(item.size), useColor);
+      // Show the tier badge on leaves only when tier is NOT one of the header
+      // levels; otherwise the tier is already visible up the tree.
+      const badge = tierInHierarchy
+        ? ""
+        : `${tierBadge(item.safety, useColor)} `;
+      const age =
+        item.ageInDays !== undefined
+          ? colorFor("gray", ` (${item.ageInDays}d)`, useColor)
+          : "";
+      lines.push(`${indent}${badge}${item.name} ${sizeStr}${age}`);
+      if (options.showId) {
+        lines.push(`${indent}  ${colorFor("gray", item.id, useColor)}`);
+      }
+    }
+    return lines;
+  }
+
+  const axis = axes[0];
+  const showEmoji = emojiMode === "on";
+  for (const group of groupByAxis(items, axis)) {
+    const sizeStr = colorFor("cyan", formatSize(group.total), useColor);
+    const count = colorFor("gray", `(${group.items.length})`, useColor);
+    let header: string;
+    if (axis === "tier" && group.tier) {
+      header = `${tierBadge(group.tier, useColor)} ${sizeStr} ${count}`;
+    } else if (axis === "kind") {
+      const emoji = showEmoji ? `${KIND_EMOJI[group.key] ?? "📁"} ` : "";
+      header = `${emoji}${colorFor("bold", group.label, useColor)} ${sizeStr} ${count}`;
+    } else {
+      // "app" grouping: the app identity is the heading.
+      header = `${colorFor("bold", group.label, useColor)} ${sizeStr} ${count}`;
+    }
+    lines.push(`${indent}${header}`);
+    lines.push(
+      ...renderLevel(
+        group.items,
+        axes.slice(1),
+        options,
+        depth + 1,
+        tierInHierarchy,
+      ),
+    );
+  }
+  return lines;
+}
+
 /**
  * Render a grouped, indented tree of categories as lines of text. Pure: returns
  * strings instead of printing, so clean, categories, and tests all share one
- * renderer. Emoji gated on emojiMode; color on useColor.
+ * renderer. `groupBy` may be a single axis, "none", or an ordered hierarchy
+ * (e.g. ["tier","kind","app"]) which nests each level. Emoji gated on
+ * emojiMode; color on useColor.
  */
 export function renderCategoryTree(
   items: CategoryViewItem[],
   options: CategoryViewOptions,
 ): string[] {
-  const { groupBy, useColor, emojiMode } = options;
-  const indent = options.indent ?? "";
-  const showEmoji = emojiMode === "on";
-  const lines: string[] = [];
-  if (items.length === 0) return lines;
-
-  const groups = groupCategories(items, groupBy);
-  const flat = groupBy === "none";
-
-  for (const group of groups) {
-    if (!flat) {
-      const sizeStr = colorFor("cyan", formatSize(group.total), useColor);
-      const count = colorFor("gray", `(${group.items.length})`, useColor);
-      let header: string;
-      if (groupBy === "tier" && group.tier) {
-        header = `${tierBadge(group.tier, useColor)} ${sizeStr} ${count}`;
-      } else if (groupBy === "kind") {
-        const emoji = showEmoji ? `${KIND_EMOJI[group.key] ?? "📁"} ` : "";
-        header = `${emoji}${colorFor("bold", group.label, useColor)} ${sizeStr} ${count}`;
-      } else {
-        // "app" grouping: the app identity is the heading.
-        header = `${colorFor("bold", group.label, useColor)} ${sizeStr} ${count}`;
-      }
-      lines.push(`${indent}${header}`);
-    }
-
-    const itemIndent = flat ? indent : `${indent}  `;
-    for (const item of group.items) {
-      const sizeStr = colorFor("cyan", formatSize(item.size), useColor);
-      // Under tier grouping the tier is already the header, so don't repeat the
-      // badge on every row; under other groupings the per-row badge is the only
-      // place tier is shown.
-      const badge =
-        groupBy === "tier" ? "" : `${tierBadge(item.safety, useColor)} `;
-      const age =
-        item.ageInDays !== undefined
-          ? colorFor("gray", ` (${item.ageInDays}d)`, useColor)
-          : "";
-      lines.push(`${itemIndent}${badge}${item.name} ${sizeStr}${age}`);
-      if (options.showId) {
-        lines.push(`${itemIndent}  ${colorFor("gray", item.id, useColor)}`);
-      }
-    }
-  }
-  return lines;
+  const hierarchy = normalizeHierarchy(options.groupBy);
+  const tierInHierarchy = hierarchy.includes("tier");
+  return renderLevel(items, hierarchy, options, 0, tierInHierarchy);
 }
 
 /**

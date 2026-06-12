@@ -234,8 +234,8 @@ Clean all configured caches (respects enable/disable settings).
 squeaky clean --all
 ```
 
-##### `--group-by <app|tier|kind|none>`
-Group the system-wide app-caches breakdown. Default `app`. Add `-v` to expand the full grouped tree; use `--json` for a machine-readable object. Configure the default via `toolSettings.app-caches.display.groupBy`.
+##### `--group-by <hierarchy>`
+Group the app-caches breakdown by a single axis, an ordered comma-list hierarchy (e.g. `tier,kind,app`), or `none`. The breakdown nests one level per axis. Default is `tier → kind → app`. Add `-v` to expand the tree; use `--json` for a machine-readable object. Configure the default via `toolSettings.app-caches.display.groupBy`.
 
 ```bash
 # Expand app-caches grouped by safety tier

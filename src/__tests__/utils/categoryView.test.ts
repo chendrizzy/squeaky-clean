@@ -155,6 +155,40 @@ describe("renderCategoryTree", () => {
   });
 });
 
+describe("renderCategoryTree hierarchy", () => {
+  it("nests tier → app and drops the per-leaf badge when tier is a level", () => {
+    const lines = renderCategoryTree(items, {
+      groupBy: ["tier", "app"],
+      useColor: false,
+      emojiMode: "off",
+    });
+    // Top level: tier headers.
+    expect(lines.some((l) => l.startsWith("[SAFE]"))).toBe(true);
+    expect(lines.some((l) => l.startsWith("[CAUTION]"))).toBe(true);
+    // Second level: app sub-headers indented under their tier.
+    expect(lines.some((l) => l.startsWith("  code "))).toBe(true);
+    // Leaves indented further with NO tier badge (tier is already a header).
+    const leaf = lines.find((l) => l.includes("Chrome Cache"));
+    expect(leaf).toBeDefined();
+    expect(leaf).not.toContain("[CAUTION]");
+    expect(leaf?.startsWith("    ")).toBe(true);
+  });
+
+  it("a single-axis array matches the legacy single-string behavior", () => {
+    const asArray = renderCategoryTree(items, {
+      groupBy: ["app"],
+      useColor: false,
+      emojiMode: "off",
+    });
+    const asString = renderCategoryTree(items, {
+      groupBy: "app",
+      useColor: false,
+      emojiMode: "off",
+    });
+    expect(asArray).toEqual(asString);
+  });
+});
+
 describe("tierBadge", () => {
   it("uses the text label as the primary (color-independent) signal", () => {
     expect(tierBadge("manual", false)).toBe("[MANUAL]");

@@ -1,4 +1,5 @@
-import { UserConfig, AppCacheGroupBy } from "../types";
+import { UserConfig, AppCacheGroupAxis } from "../types";
+import { resolveStoredHierarchy } from "../utils/groupHierarchy";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -69,7 +70,7 @@ export const defaultConfig: UserConfig = {
       enabled: true,
       display: {
         expand: false,
-        groupBy: "app",
+        groupBy: ["tier", "kind", "app"],
         topN: 5,
       },
       exclude: [],
@@ -316,14 +317,16 @@ class ConfigManager {
   // field against the built-in defaults so a partial user config still works.
   getAppCacheDisplay(): {
     expand: boolean;
-    groupBy: AppCacheGroupBy;
+    groupBy: AppCacheGroupAxis[];
     topN: number;
   } {
     const display = this.get().toolSettings?.["app-caches"]?.display;
     const fallback = defaultConfig.toolSettings?.["app-caches"]?.display;
     return {
       expand: display?.expand ?? fallback?.expand ?? false,
-      groupBy: display?.groupBy ?? fallback?.groupBy ?? "app",
+      // Coerce legacy single-string or partial values into an ordered
+      // hierarchy; undefined falls back to the default (tier -> kind -> app).
+      groupBy: resolveStoredHierarchy(display?.groupBy),
       topN: display?.topN ?? fallback?.topN ?? 5,
     };
   }

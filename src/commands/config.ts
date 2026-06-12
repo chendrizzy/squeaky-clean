@@ -3,13 +3,23 @@ import {
   printInfo,
   printError,
   printWarning,
+  formatSize,
   symbols,
 } from "../utils/cli";
 import { config } from "../config";
 import { cacheManager } from "../cleaners";
 import pc from "picocolors";
 import inquirer from "inquirer";
-import type { UserConfig } from "../types";
+import type {
+  UserConfig,
+  AppCacheGroupAxis,
+  CacheCategory,
+  SafetyTier,
+} from "../types";
+import { formatHierarchy } from "../utils/groupHierarchy";
+import { tierBadge } from "../utils/categoryView";
+import { effectiveSafety, SAFETY_TIER_ORDER } from "../safety";
+import { matchesExclude } from "../cleaners/appCacheDiscovery";
 
 interface ConfigOptions {
   list?: boolean;
@@ -384,6 +394,176 @@ async function showConfigPath(): Promise<void> {
   }
 }
 
+const AXIS_LABELS: Record<AppCacheGroupAxis, string> = {
+  tier: "Safety tier (safe → probably-safe → caution → manual)",
+  kind: "Cache kind (Cache, Code Cache, containers, library-caches, …)",
+  app: "App (collapse each app's caches together)",
+};
+
+/**
+ * Build an ordered grouping hierarchy via sequential prompts: each level offers
+ * the remaining axes plus a "stop" choice, so an invalid/duplicate order is
+ * impossible. Pre-fills each level from the current hierarchy.
+ */
+async function promptGroupHierarchy(
+  current: AppCacheGroupAxis[],
+): Promise<AppCacheGroupAxis[]> {
+  const hierarchy: AppCacheGroupAxis[] = [];
+  let remaining: AppCacheGroupAxis[] = ["tier", "kind", "app"];
+  console.log(
+    pc.gray("  Choose the grouping order (level 1 is the top of the tree)."),
+  );
+  while (remaining.length > 0) {
+    const level = hierarchy.length;
+    const stopLabel =
+      hierarchy.length === 0 ? "■ Flat — no grouping" : "■ Stop here";
+    const choices = [
+      ...remaining.map((axis) => ({ name: AXIS_LABELS[axis], value: axis })),
+      { name: stopLabel, value: "__stop__" },
+    ];
+    const suggested = current[level];
+    const { pick } = await inquirer.prompt<{ pick: string }>([
+      {
+        type: "list",
+        name: "pick",
+        message: `Grouping level ${level + 1}:`,
+        pageSize: 6,
+        choices,
+        default:
+          suggested && remaining.includes(suggested)
+            ? suggested
+            : choices[0].value,
+      },
+    ]);
+    if (pick === "__stop__") break;
+    hierarchy.push(pick as AppCacheGroupAxis);
+    remaining = remaining.filter((axis) => axis !== pick);
+  }
+  return hierarchy;
+}
+
+/**
+ * Decide which discovered apps to exclude. Offers a live scan + checkbox picker
+ * (checked = keep, unchecked = exclude), a manual pattern input, or keeping the
+ * current list. The scan time is reported so its cost is visible.
+ */
+async function promptAppCacheExcludes(
+  currentExclude: string[],
+): Promise<string[]> {
+  const { method } = await inquirer.prompt<{ method: string }>([
+    {
+      type: "list",
+      name: "method",
+      message: "Configure app-cache exclusions?",
+      pageSize: 5,
+      choices: [
+        { name: "Scan now and pick from a list", value: "scan" },
+        {
+          name: "Type patterns manually (e.g. com.apple.*, spotify)",
+          value: "manual",
+        },
+        {
+          name: `Keep current (${currentExclude.length} pattern${currentExclude.length === 1 ? "" : "s"})`,
+          value: "keep",
+        },
+      ],
+      default: currentExclude.length > 0 ? "keep" : "scan",
+    },
+  ]);
+
+  if (method === "keep") return currentExclude;
+
+  if (method === "manual") {
+    const { exclude } = await inquirer.prompt<{ exclude: string }>([
+      {
+        type: "input",
+        name: "exclude",
+        message:
+          "Exclude patterns (comma-separated, e.g. com.apple.*, spotify). Blank = none:",
+        default: currentExclude.join(", "),
+      },
+    ]);
+    return String(exclude || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  // Live scan + picker.
+  const cleaner = cacheManager.getCleaner("app-caches");
+  if (!cleaner) {
+    printWarning("app-caches cleaner unavailable; keeping current excludes.");
+    return currentExclude;
+  }
+  printInfo("Scanning app caches… this can take ~30-90s on a large system.");
+  const started = Date.now();
+  let categories: CacheCategory[] = [];
+  try {
+    const infos = await cacheManager.getAllCacheInfo({
+      cleaners: [cleaner],
+      showProgress: Boolean(process.stdout.isTTY),
+    });
+    categories = infos[0]?.categories ?? [];
+  } catch (error) {
+    printWarning(`Scan failed (${error}); keeping current excludes.`);
+    return currentExclude;
+  }
+  const elapsedSec = ((Date.now() - started) / 1000).toFixed(1);
+
+  const byApp = new Map<
+    string,
+    { size: number; count: number; tier: SafetyTier }
+  >();
+  for (const cat of categories) {
+    const key = cat.appKey || cat.name || cat.id;
+    const tier = effectiveSafety(cat);
+    const existing = byApp.get(key);
+    if (existing) {
+      existing.size += cat.size || 0;
+      existing.count += 1;
+      if (
+        SAFETY_TIER_ORDER.indexOf(tier) >
+        SAFETY_TIER_ORDER.indexOf(existing.tier)
+      ) {
+        existing.tier = tier;
+      }
+    } else {
+      byApp.set(key, { size: cat.size || 0, count: 1, tier });
+    }
+  }
+  const apps = [...byApp.entries()].sort((a, b) => b[1].size - a[1].size);
+  printInfo(
+    `Found ${apps.length} app${apps.length === 1 ? "" : "s"} across ${categories.length} caches in ${elapsedSec}s.`,
+  );
+  if (apps.length === 0) return currentExclude;
+
+  const useColor = config.shouldUseColors();
+  const { kept } = await inquirer.prompt<{ kept: string[] }>([
+    {
+      type: "checkbox",
+      name: "kept",
+      message:
+        "CHECKED = keep (cleanable); UNCHECK an app to exclude it from discovery:",
+      pageSize: 20,
+      loop: false,
+      choices: apps.map(([key, info]) => ({
+        name: `${key}  ${formatSize(info.size)}  ${tierBadge(info.tier, useColor)}  (${info.count})`,
+        value: key,
+        checked: !matchesExclude(key, currentExclude),
+      })),
+    },
+  ]);
+
+  const keptSet = new Set(kept);
+  const discovered = new Set(apps.map(([key]) => key));
+  const excludedFromPicker = apps
+    .map(([key]) => key)
+    .filter((key) => !keptSet.has(key));
+  // Preserve excludes that this scan can't speak to (globs, uninstalled apps).
+  const preserved = currentExclude.filter((e) => !discovered.has(e));
+  return [...new Set([...preserved, ...excludedFromPicker])];
+}
+
 async function interactiveConfigWizard(): Promise<void> {
   console.log("\n🧙‍♂️ Interactive Configuration Wizard");
   console.log(
@@ -491,26 +671,8 @@ async function interactiveConfigWizard(): Promise<void> {
   );
   const currentDisplay = config.getAppCacheDisplay();
   const currentExclude = config.getAppCacheExclude();
+  const appCacheGroupBy = await promptGroupHierarchy(currentDisplay.groupBy);
   const appCacheAnswers = await inquirer.prompt([
-    {
-      type: "list",
-      name: "groupBy",
-      message: "Group the app-caches breakdown by:",
-      pageSize: 6,
-      choices: [
-        { name: "App — collapse each app's caches together", value: "app" },
-        {
-          name: "Safety tier — safe → probably-safe → caution → manual",
-          value: "tier",
-        },
-        {
-          name: "Kind — Cache, Code Cache, containers, library-caches, ...",
-          value: "kind",
-        },
-        { name: "None — flat list sorted by size", value: "none" },
-      ],
-      default: currentDisplay.groupBy,
-    },
     {
       type: "confirm",
       name: "expand",
@@ -530,22 +692,12 @@ async function interactiveConfigWizard(): Promise<void> {
           : "Enter a non-negative whole number";
       },
     },
-    {
-      type: "input",
-      name: "exclude",
-      message:
-        "Exclude apps (comma-separated patterns, e.g. com.apple.*, spotify). Blank = none:",
-      default: currentExclude.join(", "),
-    },
   ]);
   const appCacheTopN = Math.max(
     0,
     Math.floor(Number(appCacheAnswers.topN) || 0),
   );
-  const appCacheExclude = String(appCacheAnswers.exclude || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const appCacheExclude = await promptAppCacheExcludes(currentExclude);
 
   // Step 5: Review and apply
   console.log(pc.bold("\n📋 Step 5: Review Configuration"));
@@ -560,7 +712,7 @@ async function interactiveConfigWizard(): Promise<void> {
     `  ${symbols.folder} Require confirmation: ${safetyAnswers.requireConfirmation ? pc.yellow("yes") : pc.green("no")}`,
   );
   console.log(
-    `  ${symbols.folder} App-caches grouping: ${pc.cyan(appCacheAnswers.groupBy)}${appCacheAnswers.expand ? pc.gray(" (expanded)") : pc.gray(" (summary)")}`,
+    `  ${symbols.folder} App-caches grouping: ${pc.cyan(formatHierarchy(appCacheGroupBy))}${appCacheAnswers.expand ? pc.gray(" (expanded)") : pc.gray(" (summary)")}`,
   );
   console.log(
     `  ${symbols.folder} App-caches excludes: ${appCacheExclude.length > 0 ? pc.cyan(appCacheExclude.join(", ")) : pc.gray("none")}`,
@@ -623,7 +775,7 @@ async function interactiveConfigWizard(): Promise<void> {
             true,
           display: {
             expand: appCacheAnswers.expand,
-            groupBy: appCacheAnswers.groupBy,
+            groupBy: appCacheGroupBy,
             topN: appCacheTopN,
           },
           exclude: appCacheExclude,

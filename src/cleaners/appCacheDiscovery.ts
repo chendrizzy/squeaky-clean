@@ -207,7 +207,20 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
   }
 
   private async runDiscovery(): Promise<CacheCategory[]> {
+    // Phase timing for performance work, gated behind SQUEAKY_PROFILE=1 and
+    // written to stderr so stdout/JSON stays clean. Zero cost when disabled.
+    const profile = process.env.SQUEAKY_PROFILE === "1";
+    let phaseStart = Date.now();
+    const mark = (label: string): void => {
+      if (!profile) return;
+      process.stderr.write(
+        `[app-caches profile] ${label}: ${((Date.now() - phaseStart) / 1000).toFixed(2)}s\n`,
+      );
+      phaseStart = Date.now();
+    };
+
     const candidates = await this.collectCandidates();
+    mark(`collectCandidates (${candidates.length} candidates)`);
 
     const excludeGlobs = readAppCacheExcludes();
     const kept: Array<
@@ -238,6 +251,7 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
       }
       kept.push({ ...candidate, safety: verdict, reason, appKey });
     }
+    mark(`classify + exclude (${kept.length} kept)`);
 
     // Drop empty cache dirs before sizing: most discovered candidates -
     // especially sandboxed-app containers, ~99% of which are empty on a real
@@ -252,6 +266,7 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
         if (present[idx]) nonEmpty.push(candidate);
       });
     }
+    mark(`empty-check (${nonEmpty.length} non-empty of ${kept.length})`);
 
     // Size everything (up to a hard ceiling) BEFORE bounding, so that when
     // there are more than MAX_CANDIDATES we keep the largest by size rather
@@ -301,6 +316,7 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
         };
       }),
     );
+    mark(`sizing (${categories.length} sized via du)`);
 
     // Keep the largest MAX_CANDIDATES once sized, so truncation never hides a
     // big cache behind hundreds of tiny ones. Order is otherwise preserved

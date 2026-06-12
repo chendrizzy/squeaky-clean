@@ -1,9 +1,10 @@
 import { cacheManager } from "../cleaners";
 import { printHeader, printInfo, formatSize } from "../utils/cli";
 import pc from "picocolors";
-import { AppCacheGroupBy, CacheCategory } from "../types";
+import { CacheCategory } from "../types";
 import { config } from "../config";
 import { categoryToViewItem, renderCategoryTree } from "../utils/categoryView";
+import { formatHierarchy, normalizeHierarchy } from "../utils/groupHierarchy";
 
 interface CategoriesOptions {
   tool?: string;
@@ -12,16 +13,15 @@ interface CategoriesOptions {
   groupBy?: string;
 }
 
-const GROUP_BY_VALUES: AppCacheGroupBy[] = ["app", "tier", "kind", "none"];
-
-/** Validate a --group-by value, falling back to the configured default. */
-function resolveGroupBy(value: string | undefined): AppCacheGroupBy {
-  const fallback = config.getAppCacheDisplay().groupBy;
-  if (!value) return fallback;
-  const v = value.trim().toLowerCase();
-  return (GROUP_BY_VALUES as string[]).includes(v)
-    ? (v as AppCacheGroupBy)
-    : fallback;
+/**
+ * Resolve the grouping hierarchy. A --group-by value (single axis, a comma-list
+ * like "tier,kind,app", or "none") overrides the configured default.
+ */
+function resolveGroupHierarchy(value: string | undefined) {
+  if (value !== undefined && value.trim() !== "") {
+    return normalizeHierarchy(value);
+  }
+  return config.getAppCacheDisplay().groupBy;
 }
 
 export async function categoriesCommand(
@@ -45,13 +45,15 @@ export async function categoriesCommand(
     cleaners = cleaners.filter((c) => c.type === options.type);
   }
 
-  const groupBy = resolveGroupBy(options.groupBy);
+  const groupBy = resolveGroupHierarchy(options.groupBy);
   const useColor = config.shouldUseColors();
   const emojiMode = config.getEmojiMode();
   const showEmoji = emojiMode === "on";
 
   console.log();
-  printInfo(`Analyzing cache categories (grouped by ${groupBy})...`);
+  printInfo(
+    `Analyzing cache categories (grouped by ${formatHierarchy(groupBy)})...`,
+  );
 
   for (const cleaner of cleaners) {
     // Cleaners without category support are skipped (only noted under -v).

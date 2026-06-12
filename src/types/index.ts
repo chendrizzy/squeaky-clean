@@ -14,6 +14,11 @@ export type SafetyTier = "safe" | "probably-safe" | "caution" | "manual";
 // - "none": flat list sorted by size
 export type AppCacheGroupBy = "app" | "tier" | "kind" | "none";
 
+// A single axis within a grouping hierarchy. "none" is not an axis - an empty
+// hierarchy (`[]`) means a flat list. The display config stores an ordered
+// list of these (e.g. ["tier","kind","app"]) for nested grouping.
+export type AppCacheGroupAxis = "tier" | "kind" | "app";
+
 // Cache category for granular control
 export interface CacheCategory {
   id: string;
@@ -126,7 +131,9 @@ export interface ToolGranularSettings {
   // Purely presentational - never affects what is selected for cleaning.
   display?: {
     expand?: boolean; // expand the per-category tree by default (else summary)
-    groupBy?: AppCacheGroupBy;
+    // Ordered grouping hierarchy, e.g. ["tier","kind","app"]. An empty array
+    // means a flat list. Legacy single-string values are coerced on read.
+    groupBy?: AppCacheGroupAxis[];
     topN?: number; // apps shown inline in the collapsed summary line
   };
   // appKey globs (e.g. "com.apple.*", "spotify") dropped from discovery before

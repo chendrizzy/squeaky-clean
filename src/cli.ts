@@ -150,8 +150,8 @@ program
     "comma-separated category IDs consenting to manual-tier cleaning",
   )
   .option(
-    "--group-by <mode>",
-    "group the app-caches breakdown by app, tier, kind, or none (with -v)",
+    "--group-by <hierarchy>",
+    "app-caches grouping: a single axis or comma-list hierarchy (e.g. tier,kind,app) or none (expand with -v)",
   )
   .addHelpText(
     "after",
@@ -179,9 +179,10 @@ Examples:
         printHeader("Cache Cleaning");
       }
 
-      // Import and run the clean command
+      // Merge global flags (e.g. -v) so the command sees per-run options like
+      // verbose without them being persisted to config.
       const { cleanCommand } = await import("./commands/clean");
-      await cleanCommand(options);
+      await cleanCommand({ ...program.opts(), ...options });
     } catch (error) {
       printError(
         `Failed to clean caches: ${error instanceof Error ? error.message : error}`,
@@ -238,8 +239,8 @@ program
   .option("--type <type>", "filter by cache type")
   .option("-v, --verbose", "show detailed information")
   .option(
-    "--group-by <mode>",
-    "group categories by app, tier, kind, or none (default: app)",
+    "--group-by <hierarchy>",
+    "grouping: a single axis or comma-list hierarchy (e.g. tier,kind,app) or none",
   )
   .action(async (options) => {
     try {

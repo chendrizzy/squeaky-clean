@@ -6,7 +6,7 @@ import {
   CleanerModule,
   ClearResult,
   SafetyTier,
-  AppCacheGroupBy,
+  AppCacheGroupAxis,
 } from "../types";
 import {
   printInfo,
@@ -36,6 +36,7 @@ import {
   renderCategoryTree,
   summarizeAppCaches,
 } from "../utils/categoryView";
+import { normalizeHierarchy } from "../utils/groupHierarchy";
 
 function parseCsvOption(value?: string | string[]): string[] | undefined {
   if (!value) return undefined;
@@ -303,23 +304,23 @@ async function confirmCleanup(): Promise<boolean> {
   }
 }
 
-const GROUP_BY_VALUES: AppCacheGroupBy[] = ["app", "tier", "kind", "none"];
-
-/** Validate a --group-by value, falling back to the configured default. */
-function resolveGroupBy(value: string | undefined): AppCacheGroupBy {
-  const fallback = config.getAppCacheDisplay().groupBy;
-  if (!value) return fallback;
-  const v = value.trim().toLowerCase();
-  return (GROUP_BY_VALUES as string[]).includes(v)
-    ? (v as AppCacheGroupBy)
-    : fallback;
+/**
+ * Resolve the grouping hierarchy for the breakdown. A --group-by value (single
+ * axis, a comma-list like "tier,kind,app", or "none") overrides the configured
+ * default; "none" or an unrecognized value yields a flat list.
+ */
+function resolveGroupHierarchy(value: string | undefined): AppCacheGroupAxis[] {
+  if (value !== undefined && value.trim() !== "") {
+    return normalizeHierarchy(value);
+  }
+  return config.getAppCacheDisplay().groupBy;
 }
 
 interface RenderContext {
   dryRun: boolean;
   json: boolean;
   expand: boolean;
-  groupBy: AppCacheGroupBy;
+  groupBy: AppCacheGroupAxis[];
   useColor: boolean;
   emojiMode: "on" | "off" | "minimal";
   topN: number;
@@ -643,9 +644,11 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
       {
         dryRun,
         json,
-        expand:
-          config.isVerbose() || Boolean(options.verbose) || display.expand,
-        groupBy: resolveGroupBy(options.groupBy),
+        // Tree expansion follows the explicit per-run -v or the saved
+        // display.expand preference - NOT the persisted global `verbose`
+        // (that is for diagnostics; it shouldn't flood every run with the tree).
+        expand: Boolean(options.verbose) || display.expand,
+        groupBy: resolveGroupHierarchy(options.groupBy),
         useColor: config.shouldUseColors(),
         emojiMode: config.getEmojiMode(),
         topN: display.topN,
