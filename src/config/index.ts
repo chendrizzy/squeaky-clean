@@ -1,4 +1,5 @@
-import { UserConfig } from "../types";
+import { UserConfig, AppCacheGroupAxis } from "../types";
+import { resolveStoredHierarchy } from "../utils/groupHierarchy";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -57,6 +58,25 @@ export const defaultConfig: UserConfig = {
     gradle: true,
     "universal-binary": false, // More conservative - modifies application binaries
     "app-caches": true, // Discovered app caches are tier-gated per category
+  },
+
+  // Granular per-tool settings. app-caches ships with display defaults and an
+  // empty exclude list; users tune these via `squeaky config -i` or by editing
+  // config.json. Display fields are presentational only (they never change what
+  // is selected for cleaning); exclude drops matching apps before discovery
+  // sizes them and is orthogonal to the manual-consent gate.
+  toolSettings: {
+    "app-caches": {
+      enabled: true,
+      display: {
+        // Collapsed to a one-line summary by default; expand per run with -v or
+        // permanently with display.expand:true. `clean --summary` forces collapse.
+        expand: false,
+        groupBy: ["tier", "kind", "app"],
+        topN: 5,
+      },
+      exclude: [],
+    },
   },
 
   safety: {
@@ -197,6 +217,19 @@ class ConfigManager {
     }
   }
 
+  /**
+   * Apply runtime-only overrides (session flags such as --json / --verbose /
+   * --quiet / --no-color) WITHOUT writing to disk. Using a flag once must not
+   * permanently rewrite the user's saved config.
+   */
+  setEphemeral(partial: Partial<UserConfig>): void {
+    if (this.customConfig) {
+      this.customConfig = this.deepMerge(this.customConfig, partial);
+    } else {
+      this.store = this.deepMerge(this.store, partial);
+    }
+  }
+
   reset(): void {
     if (this.customConfig) {
       this.customConfig = null;
@@ -273,6 +306,41 @@ class ConfigManager {
   getProtectedPaths(): string[] {
     const config = this.get();
     return config.protectedPaths ?? [];
+  }
+
+  // Output format for machine consumption. "json" makes commands suppress
+  // human banners and emit structured results; anything else is "text".
+  getOutputFormat(): "json" | "text" {
+    const config = this.get();
+    return config.output?.format === "json" ? "json" : "text";
+  }
+
+  // app-caches display preferences (presentational only). Resolves field by
+  // field against the built-in defaults so a partial user config still works.
+  getAppCacheDisplay(): {
+    expand: boolean;
+    groupBy: AppCacheGroupAxis[];
+    topN: number;
+  } {
+    const display = this.get().toolSettings?.["app-caches"]?.display;
+    const fallback = defaultConfig.toolSettings?.["app-caches"]?.display;
+    return {
+      expand: display?.expand ?? fallback?.expand ?? false,
+      // Coerce legacy single-string or partial values into an ordered
+      // hierarchy; undefined falls back to the default (tier -> kind -> app).
+      groupBy: resolveStoredHierarchy(display?.groupBy),
+      topN: display?.topN ?? fallback?.topN ?? 5,
+    };
+  }
+
+  // appKey exclude patterns for app-cache discovery (empty when unset). The
+  // discovery cleaner applies these before sizing; this getter is the read
+  // path for the interactive menu and any display of current excludes.
+  getAppCacheExclude(): string[] {
+    const exclude = this.get().toolSettings?.["app-caches"]?.exclude;
+    return Array.isArray(exclude)
+      ? exclude.filter((s): s is string => typeof s === "string")
+      : [];
   }
 
   // Cleaning profile persistence

@@ -7,6 +7,18 @@
 //   is never cleaned implicitly (not even with --force)
 export type SafetyTier = "safe" | "probably-safe" | "caution" | "manual";
 
+// How a multi-category cleaner's breakdown is grouped for display.
+// - "app": collapse a single app's many cache dirs under one heading (appKey)
+// - "tier": group by safety tier (safe/probably-safe/caution/manual)
+// - "kind": group by cache kind (Cache/Code Cache/containers/library-caches...)
+// - "none": flat list sorted by size
+export type AppCacheGroupBy = "app" | "tier" | "kind" | "none";
+
+// A single axis within a grouping hierarchy. "none" is not an axis - an empty
+// hierarchy (`[]`) means a flat list. The display config stores an ordered
+// list of these (e.g. ["tier","kind","app"]) for nested grouping.
+export type AppCacheGroupAxis = "tier" | "kind" | "app";
+
 // Cache category for granular control
 export interface CacheCategory {
   id: string;
@@ -27,6 +39,10 @@ export interface CacheCategory {
   isProjectSpecific?: boolean;
   projectPath?: string;
   ageInDays?: number;
+  // Normalized, OS-neutral app identity (e.g. "com.spotify.client", "code").
+  // Set by system-wide app-cache discovery so a single app's many cache dirs
+  // can be grouped or excluded together regardless of platform layout.
+  appKey?: string;
 }
 
 // Enhanced cache info with categories
@@ -72,6 +88,18 @@ export interface CacheSelectionCriteria {
   allowManualIds?: string[];
 }
 
+// One row of a multi-category cleaner's per-category breakdown, captured while
+// the cleaner sums category sizes so output can break a cleaner down without a
+// second filesystem scan.
+export interface CategoryBreakdownEntry {
+  id: string;
+  name: string;
+  size: number;
+  safety: SafetyTier;
+  appKey?: string;
+  ageInDays?: number;
+}
+
 export interface ClearResult {
   name: string;
   success: boolean;
@@ -80,6 +108,11 @@ export interface ClearResult {
   error?: string;
   clearedPaths: string[];
   clearedCategories?: string[];
+  // Per-category detail for cleaners that expose categories (notably
+  // app-caches). Only populated when there is more than one category, so
+  // simple single-cache cleaners stay unaffected. Reuses sizes already
+  // computed during clearing - no extra scan.
+  categoryBreakdown?: CategoryBreakdownEntry[];
 }
 
 // Tool-specific granular settings
@@ -94,6 +127,19 @@ export interface ToolGranularSettings {
     };
   };
   defaultSelectionCriteria?: CacheSelectionCriteria;
+  // Display preferences for cleaners that expose many categories (app-caches).
+  // Purely presentational - never affects what is selected for cleaning.
+  display?: {
+    expand?: boolean; // expand the per-category tree by default (else summary)
+    // Ordered grouping hierarchy, e.g. ["tier","kind","app"]. An empty array
+    // means a flat list. Legacy single-string values are coerced on read.
+    groupBy?: AppCacheGroupAxis[];
+    topN?: number; // apps shown inline in the collapsed summary line
+  };
+  // appKey globs (e.g. "com.apple.*", "spotify") dropped from discovery before
+  // sizing and tier logic. Orthogonal to the manual-consent gate: excluding an
+  // app removes it entirely; it does not relax protection on anything kept.
+  exclude?: string[];
 }
 
 export interface UserConfig {
@@ -264,6 +310,8 @@ export interface CommandOptions {
   priority?: string; // critical, important, normal, low
   categories?: string[]; // specific category IDs
   showCategories?: boolean; // show available categories
+  groupBy?: string; // app-cache breakdown grouping: app|tier|kind|none
+  summary?: boolean; // force the collapsed one-line app-caches summary
   config?: boolean;
   sizes?: boolean;
   // Safety / cleaning-profile options

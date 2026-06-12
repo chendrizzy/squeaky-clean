@@ -234,6 +234,17 @@ Clean all configured caches (respects enable/disable settings).
 squeaky clean --all
 ```
 
+##### `--group-by <hierarchy>`
+Group the app-caches breakdown by a single axis, an ordered comma-list hierarchy (e.g. `tier,kind,app`), or `none`. The breakdown nests one level per axis. Default is `tier → kind → app`. The tree is collapsed to a summary by default; add `-v` (or set `display.expand`) to expand, and `--summary` forces the collapsed view. Use `--json` for a machine-readable object. Configure defaults via `toolSettings.app-caches.display`.
+
+```bash
+# Expand app-caches grouped by safety tier
+squeaky clean --dry-run --include app-caches -v --group-by tier
+
+# Machine-readable output (banners suppressed)
+squeaky clean --dry-run --json
+```
+
 ##### `-t, --types <types>`
 Clean only specific cache types (comma-separated).
 

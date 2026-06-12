@@ -2,6 +2,7 @@ import {
   CleanerModule,
   CacheInfo,
   CacheCategory,
+  CategoryBreakdownEntry,
   ClearResult,
   CacheType,
   CacheSelectionCriteria,
@@ -137,6 +138,7 @@ export abstract class BaseCleaner implements CleanerModule {
     let totalSizeBefore = 0;
     let clearedPaths: string[] = [];
     let clearedCategories: string[] = [];
+    const breakdown: CategoryBreakdownEntry[] = [];
 
     for (const category of filteredCategories) {
       // Filter out protected paths from this category
@@ -149,6 +151,7 @@ export abstract class BaseCleaner implements CleanerModule {
         totalSizeBefore += category.size || 0;
         clearedPaths.push(...allowedPaths);
         clearedCategories.push(category.id);
+        breakdown.push(this.toBreakdownEntry(category));
       } else if (category.paths.length > 0) {
         printVerbose(
           `Skipping category ${category.id} - all paths are protected`,
@@ -170,6 +173,7 @@ export abstract class BaseCleaner implements CleanerModule {
       sizeAfter: dryRun ? totalSizeBefore : 0,
       clearedPaths,
       clearedCategories,
+      categoryBreakdown: breakdown.length > 1 ? breakdown : undefined,
     };
   }
 
@@ -201,6 +205,7 @@ export abstract class BaseCleaner implements CleanerModule {
     let totalSizeBefore = 0;
     let clearedPaths: string[] = [];
     let clearedCategories: string[] = [];
+    const breakdown: CategoryBreakdownEntry[] = [];
 
     for (const category of selectedCategories) {
       // Filter out protected paths from this category
@@ -213,6 +218,7 @@ export abstract class BaseCleaner implements CleanerModule {
         totalSizeBefore += category.size || 0;
         clearedPaths.push(...allowedPaths);
         clearedCategories.push(category.id);
+        breakdown.push(this.toBreakdownEntry(category));
       } else if (category.paths.length > 0) {
         printVerbose(
           `Skipping category ${category.id} - all paths are protected`,
@@ -233,6 +239,23 @@ export abstract class BaseCleaner implements CleanerModule {
       sizeAfter: dryRun ? totalSizeBefore : 0,
       clearedPaths,
       clearedCategories,
+      categoryBreakdown: breakdown.length > 1 ? breakdown : undefined,
+    };
+  }
+
+  /**
+   * Build a per-category breakdown row, reusing the size the cleaner already
+   * computed. effectiveSafety() resolves the tier the same way the manual
+   * consent gate does, so the displayed badge and the gate never disagree.
+   */
+  protected toBreakdownEntry(category: CacheCategory): CategoryBreakdownEntry {
+    return {
+      id: category.id,
+      name: category.name,
+      size: category.size ?? 0,
+      safety: effectiveSafety(category),
+      appKey: category.appKey,
+      ageInDays: category.ageInDays,
     };
   }
 

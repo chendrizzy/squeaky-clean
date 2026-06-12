@@ -68,20 +68,29 @@ program
       }
     }
 
+    // Session flags are per-invocation: apply them in memory only. Using
+    // --json/--verbose/--quiet/--no-color once must not permanently rewrite
+    // the user's saved config (a sticky --json would force JSON on every run).
     if (options.verbose) {
-      config.set({ output: { ...config.get().output, verbose: true } });
+      config.setEphemeral({
+        output: { ...config.get().output, verbose: true },
+      });
     }
 
     if (options.noColor) {
-      config.set({ output: { ...config.get().output, useColors: false } });
+      config.setEphemeral({
+        output: { ...config.get().output, useColors: false },
+      });
     }
 
     if (options.quiet) {
-      config.set({ output: { ...config.get().output, quiet: true } });
+      config.setEphemeral({ output: { ...config.get().output, quiet: true } });
     }
 
     if (options.json) {
-      config.set({ output: { ...config.get().output, format: "json" } });
+      config.setEphemeral({
+        output: { ...config.get().output, format: "json" },
+      });
     }
   });
 
@@ -140,6 +149,14 @@ program
     "--allow-manual <ids>",
     "comma-separated category IDs consenting to manual-tier cleaning",
   )
+  .option(
+    "--group-by <hierarchy>",
+    "app-caches grouping: a single axis or comma-list hierarchy (e.g. tier,kind,app) or none (expand with -v)",
+  )
+  .option(
+    "--summary",
+    "collapse the app-caches breakdown to a one-line summary (overrides expand)",
+  )
   .addHelpText(
     "after",
     () =>
@@ -161,11 +178,15 @@ Examples:
   )
   .action(async (options) => {
     try {
-      printHeader("Cache Cleaning");
+      // Suppress the human header under --json so machine output is clean.
+      if (config.getOutputFormat() !== "json") {
+        printHeader("Cache Cleaning");
+      }
 
-      // Import and run the clean command
+      // Merge global flags (e.g. -v) so the command sees per-run options like
+      // verbose without them being persisted to config.
       const { cleanCommand } = await import("./commands/clean");
-      await cleanCommand(options);
+      await cleanCommand({ ...program.opts(), ...options });
     } catch (error) {
       printError(
         `Failed to clean caches: ${error instanceof Error ? error.message : error}`,
@@ -221,6 +242,10 @@ program
   .option("-t, --tool <tool>", "show categories for specific tool")
   .option("--type <type>", "filter by cache type")
   .option("-v, --verbose", "show detailed information")
+  .option(
+    "--group-by <hierarchy>",
+    "grouping: a single axis or comma-list hierarchy (e.g. tier,kind,app) or none",
+  )
   .action(async (options) => {
     try {
       const { categoriesCommand } = await import("./commands/categories");

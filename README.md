@@ -212,11 +212,17 @@ squeaky clean --config my-config.json --dry-run
 - `--safety <tiers>` - Comma-separated safety tiers to clean (`safe`, `probably-safe`, `caution`, `manual`); overrides `--profile`
 - `--allow-manual <ids>` - Comma-separated category IDs consenting to manual-tier cleaning
 
+**🧹 App-Caches Breakdown:**
+- `--group-by <hierarchy>` - Group the app-caches breakdown by a single axis or comma-list hierarchy (e.g. `tier,kind,app`) or `none`; default `tier → kind → app`
+- `--summary` - Force the collapsed one-line summary (useful when `display.expand` is on); use `--json` for machine output
+- By default `clean --dry-run` shows the collapsed summary (`5.2 GB · 18 caches · 6 apps · top: …`); add `-v` to expand the tree. Configure default grouping/expansion and per-app excludes under `toolSettings.app-caches` (see the [Configuration Guide](docs/configuration-guide.md))
+
 #### `categories` Options
 
 - `-t, --tool <tool>` - Show categories for specific tool
 - `--type <type>` - Filter by cache type
 - `-v, --verbose` - Show detailed information
+- `--group-by <hierarchy>` - Group categories by a single axis or comma-list hierarchy (e.g. `tier,kind,app`) or none (default `tier → kind → app`)
 
 #### `list` Options
 
