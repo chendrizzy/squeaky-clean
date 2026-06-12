@@ -644,10 +644,11 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
       {
         dryRun,
         json,
-        // Tree expansion follows the explicit per-run -v or the saved
-        // display.expand preference - NOT the persisted global `verbose`
-        // (that is for diagnostics; it shouldn't flood every run with the tree).
-        expand: Boolean(options.verbose) || display.expand,
+        // --summary forces collapse; otherwise expansion follows the explicit
+        // per-run -v or the saved display.expand preference - NOT the persisted
+        // global `verbose` (that is for diagnostics).
+        expand:
+          !options.summary && (Boolean(options.verbose) || display.expand),
         groupBy: resolveGroupHierarchy(options.groupBy),
         useColor: config.shouldUseColors(),
         emojiMode: config.getEmojiMode(),

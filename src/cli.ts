@@ -153,6 +153,10 @@ program
     "--group-by <hierarchy>",
     "app-caches grouping: a single axis or comma-list hierarchy (e.g. tier,kind,app) or none (expand with -v)",
   )
+  .option(
+    "--summary",
+    "collapse the app-caches breakdown to a one-line summary (overrides expand)",
+  )
   .addHelpText(
     "after",
     () =>

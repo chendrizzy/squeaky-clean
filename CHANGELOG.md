@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `--json` now emits a real machine-readable object for `clean` (including the per-category breakdown) with all human banners suppressed
   - `categories` and `clean -v` now share a single renderer
   - the `config -i` wizard configures the grouping hierarchy (sequential prompts) and offers a **live picker** that scans and lists discovered apps to include/exclude; `SQUEAKY_PROFILE=1` prints discovery phase timings
+  - the breakdown is **expanded by default** (`display.expand: true`); collapse a single run with `clean --summary`
 
 ### Fixed
 - **Session flags no longer persist** - `--json`, `--verbose`, `--quiet`, and `--no-color` are now applied in memory per invocation instead of being written to `config.json`; previously, using `--json` once made every later run emit JSON

@@ -69,7 +69,9 @@ export const defaultConfig: UserConfig = {
     "app-caches": {
       enabled: true,
       display: {
-        expand: false,
+        // Expanded by default: surface the full grouped breakdown so users see
+        // what app-caches entails. Collapse a single run with `clean --summary`.
+        expand: true,
         groupBy: ["tier", "kind", "app"],
         topN: 5,
       },

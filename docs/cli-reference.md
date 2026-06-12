@@ -235,7 +235,7 @@ squeaky clean --all
 ```
 
 ##### `--group-by <hierarchy>`
-Group the app-caches breakdown by a single axis, an ordered comma-list hierarchy (e.g. `tier,kind,app`), or `none`. The breakdown nests one level per axis. Default is `tier → kind → app`. Add `-v` to expand the tree; use `--json` for a machine-readable object. Configure the default via `toolSettings.app-caches.display.groupBy`.
+Group the app-caches breakdown by a single axis, an ordered comma-list hierarchy (e.g. `tier,kind,app`), or `none`. The breakdown nests one level per axis. Default is `tier → kind → app`. The tree is expanded by default; collapse a single run with `--summary`, or use `--json` for a machine-readable object. Configure defaults via `toolSettings.app-caches.display`.
 
 ```bash
 # Expand app-caches grouped by safety tier

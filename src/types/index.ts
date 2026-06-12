@@ -311,6 +311,7 @@ export interface CommandOptions {
   categories?: string[]; // specific category IDs
   showCategories?: boolean; // show available categories
   groupBy?: string; // app-cache breakdown grouping: app|tier|kind|none
+  summary?: boolean; // force the collapsed one-line app-caches summary
   config?: boolean;
   sizes?: boolean;
   // Safety / cleaning-profile options
