@@ -3,9 +3,11 @@ import { CacheCategory, CacheInfo, CacheType } from "../types";
 import { promises as fsp } from "fs";
 import * as os from "os";
 import * as path from "path";
+import { minimatch } from "minimatch";
 import { printVerbose } from "../utils/cli";
 import { getCachedDirectorySize, pathExists } from "../utils/fs";
 import { classifyCachePath, getDiscoveryRoots } from "../safety/rules";
+import { config } from "../config";
 
 interface Candidate {
   /** Absolute directory path of the cache candidate. */
@@ -61,6 +63,47 @@ function slugSegment(segment: string): string {
 /** "library-caches/com.spotify.client" -> "app-caches:library-caches/com.spotify.client" */
 function makeId(relId: string): string {
   return `app-caches:${relId.split("/").map(slugSegment).join("/")}`;
+}
+
+/**
+ * Normalized, OS-neutral app identity from a relId. The app segment is the
+ * second path part for per-app layouts (library-caches/<app>,
+ * xdg-config/<app>/<kind>, containers/<bundle>, flatpak/<id>/cache, ...) and
+ * the whole relId for single-segment roots (e.g. "local-temp"). Slugged so it
+ * is stable and case-insensitive across platforms - the same Spotify cache is
+ * "com.spotify.client" whether discovered under macOS containers or Linux
+ * flatpak, so one exclude pattern works everywhere.
+ */
+export function appKeyForRelId(relId: string): string {
+  const parts = relId.split("/");
+  return slugSegment(parts.length > 1 ? parts[1] : parts[0]);
+}
+
+/**
+ * Match an (already-slugged, lowercase) appKey against a user exclude pattern.
+ * Patterns containing * or ? are globbed via minimatch; plain patterns match
+ * exactly OR as a substring, so "spotify" excludes "com.spotify.client"
+ * without the user needing to write a glob.
+ */
+export function matchesExclude(appKey: string, patterns: string[]): boolean {
+  return patterns.some((raw) => {
+    const p = raw.trim().toLowerCase();
+    if (!p) return false;
+    if (p.includes("*") || p.includes("?")) return minimatch(appKey, p);
+    return appKey === p || appKey.includes(p);
+  });
+}
+
+/** User-configured appKey exclude patterns (empty when unset). */
+function readAppCacheExcludes(): string[] {
+  try {
+    const exclude = config.get().toolSettings?.["app-caches"]?.exclude;
+    return Array.isArray(exclude)
+      ? exclude.filter((s): s is string => typeof s === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 async function listSubdirs(root: string): Promise<string[]> {
@@ -166,8 +209,13 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
   private async runDiscovery(): Promise<CacheCategory[]> {
     const candidates = await this.collectCandidates();
 
+    const excludeGlobs = readAppCacheExcludes();
     const kept: Array<
-      Candidate & { safety: CacheCategory["safety"]; reason: string }
+      Candidate & {
+        safety: CacheCategory["safety"];
+        reason: string;
+        appKey: string;
+      }
     > = [];
     for (const candidate of candidates) {
       const { verdict, reason } = classifyCachePath(candidate.dir);
@@ -177,7 +225,18 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
         );
         continue;
       }
-      kept.push({ ...candidate, safety: verdict, reason });
+      // User exclude prefs apply HERE - before the empty-check and sizing - so
+      // excluded apps cost nothing to size and never reach tier logic. This is
+      // orthogonal to the manual-consent gate: excluding an app removes it
+      // entirely; it never relaxes protection on anything that is kept.
+      const appKey = appKeyForRelId(candidate.relId);
+      if (excludeGlobs.length > 0 && matchesExclude(appKey, excludeGlobs)) {
+        printVerbose(
+          `app-caches: excluding ${candidate.dir} (appKey "${appKey}" matches user exclude)`,
+        );
+        continue;
+      }
+      kept.push({ ...candidate, safety: verdict, reason, appKey });
     }
 
     // Drop empty cache dirs before sizing: most discovered candidates -
@@ -238,6 +297,7 @@ export class AppCacheDiscoveryCleaner extends BaseCleaner {
           priority: "normal",
           safety: candidate.safety,
           useCase: "development",
+          appKey: candidate.appKey,
         };
       }),
     );

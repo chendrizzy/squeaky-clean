@@ -219,6 +219,33 @@ squeaky config --enable npm yarn pnpm webpack vite
 
 ---
 
+## App-Caches Display & Exclusions
+
+The system-wide `app-caches` cleaner discovers application caches across your whole system. Configure how its breakdown is shown and which apps to skip under `toolSettings.app-caches` — set these in the wizard's **App Caches** step or by editing `config.json`:
+
+```jsonc
+{
+  "toolSettings": {
+    "app-caches": {
+      "display": {
+        "expand": false,    // false = one-line summary; true = full tree (also via -v)
+        "groupBy": "app",   // app | tier | kind | none
+        "topN": 5            // apps shown inline in the collapsed summary
+      },
+      "exclude": ["com.apple.*", "spotify"]
+    }
+  }
+}
+```
+
+- **`groupBy`** — `app` collapses each app's many cache dirs together; `tier` groups by safety tier; `kind` groups by cache kind (Cache, Code Cache, containers, …); `none` is a flat list. `--group-by <mode>` overrides it for a single run.
+- **`expand`** — when `false`, `clean --dry-run` prints a one-line summary (`5.2 GB · 18 caches · 6 apps · top: …`) and `-v` expands the tree; when `true`, the tree shows by default.
+- **`exclude`** — app-key glob patterns. Matching apps are dropped during discovery (before sizing), so they never appear in any view and are never cleaned. App keys are normalized and OS-neutral (the same `com.spotify.client` whether found under macOS Containers or Linux Flatpak), so one pattern works everywhere. Plain strings match as a case-insensitive substring (`spotify` matches `com.spotify.client`); `*`/`?` are globs. Find app keys with `squeaky categories --tool app-caches`.
+
+> Exclusions are independent of the manual-consent gate: excluding an app removes it entirely, but it never relaxes protection on anything that is kept.
+
+---
+
 ## Cleaning Profiles & Safety Tiers
 
 Every cache category is classified into a safety tier (`safe`, `probably-safe`, `caution`, `manual`), and the active cleaning profile decides which tiers `squeaky clean` is allowed to touch.

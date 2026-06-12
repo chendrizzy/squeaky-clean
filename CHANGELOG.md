@@ -16,8 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Minimal overhead (~1-2 KB per scanner, ~0.1% CPU)
   - Available in `sizes` command and `clean --sizes` mode
   - See `docs/PARALLEL_PROGRESS.md` for detailed documentation
+- **App-caches breakdown & grouping** - the system-wide `app-caches` cleaner now surfaces a per-app breakdown instead of one opaque line
+  - `clean --dry-run` shows a collapsed summary (`5.2 GB · 18 caches · 6 apps · top: …`); add `-v` to expand the full grouped tree
+  - `--group-by <app|tier|kind|none>` (on `clean` and `categories`) controls how the breakdown is organized; the default is configurable via `toolSettings.app-caches.display.groupBy`
+  - `toolSettings.app-caches.display` (`expand`, `groupBy`, `topN`) and `exclude` (appKey globs such as `com.apple.*` or `spotify`) are configurable from `config -i` or `config.json`
+  - Excludes are applied during discovery before sizing and are orthogonal to the manual-consent gate (excluding an app never relaxes protection on anything kept)
+  - `--json` now emits a real machine-readable object for `clean` (including the per-category breakdown) with all human banners suppressed
+  - `categories` and `clean -v` now share a single renderer
 
 ### Fixed
+- **Session flags no longer persist** - `--json`, `--verbose`, `--quiet`, and `--no-color` are now applied in memory per invocation instead of being written to `config.json`; previously, using `--json` once made every later run emit JSON
+- **`categories` respects emoji mode** - the `categories` command now honors `squeaky emojis off` (it previously always printed emoji)
+- **`--json` for `clean`** - now produces valid machine-readable output; diagnostics and banners no longer leak onto stdout
 - **Clean command execution** - Fixed `squeaky clean [--option]` incorrectly falling into dry-run behavior when `--dry-run` was not provided
   - Interactive runs now ask for confirmation instead of silently switching to dry-run
   - Non-interactive confirmation-required runs now exit safely with guidance instead of hanging

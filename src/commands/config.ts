@@ -462,6 +462,10 @@ async function interactiveConfigWizard(): Promise<void> {
         type: "checkbox",
         name: "enabledTools",
         message: `Select which ${type.replace("-", " ")} tools to enable:`,
+        // Bound the visible rows so long categories (13 package managers)
+        // page instead of flooding the terminal; loop:false stops wrap-around.
+        pageSize: 15,
+        loop: false,
         choices: cleaners.map((cleaner) => ({
           name: `${cleaner.name} - ${cleaner.description}`,
           value: cleaner.name,
@@ -478,8 +482,73 @@ async function interactiveConfigWizard(): Promise<void> {
     });
   }
 
-  // Step 4: Review and apply
-  console.log(pc.bold("\n📋 Step 4: Review Configuration"));
+  // Step 4: App caches (system-wide) display + exclusions
+  console.log(pc.bold("\n🧹 Step 4: App Caches (system-wide)"));
+  console.log(
+    pc.gray(
+      "Control how discovered application caches are shown and which apps to skip.\n",
+    ),
+  );
+  const currentDisplay = config.getAppCacheDisplay();
+  const currentExclude = config.getAppCacheExclude();
+  const appCacheAnswers = await inquirer.prompt([
+    {
+      type: "list",
+      name: "groupBy",
+      message: "Group the app-caches breakdown by:",
+      pageSize: 6,
+      choices: [
+        { name: "App — collapse each app's caches together", value: "app" },
+        {
+          name: "Safety tier — safe → probably-safe → caution → manual",
+          value: "tier",
+        },
+        {
+          name: "Kind — Cache, Code Cache, containers, library-caches, ...",
+          value: "kind",
+        },
+        { name: "None — flat list sorted by size", value: "none" },
+      ],
+      default: currentDisplay.groupBy,
+    },
+    {
+      type: "confirm",
+      name: "expand",
+      message:
+        "Expand the full breakdown by default? (No = one-line summary; -v always expands)",
+      default: currentDisplay.expand,
+    },
+    {
+      type: "input",
+      name: "topN",
+      message: "Top apps to show inline in the summary line:",
+      default: String(currentDisplay.topN),
+      validate: (value: string) => {
+        const n = Number(value);
+        return Number.isInteger(n) && n >= 0
+          ? true
+          : "Enter a non-negative whole number";
+      },
+    },
+    {
+      type: "input",
+      name: "exclude",
+      message:
+        "Exclude apps (comma-separated patterns, e.g. com.apple.*, spotify). Blank = none:",
+      default: currentExclude.join(", "),
+    },
+  ]);
+  const appCacheTopN = Math.max(
+    0,
+    Math.floor(Number(appCacheAnswers.topN) || 0),
+  );
+  const appCacheExclude = String(appCacheAnswers.exclude || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  // Step 5: Review and apply
+  console.log(pc.bold("\n📋 Step 5: Review Configuration"));
   console.log("\nYour new configuration will be:");
   console.log(
     `  ${symbols.folder} Verbose output: ${outputAnswers.verbose ? pc.green("enabled") : pc.gray("disabled")}`,
@@ -489,6 +558,12 @@ async function interactiveConfigWizard(): Promise<void> {
   );
   console.log(
     `  ${symbols.folder} Require confirmation: ${safetyAnswers.requireConfirmation ? pc.yellow("yes") : pc.green("no")}`,
+  );
+  console.log(
+    `  ${symbols.folder} App-caches grouping: ${pc.cyan(appCacheAnswers.groupBy)}${appCacheAnswers.expand ? pc.gray(" (expanded)") : pc.gray(" (summary)")}`,
+  );
+  console.log(
+    `  ${symbols.folder} App-caches excludes: ${appCacheExclude.length > 0 ? pc.cyan(appCacheExclude.join(", ")) : pc.gray("none")}`,
   );
 
   console.log("\n🔧 Enabled tools:");
@@ -537,6 +612,22 @@ async function interactiveConfigWizard(): Promise<void> {
       tools: {
         ...currentConfig.tools,
         ...toolAnswers,
+      },
+      toolSettings: {
+        ...currentConfig.toolSettings,
+        "app-caches": {
+          ...currentConfig.toolSettings?.["app-caches"],
+          enabled:
+            toolAnswers["app-caches"] ??
+            currentConfig.toolSettings?.["app-caches"]?.enabled ??
+            true,
+          display: {
+            expand: appCacheAnswers.expand,
+            groupBy: appCacheAnswers.groupBy,
+            topN: appCacheTopN,
+          },
+          exclude: appCacheExclude,
+        },
       },
     };
 

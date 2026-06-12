@@ -4,7 +4,9 @@ import {
   CacheCategory,
   CacheSelectionCriteria,
   CleanerModule,
+  ClearResult,
   SafetyTier,
+  AppCacheGroupBy,
 } from "../types";
 import {
   printInfo,
@@ -29,6 +31,11 @@ import {
   tiersForProfile,
 } from "../safety";
 import inquirer from "inquirer";
+import {
+  breakdownToViewItem,
+  renderCategoryTree,
+  summarizeAppCaches,
+} from "../utils/categoryView";
 
 function parseCsvOption(value?: string | string[]): string[] | undefined {
   if (!value) return undefined;
@@ -296,9 +303,140 @@ async function confirmCleanup(): Promise<boolean> {
   }
 }
 
+const GROUP_BY_VALUES: AppCacheGroupBy[] = ["app", "tier", "kind", "none"];
+
+/** Validate a --group-by value, falling back to the configured default. */
+function resolveGroupBy(value: string | undefined): AppCacheGroupBy {
+  const fallback = config.getAppCacheDisplay().groupBy;
+  if (!value) return fallback;
+  const v = value.trim().toLowerCase();
+  return (GROUP_BY_VALUES as string[]).includes(v)
+    ? (v as AppCacheGroupBy)
+    : fallback;
+}
+
+interface RenderContext {
+  dryRun: boolean;
+  json: boolean;
+  expand: boolean;
+  groupBy: AppCacheGroupBy;
+  useColor: boolean;
+  emojiMode: "on" | "off" | "minimal";
+  topN: number;
+}
+
+/**
+ * Render clean/dry-run results. Multi-category cleaners (app-caches) collapse
+ * to a one-line summary with the largest apps inline; -v (or the configured
+ * expand default) prints the full grouped tree, but only on a TTY. Under JSON
+ * every human banner is suppressed upstream and this emits a single
+ * machine-readable object. Returns tallies for the caller's footer.
+ */
+function renderCleanResults(
+  results: ClearResult[],
+  ctx: RenderContext,
+): { totalFreed: number; successCount: number; errorCount: number } {
+  let totalFreed = 0;
+  let successCount = 0;
+  let errorCount = 0;
+
+  const rows = results.map((result) => ({
+    result,
+    freed: ctx.dryRun
+      ? result.sizeBefore || 0
+      : (result.sizeBefore || 0) - (result.sizeAfter || 0),
+  }));
+
+  if (ctx.json) {
+    for (const { result, freed } of rows) {
+      if (result.success) {
+        successCount++;
+        totalFreed += freed;
+      } else {
+        errorCount++;
+      }
+    }
+    const payload = {
+      dryRun: ctx.dryRun,
+      totalFreed,
+      results: rows.map(({ result, freed }) => ({
+        name: result.name,
+        success: result.success,
+        error: result.error,
+        sizeBefore: result.sizeBefore ?? 0,
+        sizeAfter: result.sizeAfter ?? 0,
+        freed,
+        categories: result.categoryBreakdown?.map((c) => ({
+          id: c.id,
+          name: c.name,
+          appKey: c.appKey,
+          size: c.size,
+          safety: c.safety,
+          ageInDays: c.ageInDays,
+        })),
+      })),
+    };
+    console.log(JSON.stringify(payload, null, 2));
+    return { totalFreed, successCount, errorCount };
+  }
+
+  console.log();
+  for (const { result, freed } of rows) {
+    if (!result.success) {
+      errorCount++;
+      printError(`${result.name}: ${result.error || "Unknown error"}`);
+      continue;
+    }
+
+    totalFreed += freed;
+    successCount++;
+
+    if (freed <= 0) {
+      printInfo(`${result.name}: No cache data found`);
+      continue;
+    }
+
+    const action = ctx.dryRun ? "would be freed" : "freed";
+    const breakdown = result.categoryBreakdown;
+
+    // Multi-category cleaners (notably app-caches) collapse to a summary line
+    // with the biggest apps inline; the full grouped tree is opt-in via -v.
+    if (breakdown && breakdown.length > 1) {
+      const items = breakdown.map(breakdownToViewItem);
+      const summary = summarizeAppCaches(items, {
+        topN: ctx.topN,
+        useColor: ctx.useColor,
+        verboseHint: !ctx.expand,
+        action,
+      });
+      printSuccess(`${result.name}: ${summary} ${symbols.bubbles}`);
+      if (ctx.expand) {
+        const tree = renderCategoryTree(items, {
+          groupBy: ctx.groupBy,
+          useColor: ctx.useColor,
+          emojiMode: ctx.emojiMode,
+          indent: "    ",
+        });
+        for (const line of tree) console.log(line);
+      }
+    } else {
+      printSuccess(
+        `${result.name}: ${formatSizeWithColor(freed)} ${action} ${symbols.bubbles}`,
+      );
+    }
+  }
+  console.log();
+
+  return { totalFreed, successCount, errorCount };
+}
+
 export async function cleanCommand(options: CommandOptions): Promise<void> {
   try {
     const dryRun = Boolean(options.dryRun);
+    // Machine-readable mode: suppress every human banner and emit one JSON
+    // object so `clean --dry-run --json | jq` is clean. Set by the global
+    // --json flag (config.output.format).
+    const json = config.getOutputFormat() === "json";
 
     const types = parseTypes(options.types);
     const exclude = parseCsvOption(options.exclude);
@@ -374,24 +512,28 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
     }
 
     // Pre-clean banner: show which profile/tiers govern this run.
-    printInfo(
-      resolution.source === "safety-flag"
-        ? `Safety tiers: ${resolution.tiers.join(", ")} (custom via --safety)`
-        : `Profile: ${resolution.profile} (${resolution.tiers.join(", ")})`,
-    );
-    if (resolution.source === "safety-flag" || options.profile) {
-      // Honest scoping note: tier filtering operates on cache CATEGORIES.
-      // Classic tool cleaners without category granularity clean their
-      // whole cache when selected, regardless of tier restrictions.
+    if (!json) {
       printInfo(
-        "Tier filtering applies per cache category; category-less tool cleaners clean whole-tool when selected.",
+        resolution.source === "safety-flag"
+          ? `Safety tiers: ${resolution.tiers.join(", ")} (custom via --safety)`
+          : `Profile: ${resolution.profile} (${resolution.tiers.join(", ")})`,
       );
+      if (resolution.source === "safety-flag" || options.profile) {
+        // Honest scoping note: tier filtering operates on cache CATEGORIES.
+        // Classic tool cleaners without category granularity clean their
+        // whole cache when selected, regardless of tier restrictions.
+        printInfo(
+          "Tier filtering applies per cache category; category-less tool cleaners clean whole-tool when selected.",
+        );
+      }
     }
 
     if (dryRun) {
-      printInfo(
-        "Dry run: showing what would be cleaned. No files will be deleted.",
-      );
+      if (!json) {
+        printInfo(
+          "Dry run: showing what would be cleaned. No files will be deleted.",
+        );
+      }
     } else if (!options.force && config.shouldRequireConfirmation()) {
       printWarning("This will permanently delete cache files.");
       printInfo("Use --dry-run to preview or --force to skip this prompt.");
@@ -413,12 +555,12 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
       }
     }
 
-    if (!dryRun) {
+    if (!dryRun && !json) {
       printInfo("Starting cleanup process...");
     }
 
     // Get cache info first if showing sizes
-    if (options.sizes && !dryRun) {
+    if (options.sizes && !dryRun && !json) {
       // Use real-time parallel progress tracking for size scanning
       printInfo("Scanning cache sizes...");
       try {
@@ -446,7 +588,7 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
       targetCleaners,
       criteria.allowManualIds ?? [],
     );
-    if (pendingManual.length > 0) {
+    if (pendingManual.length > 0 && !json) {
       if (!dryRun && canPromptForConfirmation()) {
         const confirmedIds = await confirmManualCategories(pendingManual);
         if (confirmedIds.length > 0) {
@@ -469,9 +611,13 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
     // Clean the caches
     let results;
     try {
-      printInfo(
-        dryRun ? "Analyzing selected caches..." : "Scanning selected caches...",
-      );
+      if (!json) {
+        printInfo(
+          dryRun
+            ? "Analyzing selected caches..."
+            : "Scanning selected caches...",
+        );
+      }
       results = await cacheManager.cleanAllCaches({
         dryRun,
         types,
@@ -488,64 +634,46 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
       throw error;
     }
 
-    // Report results
-    let totalFreed = 0;
-    let successCount = 0;
-    let errorCount = 0;
+    // Report results. The renderer emits one machine-readable object under
+    // --json (no banners); otherwise the per-cleaner human summary, with
+    // app-caches collapsed to a summary line (expandable with -v).
+    const display = config.getAppCacheDisplay();
+    const { totalFreed, successCount, errorCount } = renderCleanResults(
+      results,
+      {
+        dryRun,
+        json,
+        expand:
+          config.isVerbose() || Boolean(options.verbose) || display.expand,
+        groupBy: resolveGroupBy(options.groupBy),
+        useColor: config.shouldUseColors(),
+        emojiMode: config.getEmojiMode(),
+        topN: display.topN,
+      },
+    );
 
-    if (results.length > 0) {
-      console.log();
-    }
-
-    for (const result of results) {
-      if (result.success) {
-        // In dry-run mode, sizeBefore shows what would be cleaned
-        // In actual clean mode, it shows what was cleaned
-        const freed = dryRun
-          ? result.sizeBefore || 0
-          : (result.sizeBefore || 0) - (result.sizeAfter || 0);
-        totalFreed += freed;
-        successCount++;
-
-        if (freed > 0) {
-          const freedFormatted = formatSizeWithColor(freed);
-          const action = dryRun ? "would be freed" : "freed";
-          printSuccess(
-            `${result.name}: ${freedFormatted} ${action} ${symbols.bubbles}`,
-          );
-        } else {
-          printInfo(`${result.name}: No cache data found`);
-        }
-      } else {
-        errorCount++;
-        printError(`${result.name}: ${result.error || "Unknown error"}`);
+    // Summary footer (human output only; JSON carries totals in its payload).
+    if (!json) {
+      if (totalFreed > 0) {
+        const totalFreedFormatted = formatSizeWithColor(totalFreed);
+        printSuccess(
+          `Total ${dryRun ? "potential " : ""}space freed: ${totalFreedFormatted}`,
+        );
       }
-    }
 
-    if (results.length > 0) {
-      console.log();
-    }
+      if (errorCount > 0) {
+        printWarning(
+          `${errorCount} cache${errorCount > 1 ? "s" : ""} had errors`,
+        );
+      }
 
-    // Summary
-    if (totalFreed > 0) {
-      const totalFreedFormatted = formatSizeWithColor(totalFreed);
-      printSuccess(
-        `Total ${dryRun ? "potential " : ""}space freed: ${totalFreedFormatted}`,
-      );
-    }
-
-    if (errorCount > 0) {
-      printWarning(
-        `${errorCount} cache${errorCount > 1 ? "s" : ""} had errors`,
-      );
-    }
-
-    if (successCount > 0 && !dryRun) {
-      printCleanComplete("Your dev environment is now squeaky clean!");
-    } else if (dryRun) {
-      printInfo("Run without --dry-run to actually clean these caches");
-    } else {
-      printInfo("No caches were cleaned");
+      if (successCount > 0 && !dryRun) {
+        printCleanComplete("Your dev environment is now squeaky clean!");
+      } else if (dryRun) {
+        printInfo("Run without --dry-run to actually clean these caches");
+      } else {
+        printInfo("No caches were cleaned");
+      }
     }
   } catch (error) {
     printError(`Clean command error: ${error}`);

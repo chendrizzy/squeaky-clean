@@ -87,6 +87,9 @@ export function printInfo(text: string): void {
 }
 
 export function printVerbose(text: string): void {
+  // Diagnostics must never reach stdout under --json, or they corrupt the
+  // single machine-readable object the consumer expects to parse.
+  if (config.getOutputFormat() === "json") return;
   if (config.isVerbose()) {
     const mode = config.getEmojiMode();
     const prefix = mode === "on" ? "  🔍 " : "  ";
