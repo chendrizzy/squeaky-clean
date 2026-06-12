@@ -214,8 +214,8 @@ squeaky clean --config my-config.json --dry-run
 
 **🧹 App-Caches Breakdown:**
 - `--group-by <hierarchy>` - Group the app-caches breakdown by a single axis or comma-list hierarchy (e.g. `tier,kind,app`) or `none`; default `tier → kind → app`
-- `--summary` - Collapse the app-caches breakdown to one line (it is **expanded by default**); use `--json` for machine output
-- `clean --dry-run` shows the full grouped breakdown; the collapsed summary looks like `5.2 GB · 18 caches · 6 apps · top: …`. Configure default grouping/expansion and per-app excludes under `toolSettings.app-caches` (see the [Configuration Guide](docs/configuration-guide.md))
+- `--summary` - Force the collapsed one-line summary (useful when `display.expand` is on); use `--json` for machine output
+- By default `clean --dry-run` shows the collapsed summary (`5.2 GB · 18 caches · 6 apps · top: …`); add `-v` to expand the tree. Configure default grouping/expansion and per-app excludes under `toolSettings.app-caches` (see the [Configuration Guide](docs/configuration-guide.md))
 
 #### `categories` Options
 

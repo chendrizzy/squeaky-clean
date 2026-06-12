@@ -228,7 +228,7 @@ The system-wide `app-caches` cleaner discovers application caches across your wh
   "toolSettings": {
     "app-caches": {
       "display": {
-        "expand": true,     // true = full tree by default; false = summary (or use --summary)
+        "expand": false,    // false = one-line summary (default); true = full tree; --summary forces summary
         "groupBy": ["tier", "kind", "app"], // ordered hierarchy; [] = flat
         "topN": 5            // apps shown inline in the collapsed summary
       },
@@ -239,7 +239,7 @@ The system-wide `app-caches` cleaner discovers application caches across your wh
 ```
 
 - **`groupBy`** — an ordered **hierarchy** that nests one level per axis (default `["tier","kind","app"]` → tier, then kind, then app, then individual caches). Axes: `tier` (safety), `kind` (Cache/Code Cache/containers/…), `app` (per-app). An empty array `[]` is a flat list. Override for one run with `--group-by tier,kind,app` (a comma-list), a single axis, or `none`. In `config -i`, sequential prompts let you assign the order one level at a time.
-- **`expand`** — **defaults to `true`** (the full tree shows by default). Set `false` for a one-line summary (`5.2 GB · 18 caches · 6 apps · top: …`) that `-v` expands per run, or collapse a single run with `clean --summary`. Expansion follows `-v`/`expand`/`--summary` only — a global `verbose: true` setting (for diagnostics) does not force-expand.
+- **`expand`** — **defaults to `false`** (a one-line summary; `-v` expands per run). Set `true` to always show the full tree; `clean --summary` forces the collapsed view. Expansion follows `-v`/`expand`/`--summary` only — a global `verbose: true` setting (for diagnostics) does not force-expand.
 - **`exclude`** — app-key glob patterns. Matching apps are dropped during discovery (before sizing), so they never appear in any view and are never cleaned. App keys are normalized and OS-neutral (the same `com.spotify.client` whether found under macOS Containers or Linux Flatpak), so one pattern works everywhere. Plain strings match as a case-insensitive substring (`spotify` matches `com.spotify.client`); `*`/`?` are globs. Find app keys with `squeaky categories --tool app-caches`, or use the **App Caches** step's live picker in `config -i` to scan and check/uncheck apps.
 
 > Exclusions are independent of the manual-consent gate: excluding an app removes it entirely, but it never relaxes protection on anything that is kept.
