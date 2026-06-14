@@ -1,0 +1,540 @@
+# Instincts generated from https://github.com/chendrizzy/squeaky-clean
+# Generated: 2026-06-11T12:32:53.468Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: squeaky-clean-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: feat, fix, ci
+
+## Evidence
+
+- 5 commits analyzed
+- Detected conventional commit pattern
+- Examples: feat(safety): safety tiers, cleaning profiles, and system-wide cache discovery, fix(cross-platform): harden app-cache discovery and sizing for Linux/Windows
+
+---
+id: squeaky-clean-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Commit Length
+
+## Action
+
+Write moderate-length commit messages (~84 characters)
+
+## Evidence
+
+- Average commit message length: 84 chars
+- Based on 5 commits
+
+---
+id: squeaky-clean-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: squeaky-clean-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: squeaky-clean-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Export Style
+
+## Action
+
+Prefer mixed exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: mixed
+
+---
+id: squeaky-clean-arch-type-based
+trigger: "when adding new code"
+confidence: 0.8
+domain: architecture
+source: repo-analysis
+source_repo: https://github.com/chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Arch Type Based
+
+## Action
+
+Place code in the appropriate type folder (components/, services/, utils/, etc.)
+
+## Evidence
+
+- Type-based module organization detected
+- Folders: __tests__, cleaners, commands, config, safety
+
+---
+id: squeaky-clean-test-framework
+trigger: "when writing tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Test Framework
+
+## Action
+
+Use vitest as the test framework
+
+## Evidence
+
+- Test framework detected: vitest
+- File pattern: *.test.ts
+
+---
+id: squeaky-clean-test-naming
+trigger: "when creating a test file"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Test Naming
+
+## Action
+
+Name test files using the pattern: *.test.ts
+
+## Evidence
+
+- File pattern: *.test.ts
+- Consistent across test files
+
+---
+id: squeaky-clean-test-mocking
+trigger: "when mocking dependencies in tests"
+confidence: 0.75
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Test Mocking
+
+## Action
+
+Use vi.mock for mocking
+
+## Evidence
+
+- Mocking pattern detected: vi.mock
+- Consistent across test files
+
+---
+id: squeaky-clean-workflow-feature-development-with-tests-and-docs
+trigger: "when doing feature development with tests and docs"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Workflow Feature Development With Tests And Docs
+
+## Action
+
+Follow the feature-development-with-tests-and-docs workflow:
+1. Implement core feature logic in src/cleaners/, src/commands/, or src/safety/
+2. Update or create relevant type definitions in src/types/
+3. Update configuration or utility logic in src/config/ or src/utils/
+4. Add or update unit and regression tests in src/__tests__/
+5. Update CLI documentation in docs/cli-reference.md and/or docs/configuration-guide.md
+6. Update README.md to reflect new features or changes
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: src/cleaners/*.ts, src/commands/*.ts, src/safety/*.ts
+
+---
+id: squeaky-clean-workflow-cross-platform-bugfix-and-test-extension
+trigger: "when doing cross platform bugfix and test extension"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Workflow Cross Platform Bugfix And Test Extension
+
+## Action
+
+Follow the cross-platform-bugfix-and-test-extension workflow:
+1. Identify and fix platform-specific issues in implementation files (src/cleaners/, src/utils/)
+2. Update or add new tests in src/__tests__/ to cover the fixed behaviors
+3. Add or update OS-specific test suites in src/__tests__/os/
+4. Update CI configuration to ensure new tests run on all platforms
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: src/cleaners/*.ts, src/utils/*.ts, src/__tests__/**/*.test.ts
+
+---
+id: squeaky-clean-instinct-file-naming
+trigger: "When creating or renaming files in the codebase"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Instinct File Naming
+
+## Action
+
+Use camelCase for file names
+
+## Evidence
+
+- Pattern in namingConventions.files
+- Consistent file naming in src/
+
+---
+id: squeaky-clean-instinct-function-naming
+trigger: "When defining functions"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Instinct Function Naming
+
+## Action
+
+Name functions using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.functions
+- TypeScript code in src/
+
+---
+id: squeaky-clean-instinct-class-naming
+trigger: "When defining classes"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Instinct Class Naming
+
+## Action
+
+Name classes using PascalCase
+
+## Evidence
+
+- Pattern in namingConventions.classes
+- TypeScript code in src/
+
+---
+id: squeaky-clean-instinct-constant-naming
+trigger: "When declaring constants"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Instinct Constant Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for constant names
+
+## Evidence
+
+- Pattern in namingConventions.constants
+- TypeScript code in src/
+
+---
+id: squeaky-clean-instinct-relative-imports
+trigger: "When importing modules within the project"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Instinct Relative Imports
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in importStyle: relative
+- Import statements in src/
+
+---
+id: squeaky-clean-instinct-mixed-exports
+trigger: "When exporting modules or functions"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Instinct Mixed Exports
+
+## Action
+
+Use both named and default exports as appropriate
+
+## Evidence
+
+- Pattern in exportStyle: mixed
+- Export statements in src/
+
+---
+id: squeaky-clean-instinct-test-file-pattern
+trigger: "When creating test files"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Instinct Test File Pattern
+
+## Action
+
+Name test files with the pattern *.test.ts and place them in src/__tests__/
+
+## Evidence
+
+- Pattern in testing.filePattern
+- Files in src/__tests__/
+
+---
+id: squeaky-clean-instinct-testing-framework
+trigger: "When writing or updating tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Instinct Testing Framework
+
+## Action
+
+Use the Vitest framework and vi.mock for mocking
+
+## Evidence
+
+- Pattern in testing.framework
+- Pattern in testing.mockingStyle
+- Test files using vi.mock
+
+---
+id: squeaky-clean-instinct-unit-tests
+trigger: "When adding tests for new or changed code"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Instinct Unit Tests
+
+## Action
+
+Write unit tests for all new features and bug fixes
+
+## Evidence
+
+- Pattern in testing.testTypes
+- Workflow steps for feature and bugfix
+
+---
+id: squeaky-clean-instinct-test-coverage-config
+trigger: "When configuring or running tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Instinct Test Coverage Config
+
+## Action
+
+Ensure test coverage is configured and measured
+
+## Evidence
+
+- Pattern in testing.coverageConfig
+- Presence of vitest.config.ts
+
+---
+id: squeaky-clean-instinct-commit-format
+trigger: "When making a git commit"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Instinct Commit Format
+
+## Action
+
+Use Conventional Commits format with prefixes: feat, fix, ci
+
+## Evidence
+
+- Pattern in commits.type: conventional
+- Commit examples with feat/fix/ci
+
+---
+id: squeaky-clean-instinct-commit-length
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Instinct Commit Length
+
+## Action
+
+Write descriptive commit messages averaging around 80-90 characters
+
+## Evidence
+
+- Pattern in commits.averageLength
+- Commit examples
+
+---
+id: squeaky-clean-instinct-feature-workflow
+trigger: "When adding a significant new capability or architectural change"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Instinct Feature Workflow
+
+## Action
+
+Follow the 'feature-development-with-tests-and-docs' workflow: implement feature logic, update types, config, and utils, add tests, and update documentation and README
+
+## Evidence
+
+- Workflow: feature-development-with-tests-and-docs
+- Commit and file patterns in workflow
+
+---
+id: squeaky-clean-instinct-cross-platform-fix-workflow
+trigger: "When fixing platform-specific bugs or extending OS-specific test coverage"
+confidence: 0.92
+domain: workflow
+source: repo-analysis
+source_repo: chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Instinct Cross Platform Fix Workflow
+
+## Action
+
+Follow the 'cross-platform-bugfix-and-test-extension' workflow: fix implementation, add/extend tests, update OS-specific suites, and update CI config
+
+## Evidence
+
+- Workflow: cross-platform-bugfix-and-test-extension
+- Commit and file patterns in workflow
+
+---
+id: squeaky-clean-instinct-error-handling
+trigger: "When handling errors in code"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: chendrizzy/squeaky-clean
+---
+
+# Squeaky Clean Instinct Error Handling
+
+## Action
+
+Use try-catch blocks for error handling; do not define custom error classes or global handlers
+
+## Evidence
+
+- Pattern in errorHandling.style: try-catch
+- No custom error classes or global handlers in code
+
