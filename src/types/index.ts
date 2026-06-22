@@ -206,6 +206,9 @@ export interface UserConfig {
     // Optional so existing literal configs/profiles stay assignable; the
     // default config enables it.
     "app-caches"?: boolean;
+    // System temp cleaner. Optional for the same reason; default config
+    // enables it. Active-task-aware, so default-on stays safe.
+    tmp?: boolean;
   };
 
   // Granular tool settings (new)

@@ -181,7 +181,9 @@ squeaky config --reset
 **Build Tools**: `webpack`, `vite`, `nx`, `turbo`, `flutter`, `gradle`
 **IDEs**: `vscode`, `xcode`, `androidstudio`, `jetbrains`
 **Browsers**: `chrome`, `firefox`
-**System Tools**: `docker`, `app-caches`
+**System Tools**: `docker`, `app-caches`, `tmp`
+
+> **`tmp`** (on by default) cleans abandoned files in your temp roots (`$TMPDIR`/`%TEMP%`, `/tmp`, `/var/tmp`) with active-task-aware filtering: it skips sockets/FIFOs/devices/symlinks, anything not owned by you, known socket-wrapper names (`ssh-*`, `tmux-*`, …), and any folder containing a live socket or a file touched in the last 60 minutes. By default it removes only user-owned items untouched for **3+ days** (`probably-safe`/`safe`); recently-touched items are protected unless you run `--profile aggressive`. Tune with `toolSettings.tmp.exclude` (name globs); disable with `clean --all --exclude tmp` or `tmp: false` in config.
 
 ---
 

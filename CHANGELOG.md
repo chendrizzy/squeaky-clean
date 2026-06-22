@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `categories` and `clean -v` now share a single renderer
   - the `config -i` wizard configures the grouping hierarchy (sequential prompts) and offers a **live picker** that scans and lists discovered apps to include/exclude; `SQUEAKY_PROFILE=1` prints discovery phase timings
   - the breakdown is **collapsed to a one-line summary by default**; expand with `-v` or `display.expand: true`, and `clean --summary` forces the collapsed view
+- **System temp cleaning (`tmp`), on by default** — reclaims abandoned files across the user's temp roots (`$TMPDIR`/`%TEMP%`, `/tmp`, `/var/tmp`) with active-task-aware filtering so nothing a live process needs is deleted. **This changes `clean --all` behavior on upgrade** (it now also cleans stale temp); preview any run with `clean --dry-run`
+  - **Spawn-free heuristics** (no `lsof`, honoring the no-spawns-in-scan invariant): skips sockets/FIFOs/devices/symlinks by file type, skips anything not owned by you, and excludes known socket-wrapper/system names (`ssh-*`, `.X11-unix`, `tmux-*`, `dbus-*`, `systemd-*`, `com.apple.*`, …)
+  - **Nested-socket subtree guard** — a directory is skipped entirely if any descendant is a live socket/FIFO/device or was modified within the last 60 minutes (the in-use floor), so a stale-looking folder wrapping a live socket is never removed
+  - **Conservative by default** — only user-owned items untouched for 3+ days are cleaned (`probably-safe`/`safe`); recently-touched items (`caution`) are protected unless you run `--profile aggressive`; reclaim more aggressively with `--older-than`
+  - **Containment-guarded deletion** — every removal is canonicalized (`realpath`) and asserted to be a strict descendant of a temp root before deletion; symlinks are never followed and a temp root itself is never a target
+  - Defers to dedicated cleaners (`go-build`, `pip`) to avoid double-cleaning; tune via `toolSettings.tmp.exclude` (name globs)
 
 ### Fixed
 - **Session flags no longer persist** - `--json`, `--verbose`, `--quiet`, and `--no-color` are now applied in memory per invocation instead of being written to `config.json`; previously, using `--json` once made every later run emit JSON
