@@ -31,6 +31,7 @@ interface FakeNode {
   type: NodeType;
   ageDays?: number; // last activity = now - ageDays (sets mtime/ctime)
   atimeDays?: number; // independent atime (to prove atime is NOT used)
+  ctimeDays?: number; // independent ctime (defaults to mtime)
   uid?: number;
   blocks?: number;
   size?: number;
@@ -49,7 +50,8 @@ function ownUid(): number {
 function fakeStat(node: FakeNode, now: number): Stats {
   const age = node.ageDays ?? 1;
   const mtimeMs = now - age * 86_400_000;
-  const ctimeMs = mtimeMs;
+  const ctimeMs =
+    node.ctimeDays !== undefined ? now - node.ctimeDays * 86_400_000 : mtimeMs;
   const atimeMs =
     node.atimeDays !== undefined ? now - node.atimeDays * 86_400_000 : mtimeMs;
   const t = node.type;
@@ -134,7 +136,14 @@ describe("tmp: pure helpers", () => {
   });
 
   it("matchesNeverName protects socket-wrapper / system dirs", () => {
-    for (const n of ["ssh-AbCdEf", ".X11-unix", "tmux-1000", "dbus-x", "systemd-private-x", "com.apple.foo"]) {
+    for (const n of [
+      "ssh-AbCdEf",
+      ".X11-unix",
+      "tmux-1000",
+      "dbus-x",
+      "systemd-private-x",
+      "com.apple.foo",
+    ]) {
       expect(matchesNeverName(n)).toBe(true);
     }
     expect(matchesNeverName("my-build-output")).toBe(false);
@@ -168,7 +177,9 @@ describe("tmp: pure helpers", () => {
       if (!(p in realMap)) throw new Error(`ENOENT ${p}`);
       return realMap[p];
     };
-    const fakeStat = (): { isDirectory(): boolean } => ({ isDirectory: () => true });
+    const fakeStat = (): { isDirectory(): boolean } => ({
+      isDirectory: () => true,
+    });
     const roots = resolveTmpRoots(
       ["/tmp", "/private/tmp", "/var/tmp", "/missing"],
       fakeRealpath,
@@ -203,7 +214,13 @@ describe("tmp: analyzeTree subtree guard", () => {
       },
       now,
     );
-    const r = await analyzeTree("/tmp/x", await fs.lstat("/tmp/x"), now, budget(), fs);
+    const r = await analyzeTree(
+      "/tmp/x",
+      await fs.lstat("/tmp/x"),
+      now,
+      budget(),
+      fs,
+    );
     expect(r.eligible).toBe(true);
     expect(r.size).toBe((100 + 50) * 512 + 1 * 512 + 1 * 512); // files + 2 dirs
   });
@@ -225,7 +242,13 @@ describe("tmp: analyzeTree subtree guard", () => {
       },
       now,
     );
-    const r = await analyzeTree("/tmp/x", await fs.lstat("/tmp/x"), now, budget(), fs);
+    const r = await analyzeTree(
+      "/tmp/x",
+      await fs.lstat("/tmp/x"),
+      now,
+      budget(),
+      fs,
+    );
     expect(r.eligible).toBe(false);
     expect(r.reason).toBe("special-file");
   });
@@ -242,7 +265,13 @@ describe("tmp: analyzeTree subtree guard", () => {
       },
       now,
     );
-    const r = await analyzeTree("/tmp/x", await fs.lstat("/tmp/x"), now, budget(), fs);
+    const r = await analyzeTree(
+      "/tmp/x",
+      await fs.lstat("/tmp/x"),
+      now,
+      budget(),
+      fs,
+    );
     expect(r.eligible).toBe(false);
     expect(r.reason).toBe("recently-active");
   });
@@ -254,30 +283,74 @@ describe("tmp: analyzeTree subtree guard", () => {
           type: "dir",
           ageDays: 40,
           children: {
-            locked: { type: "dir", ageDays: 40, unreadable: true, children: {} },
+            locked: {
+              type: "dir",
+              ageDays: 40,
+              unreadable: true,
+              children: {},
+            },
           },
         },
       },
       now,
     );
-    const r = await analyzeTree("/tmp/x", await fs.lstat("/tmp/x"), now, budget(), fs);
+    const r = await analyzeTree(
+      "/tmp/x",
+      await fs.lstat("/tmp/x"),
+      now,
+      budget(),
+      fs,
+    );
     expect(r.eligible).toBe(false);
     expect(r.reason).toBe("unreadable-subtree");
   });
 
-  it("ignores symlinks inside the tree (never follows them)", async () => {
+  it("rejects a tree containing a nested symlink (never removes a link a process may need)", async () => {
     const { fs } = makeFakeFs(
       {
         "/tmp/x": {
           type: "dir",
           ageDays: 10,
-          children: { link: { type: "symlink", ageDays: 10, realpath: "/etc" } },
+          children: {
+            link: { type: "symlink", ageDays: 10, realpath: "/etc" },
+          },
         },
       },
       now,
     );
-    const r = await analyzeTree("/tmp/x", await fs.lstat("/tmp/x"), now, budget(), fs);
-    expect(r.eligible).toBe(true);
+    const r = await analyzeTree(
+      "/tmp/x",
+      await fs.lstat("/tmp/x"),
+      now,
+      budget(),
+      fs,
+    );
+    expect(r.eligible).toBe(false);
+    expect(r.reason).toBe("nested-symlink");
+  });
+
+  it("treats a recent ctime as activity even when mtime is old (ctime > mtime)", async () => {
+    const freshCtimeDays = IN_USE_FLOOR_MS / 2 / 86_400_000; // ~30 min
+    const { fs } = makeFakeFs(
+      {
+        "/tmp/x": {
+          type: "file",
+          ageDays: 10,
+          ctimeDays: freshCtimeDays,
+          blocks: 10,
+        },
+      },
+      now,
+    );
+    const r = await analyzeTree(
+      "/tmp/x",
+      await fs.lstat("/tmp/x"),
+      now,
+      budget(),
+      fs,
+    );
+    expect(r.eligible).toBe(false);
+    expect(r.reason).toBe("recently-active");
   });
 });
 
@@ -294,13 +367,17 @@ function sampleTree(now: number) {
         "old-dir": {
           type: "dir" as const,
           ageDays: 10,
-          children: { "a.txt": { type: "file" as const, ageDays: 10, blocks: 200 } },
+          children: {
+            "a.txt": { type: "file" as const, ageDays: 10, blocks: 200 },
+          },
         },
         "ancient.log": { type: "file" as const, ageDays: 40, blocks: 100 },
         "fresh-work": {
           type: "dir" as const,
           ageDays: 1,
-          children: { "b.txt": { type: "file" as const, ageDays: 1, blocks: 50 } },
+          children: {
+            "b.txt": { type: "file" as const, ageDays: 1, blocks: 50 },
+          },
         },
         "live.sock": { type: "socket" as const, ageDays: 10 },
         link: { type: "symlink" as const, ageDays: 10, realpath: "/etc" },
@@ -314,8 +391,17 @@ function sampleTree(now: number) {
           ageDays: 10,
           children: { "x.o": { type: "file" as const, ageDays: 10 } },
         },
-        "in-use.bin": { type: "file" as const, ageDays: freshAgeDays, blocks: 10 },
-        "others.bin": { type: "file" as const, ageDays: 10, uid: 999999, blocks: 10 },
+        "in-use.bin": {
+          type: "file" as const,
+          ageDays: freshAgeDays,
+          blocks: 10,
+        },
+        "others.bin": {
+          type: "file" as const,
+          ageDays: 10,
+          uid: 999999,
+          blocks: 10,
+        },
         "wraps-socket": {
           type: "dir" as const,
           ageDays: 10,
@@ -355,13 +441,16 @@ describe("tmp: getCacheCategories", () => {
       "wraps-socket",
     ]) {
       // ownership exclusion is a no-op where getuid is unavailable (Windows)
-      if (excluded === "others.bin" && typeof process.getuid !== "function") continue;
+      if (excluded === "others.bin" && typeof process.getuid !== "function")
+        continue;
       expect(byName.has(excluded)).toBe(false);
     }
 
     // A root is never itself a candidate.
     for (const c of cats) {
-      expect(c.paths.every((p) => p !== "/tmp" && p.startsWith("/tmp/"))).toBe(true);
+      expect(c.paths.every((p) => p !== "/tmp" && p.startsWith("/tmp/"))).toBe(
+        true,
+      );
     }
   });
 });
@@ -375,7 +464,12 @@ describe("tmp: clear() deletion", () => {
     const { fs, rmCalls } = makeFakeFs(sampleTree(now), now);
     const cleaner = new TmpCleaner(fs, ["/tmp"], BIG_BUDGET);
 
-    await cleaner.clear(false, { safetyTiers: ["safe", "probably-safe"] }, undefined, []);
+    await cleaner.clear(
+      false,
+      { safetyTiers: ["safe", "probably-safe"] },
+      undefined,
+      [],
+    );
 
     expect(rmCalls).toContain("/tmp/old-dir");
     expect(rmCalls).toContain("/tmp/ancient.log");
@@ -431,7 +525,12 @@ describe("tmp: clear() deletion", () => {
       now,
     );
     const cleaner = new TmpCleaner(fs, ["/tmp"], BIG_BUDGET);
-    await cleaner.clear(false, { safetyTiers: ["safe", "probably-safe"] }, undefined, []);
+    await cleaner.clear(
+      false,
+      { safetyTiers: ["safe", "probably-safe"] },
+      undefined,
+      [],
+    );
     expect(rmCalls).not.toContain("/tmp/escape");
     expect(rmCalls).not.toContain("/etc");
     expect(rmCalls).toHaveLength(0);
@@ -445,9 +544,9 @@ describe("tmp: clear() deletion", () => {
     );
     const cleaner = new TmpCleaner(fs, ["/tmp"], BIG_BUDGET);
     // Drive the protected deleter directly (defense-in-depth path).
-    await (cleaner as unknown as { clearPath(p: string): Promise<void> }).clearPath(
-      "/tmp/link",
-    );
+    await (
+      cleaner as unknown as { clearPath(p: string): Promise<void> }
+    ).clearPath("/tmp/link");
     expect(rmCalls).toHaveLength(0);
   });
 });
@@ -470,7 +569,12 @@ describe("tmp: review hardening", () => {
               type: "dir",
               ageDays: 10,
               children: {
-                "root-owned": { type: "file", ageDays: 10, uid: 999999, blocks: 10 },
+                "root-owned": {
+                  type: "file",
+                  ageDays: 10,
+                  uid: 999999,
+                  blocks: 10,
+                },
               },
             },
           },
@@ -478,7 +582,13 @@ describe("tmp: review hardening", () => {
       },
       now,
     );
-    const r = await analyzeTree("/tmp/x", await fs.lstat("/tmp/x"), now, budget(), fs);
+    const r = await analyzeTree(
+      "/tmp/x",
+      await fs.lstat("/tmp/x"),
+      now,
+      budget(),
+      fs,
+    );
     expect(r.eligible).toBe(false);
     expect(r.reason).toBe("foreign-owner");
   });
@@ -488,13 +598,25 @@ describe("tmp: review hardening", () => {
       { "/tmp/x": { type: "file", ageDays: 10, atimeDays: 0, blocks: 10 } },
       now,
     );
-    const r = await analyzeTree("/tmp/x", await fs.lstat("/tmp/x"), now, budget(), fs);
+    const r = await analyzeTree(
+      "/tmp/x",
+      await fs.lstat("/tmp/x"),
+      now,
+      budget(),
+      fs,
+    );
     expect(r.eligible).toBe(true);
   });
 
   it("refuses a candidate it cannot fully verify within the budget", async () => {
     const { fs } = makeFakeFs(
-      { "/tmp/x": { type: "dir", ageDays: 10, children: { f: { type: "file", ageDays: 10 } } } },
+      {
+        "/tmp/x": {
+          type: "dir",
+          ageDays: 10,
+          children: { f: { type: "file", ageDays: 10 } },
+        },
+      },
       now,
     );
     const r = await analyzeTree(
@@ -533,7 +655,12 @@ describe("tmp: review hardening", () => {
       now,
     );
     const cleaner = new TmpCleaner(fs, ["/tmp"], BIG_BUDGET);
-    await cleaner.clear(false, { safetyTiers: ["safe", "probably-safe"] }, undefined, []);
+    await cleaner.clear(
+      false,
+      { safetyTiers: ["safe", "probably-safe"] },
+      undefined,
+      [],
+    );
     expect(rmCalls).toHaveLength(0);
   });
 
@@ -550,9 +677,9 @@ describe("tmp: review hardening", () => {
       now,
     );
     const cleaner = new TmpCleaner(fs, ["/tmp"], BIG_BUDGET);
-    await (cleaner as unknown as { clearPath(p: string): Promise<void> }).clearPath(
-      "/tmp/link",
-    );
+    await (
+      cleaner as unknown as { clearPath(p: string): Promise<void> }
+    ).clearPath("/tmp/link");
     expect(rmCalls).toHaveLength(0);
   });
 
@@ -585,7 +712,12 @@ describe("tmp: review hardening", () => {
     const cats = await cleaner.getCacheCategories();
     expect(cats.map((c) => c.name)).toContain("x"); // eligible at discovery
     sockAppeared = true;
-    await cleaner.clear(false, { safetyTiers: ["safe", "probably-safe"] }, undefined, []);
+    await cleaner.clear(
+      false,
+      { safetyTiers: ["safe", "probably-safe"] },
+      undefined,
+      [],
+    );
     expect(rmCalls).not.toContain("/tmp/x");
   });
 
@@ -596,7 +728,11 @@ describe("tmp: review hardening", () => {
           type: "dir",
           ageDays: 50,
           children: {
-            a: { type: "dir", ageDays: 10, children: { x: { type: "file", ageDays: 10, blocks: 20 } } },
+            a: {
+              type: "dir",
+              ageDays: 10,
+              children: { x: { type: "file", ageDays: 10, blocks: 20 } },
+            },
             escape: {
               type: "dir",
               ageDays: 10,
@@ -619,7 +755,12 @@ describe("tmp: review hardening", () => {
       now,
     );
     const cleaner = new TmpCleaner(fs, ["/tmp", "/var/tmp"], BIG_BUDGET);
-    await cleaner.clear(false, { safetyTiers: ["safe", "probably-safe"] }, undefined, []);
+    await cleaner.clear(
+      false,
+      { safetyTiers: ["safe", "probably-safe"] },
+      undefined,
+      [],
+    );
     expect(rmCalls).toContain("/tmp/a");
     expect(rmCalls).toContain("/var/tmp/b");
     expect(rmCalls).not.toContain("/tmp/escape");

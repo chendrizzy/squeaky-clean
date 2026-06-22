@@ -1,10 +1,5 @@
 import { BaseCleaner } from "./BaseCleaner";
-import {
-  CacheCategory,
-  CacheInfo,
-  CacheType,
-  SafetyTier,
-} from "../types";
+import { CacheCategory, CacheInfo, CacheType, SafetyTier } from "../types";
 import {
   readdir as fsReaddir,
   lstat as fsLstat,
@@ -162,7 +157,10 @@ export function resolveTmpRoots(
  * deletion target. This is the containment boundary the inherited clearPath and
  * safeRmrf both lack.
  */
-export function isWithinRoots(realPath: string, roots: string[]): string | null {
+export function isWithinRoots(
+  realPath: string,
+  roots: string[],
+): string | null {
   for (const root of roots) {
     if (realPath === root) return null;
     if (realPath.startsWith(root + path.sep)) return root;
@@ -272,8 +270,11 @@ export async function analyzeTree(
       } catch {
         continue; // entry vanished between readdir and lstat; ignore it
       }
-      // A symlink inside is removed as a link by rm (never followed); skip it.
-      if (cst.isSymbolicLink()) continue;
+      // A nested symlink disqualifies the whole candidate. rm removes a symlink
+      // as a link (never follows it), but rather than reason about that we
+      // refuse anything that is not a plain, self-contained subtree — and we
+      // never want to remove a link a live process may still depend on.
+      if (cst.isSymbolicLink()) return "nested-symlink";
       const reason = await visit(child, cst, depth + 1);
       if (reason) return reason;
     }
@@ -530,11 +531,26 @@ export class TmpCleaner extends BaseCleaner {
         printVerbose(`tmp: refusing path outside temp roots: ${p} -> ${real}`);
         return;
       }
+      // Re-stat the CANONICAL path right before the walk. The earlier lstat(p)
+      // can be stale: p may have flipped file<->dir or become a symlink in the
+      // race window, which would let analyzeTree skip recursion and rm an
+      // unverified subtree. Verify what we are actually about to remove.
+      const freshSt = await this.fsImpl.lstat(real);
+      if (freshSt.isSymbolicLink()) {
+        printVerbose(`tmp: refusing symlink (race) ${real}`);
+        return;
+      }
       const budget: WalkBudget = {
         deadline: Date.now() + this.budgets.perCandidateMs,
         nodesLeft: MAX_NODES_PER_CANDIDATE,
       };
-      const r = await analyzeTree(real, st, Date.now(), budget, this.fsImpl);
+      const r = await analyzeTree(
+        real,
+        freshSt,
+        Date.now(),
+        budget,
+        this.fsImpl,
+      );
       if (!r.eligible) {
         printVerbose(`tmp: skipping ${p} (now active: ${r.reason})`);
         return;
