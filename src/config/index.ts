@@ -58,6 +58,7 @@ export const defaultConfig: UserConfig = {
     gradle: true,
     "universal-binary": false, // More conservative - modifies application binaries
     "app-caches": true, // Discovered app caches are tier-gated per category
+    tmp: true, // System temp cleaner; active-task-aware so default-on is safe
   },
 
   // Granular per-tool settings. app-caches ships with display defaults and an

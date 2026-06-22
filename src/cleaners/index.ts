@@ -57,6 +57,7 @@ import gradleCleaner from "./gradle";
 import universalBinaryCleaner from "./universalBinary";
 import shipitCleaner from "./shipit";
 import appCachesCleaner from "./appCacheDiscovery";
+import tmpCleaner from "./tmp";
 
 export class CacheManager {
   private cleaners: Map<string, CleanerModule>;
@@ -111,6 +112,7 @@ export class CacheManager {
     this.cleaners.set("universal-binary", universalBinaryCleaner);
     this.cleaners.set("shipit", shipitCleaner);
     this.cleaners.set("app-caches", appCachesCleaner);
+    this.cleaners.set("tmp", tmpCleaner);
   }
 
   /**
