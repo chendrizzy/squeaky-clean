@@ -76,6 +76,122 @@ function getTypeEmoji(type: string): string {
   }
 }
 
+/**
+ * Prompts for a top-level selection method and resolves it to cache names.
+ * Returns null when the user chooses to exit entirely (vs. an empty array,
+ * which means "try a method again" - the caller treats those differently).
+ */
+async function pickSelectionMethod(
+  availableCaches: any[],
+  totalSize: number,
+): Promise<string[] | null> {
+  const { selectionMethod } = await inquirer.prompt([
+    {
+      type: "list",
+      name: "selectionMethod",
+      message: "How would you like to select caches to clean?",
+      choices: [
+        {
+          name: `🧹 Clean all caches (save ${formatSizeWithColor(totalSize)})`,
+          value: "all",
+        },
+        {
+          name: "🎯 Select individual caches",
+          value: "individual",
+        },
+        {
+          name: "📂 Select by cache type",
+          value: "type",
+        },
+        {
+          name: "❌ Exit without cleaning",
+          value: "exit",
+        },
+      ],
+    },
+  ]);
+
+  if (selectionMethod === "exit") return null;
+
+  if (selectionMethod === "all") {
+    return availableCaches.map((cache: any) => cache.name);
+  }
+
+  if (selectionMethod === "individual") {
+    const { caches } = await inquirer.prompt([
+      {
+        type: "checkbox",
+        name: "caches",
+        message: "Select caches to clean:",
+        pageSize: 15,
+        loop: false,
+        choices: availableCaches.map((cache: any) => ({
+          name: `${getCacheEmoji(cache.type)} ${cache.name}${safetyBadge(cache)} (${formatSizeWithColor(cache.size)}) - ${cache.description}`,
+          value: cache.name,
+        })),
+      },
+    ]);
+    return caches;
+  }
+
+  // type
+  const cacheTypes = [
+    ...new Set(availableCaches.map((cache: any) => cache.type)),
+  ];
+  const typeChoices = cacheTypes.map((type: string) => {
+    const typeCaches = availableCaches.filter(
+      (cache: any) => cache.type === type,
+    );
+    const typeSize = typeCaches.reduce(
+      (sum: number, cache: any) => sum + cache.size,
+      0,
+    );
+    return {
+      name: `${getTypeEmoji(type)} ${type} (${typeCaches.length} caches, ${formatSizeWithColor(typeSize)})`,
+      value: type,
+    };
+  });
+
+  const { types } = await inquirer.prompt([
+    {
+      type: "checkbox",
+      name: "types",
+      message: "Select cache types to clean:",
+      choices: typeChoices,
+    },
+  ]);
+
+  return availableCaches
+    .filter((cache: any) => types.includes(cache.type))
+    .map((cache: any) => cache.name);
+}
+
+/**
+ * Lets the user add/remove individual caches from an existing selection -
+ * the reroute target when a dry-run reveals something unwanted, so a single
+ * bad pick doesn't force restarting the whole selection flow.
+ */
+async function adjustSelection(
+  availableCaches: any[],
+  currentSelection: string[],
+): Promise<string[]> {
+  const { caches } = await inquirer.prompt([
+    {
+      type: "checkbox",
+      name: "caches",
+      message: "Adjust your selection (checked = will be cleaned):",
+      pageSize: 15,
+      loop: false,
+      choices: availableCaches.map((cache: any) => ({
+        name: `${getCacheEmoji(cache.type)} ${cache.name}${safetyBadge(cache)} (${formatSizeWithColor(cache.size)}) - ${cache.description}`,
+        value: cache.name,
+        checked: currentSelection.includes(cache.name),
+      })),
+    },
+  ]);
+  return caches;
+}
+
 export const interactiveCommand = new Command("interactive")
   .alias("i")
   .description("interactively select and clean caches with guided prompts")
@@ -145,243 +261,187 @@ export const interactiveCommand = new Command("interactive")
         ),
       );
 
-      // Selection method
-      const { selectionMethod } = await inquirer.prompt([
-        {
-          type: "list",
-          name: "selectionMethod",
-          message: "How would you like to select caches to clean?",
-          choices: [
-            {
-              name: `🧹 Clean all caches (save ${formatSizeWithColor(totalSize)})`,
-              value: "all",
-            },
-            {
-              name: "🎯 Select individual caches",
-              value: "individual",
-            },
-            {
-              name: "📂 Select by cache type",
-              value: "type",
-            },
-            {
-              name: "❌ Exit without cleaning",
-              value: "exit",
-            },
-          ],
-        },
-      ]);
-
-      if (selectionMethod === "exit") {
-        console.log(pc.yellow("\n👋 Exiting without cleaning caches."));
-        return;
-      }
-
       let selectedCaches: string[] = [];
 
-      if (selectionMethod === "all") {
-        selectedCaches = availableCaches.map((cache: any) => cache.name);
-      } else if (selectionMethod === "individual") {
-        const { caches } = await inquirer.prompt([
-          {
-            type: "checkbox",
-            name: "caches",
-            message: "Select caches to clean:",
-            choices: availableCaches.map((cache: any) => ({
-              name: `${getCacheEmoji(cache.type)} ${cache.name}${safetyBadge(cache)} (${formatSizeWithColor(cache.size)}) - ${cache.description}`,
-              value: cache.name,
-            })),
-          },
-        ]);
-        selectedCaches = caches;
-      } else if (selectionMethod === "type") {
-        const cacheTypes = [
-          ...new Set(availableCaches.map((cache: any) => cache.type)),
-        ];
-        const typeChoices = cacheTypes.map((type: string) => {
-          const typeCaches = availableCaches.filter(
-            (cache: any) => cache.type === type,
-          );
-          const typeSize = typeCaches.reduce(
-            (sum: number, cache: any) => sum + cache.size,
-            0,
-          );
-          return {
-            name: `${getTypeEmoji(type)} ${type} (${typeCaches.length} caches, ${formatSizeWithColor(typeSize)})`,
-            value: type,
-          };
-        });
-
-        const { types } = await inquirer.prompt([
-          {
-            type: "checkbox",
-            name: "types",
-            message: "Select cache types to clean:",
-            choices: typeChoices,
-          },
-        ]);
-
-        selectedCaches = availableCaches
-          .filter((cache: any) => types.includes(cache.type))
-          .map((cache: any) => cache.name);
-      }
-
-      if (selectedCaches.length === 0) {
-        console.log(pc.yellow("\n⚠️  No caches selected. Exiting."));
-        return;
-      }
-
-      // Show what will be cleaned
-      const selectedSize = availableCaches
-        .filter((cache: any) => selectedCaches.includes(cache.name))
-        .reduce((sum: number, cache: any) => sum + cache.size, 0);
-
-      console.log(pc.bold("\n🎯 Selected for cleaning:"));
-      console.log(
-        pc.gray(
-          `   This will free up approximately ${formatSizeWithColor(selectedSize)}`,
-        ),
-      );
-      selectedCaches.forEach((name: string) => {
-        const cache = availableCaches.find((c: any) => c.name === name);
-        if (cache) {
-          const emoji = getCacheEmoji(cache.type);
-          console.log(
-            `   ${emoji} ${name} - ${formatSizeWithColor(cache.size || 0)}`,
-          );
-        }
-      });
-
-      // Confirmation
-      const { confirmClean, dryRun } = await inquirer
-        .prompt([
-          {
-            type: "list",
-            name: "confirmClean",
-            message: "How would you like to proceed?",
-            choices: [
-              {
-                name: "🔍 Dry run (preview what would be cleaned)",
-                value: "dry",
-              },
-              {
-                name: "🧹 Clean selected caches now",
-                value: "clean",
-              },
-              {
-                name: "❌ Cancel",
-                value: "cancel",
-              },
-            ],
-          },
-        ])
-        .then((answers) => ({
-          confirmClean: answers.confirmClean,
-          dryRun: answers.confirmClean === "dry",
-        }));
-
-      if (confirmClean === "cancel") {
-        console.log(pc.yellow("\n👋 Operation cancelled."));
-        return;
-      }
-
-      const isDryRun = dryRun || confirmClean === "dry";
-
-      // Execute cleaning
-      console.log(
-        pc.bold(
-          `\n${isDryRun ? "🔍 DRY RUN: " : "🧹 "}Cleaning selected caches...\n`,
-        ),
-      );
-
-      // Convert selectedCaches to exclude list (all caches except selected ones)
-      const allCleaners = await cacheManager.getAllCacheInfo();
-      const excludeCaches = allCleaners
-        .filter((cache: any) => !selectedCaches.includes(cache.name))
-        .map((cache: any) => cache.name);
-
-      const results = await cacheManager.cleanAllCaches({
-        dryRun: isDryRun,
-        exclude: excludeCaches,
-      });
-
-      // Display results
-      let totalFreed = 0;
-      results.forEach((result: any) => {
-        const name = result.name;
-        if (!selectedCaches.includes(name)) return;
-
-        const emoji = result.success ? "✅" : "❌";
-        const freed = result.sizeBefore;
-        totalFreed += freed;
-
-        if (result.success) {
-          const freedStr =
-            freed > 0
-              ? ` (${formatSizeWithColor(freed)} ${isDryRun ? "would be " : ""}freed)`
-              : "";
-          console.log(`${emoji} ${name}${freedStr}`);
-
-          if (
-            options.verbose &&
-            result.clearedPaths &&
-            result.clearedPaths.length > 0
-          ) {
-            result.clearedPaths.forEach((path: string) => {
-              console.log(pc.gray(`     → ${path}`));
-            });
+      // Outer loop: a full reselection (e.g. switching from "by type" to
+      // "individual") re-enters here without re-scanning caches.
+      sessionLoop: for (;;) {
+        if (selectedCaches.length === 0) {
+          const picked = await pickSelectionMethod(availableCaches, totalSize);
+          if (picked === null) {
+            console.log(pc.yellow("\n👋 Exiting without cleaning caches."));
+            return;
           }
-        } else {
-          console.log(
-            `${emoji} ${name}: ${pc.red(result.error || "Unknown error")}`,
-          );
+          if (picked.length === 0) {
+            console.log(
+              pc.yellow("\n⚠️  No caches selected. Choose again, or exit."),
+            );
+            continue sessionLoop;
+          }
+          selectedCaches = picked;
         }
-      });
 
-      // Summary
-      console.log();
-      if (totalFreed > 0) {
-        console.log(
-          `   ${pc.green(formatSizeWithColor(totalFreed))} ${isDryRun ? "would be" : "was"} freed\n`,
-        );
-      } else {
-        console.log(pc.yellow("   No space was freed\n"));
-      }
+        // Inner loop: review the current selection and act on it. A dry run
+        // loops back here instead of forcing a binary proceed-or-exit choice,
+        // so a dry-run surprise can be fixed with "Adjust selection" rather
+        // than restarting the whole command.
+        reviewLoop: for (;;) {
+          const selectedSize = availableCaches
+            .filter((cache: any) => selectedCaches.includes(cache.name))
+            .reduce((sum: number, cache: any) => sum + cache.size, 0);
 
-      if (isDryRun) {
-        const { proceedWithClean } = await inquirer.prompt([
-          {
-            type: "confirm",
-            name: "proceedWithClean",
-            message: "Would you like to proceed with the actual cleaning?",
-            default: false,
-          },
-        ]);
-
-        if (proceedWithClean) {
-          console.log(pc.bold("\n🧹 Proceeding with actual cleaning...\n"));
-          const realResults = await cacheManager.cleanAllCaches({
-            dryRun: false,
-            exclude: excludeCaches,
-          });
-
-          let realFreed = 0;
-          realResults.forEach((result: any) => {
-            const name = result.name;
-            if (selectedCaches.includes(name) && result.success) {
-              realFreed += result.sizeBefore;
+          console.log(pc.bold("\n🎯 Selected for cleaning:"));
+          console.log(
+            pc.gray(
+              `   This will free up approximately ${formatSizeWithColor(selectedSize)}`,
+            ),
+          );
+          selectedCaches.forEach((name: string) => {
+            const cache = availableCaches.find((c: any) => c.name === name);
+            if (cache) {
+              const emoji = getCacheEmoji(cache.type);
+              console.log(
+                `   ${emoji} ${name} - ${formatSizeWithColor(cache.size || 0)}`,
+              );
             }
           });
 
+          const { action } = await inquirer.prompt([
+            {
+              type: "list",
+              name: "action",
+              message: "How would you like to proceed?",
+              choices: [
+                {
+                  name: "🔍 Dry run (preview what would be cleaned)",
+                  value: "dry",
+                },
+                {
+                  name: "🧹 Clean selected caches now",
+                  value: "clean",
+                },
+                {
+                  name: "✏️  Adjust selection",
+                  value: "adjust",
+                },
+                {
+                  name: "🔁 Choose a different selection method",
+                  value: "restart-selection",
+                },
+                {
+                  name: "❌ Cancel",
+                  value: "cancel",
+                },
+              ],
+            },
+          ]);
+
+          if (action === "cancel") {
+            console.log(pc.yellow("\n👋 Operation cancelled."));
+            return;
+          }
+
+          if (action === "restart-selection") {
+            selectedCaches = [];
+            continue sessionLoop;
+          }
+
+          if (action === "adjust") {
+            selectedCaches = await adjustSelection(
+              availableCaches,
+              selectedCaches,
+            );
+            if (selectedCaches.length === 0) {
+              console.log(
+                pc.yellow(
+                  "\n⚠️  No caches selected. Choose a selection method again.",
+                ),
+              );
+              continue sessionLoop;
+            }
+            continue reviewLoop;
+          }
+
+          const isDryRun = action === "dry";
+
+          // Execute cleaning
           console.log(
-            pc.green(
-              `✨ Real cleaning complete! Freed ${formatSizeWithColor(realFreed)}\n`,
+            pc.bold(
+              `\n${isDryRun ? "🔍 DRY RUN: " : "🧹 "}Cleaning selected caches...\n`,
             ),
           );
+
+          // `include` clears exactly the selected caches without re-scanning
+          // every other cleaner just to build an exclude list.
+          const results = await cacheManager.cleanAllCaches({
+            dryRun: isDryRun,
+            include: selectedCaches,
+          });
+
+          // Display results
+          let totalFreed = 0;
+          results.forEach((result: any) => {
+            const emoji = result.success ? "✅" : "❌";
+            const freed = result.sizeBefore;
+            totalFreed += freed;
+
+            if (result.success) {
+              const freedStr =
+                freed > 0
+                  ? ` (${formatSizeWithColor(freed)} ${isDryRun ? "would be " : ""}freed)`
+                  : "";
+              console.log(`${emoji} ${result.name}${freedStr}`);
+
+              if (
+                options.verbose &&
+                result.clearedPaths &&
+                result.clearedPaths.length > 0
+              ) {
+                result.clearedPaths.forEach((path: string) => {
+                  console.log(pc.gray(`     → ${path}`));
+                });
+              }
+            } else {
+              console.log(
+                `${emoji} ${result.name}: ${pc.red(result.error || "Unknown error")}`,
+              );
+            }
+          });
+
+          // Summary
+          console.log();
+          if (totalFreed > 0) {
+            console.log(
+              `   ${pc.green(formatSizeWithColor(totalFreed))} ${isDryRun ? "would be" : "was"} freed\n`,
+            );
+          } else {
+            console.log(pc.yellow("   No space was freed\n"));
+          }
+
+          if (isDryRun) {
+            // Back to the same review menu: now the user can clean for real,
+            // adjust the selection based on what the preview showed, restart
+            // with a different method, or cancel - no dead end.
+            continue reviewLoop;
+          }
+
+          console.log(pc.bold("🎉 Interactive cleaning session complete!"));
+
+          const { cleanMore } = await inquirer.prompt([
+            {
+              type: "confirm",
+              name: "cleanMore",
+              message: "Would you like to clean anything else?",
+              default: false,
+            },
+          ]);
+
+          if (!cleanMore) return;
+
+          selectedCaches = [];
+          continue sessionLoop;
         }
       }
-
-      console.log(pc.bold("🎉 Interactive cleaning session complete!"));
     } catch (error) {
       printError(
         `Interactive command failed: ${error instanceof Error ? error.message : error}`,

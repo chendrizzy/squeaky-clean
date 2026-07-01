@@ -564,6 +564,164 @@ async function promptAppCacheExcludes(
   return [...new Set([...preserved, ...excludedFromPicker])];
 }
 
+const TOOL_TYPE_EMOJIS: Record<string, string> = {
+  "package-manager": "📦",
+  "build-tool": "🔨",
+  ide: "💻",
+  browser: "🌐",
+  system: "⚙️",
+};
+
+interface OutputStepAnswers {
+  verbose: boolean;
+  useColors: boolean;
+}
+
+/** Step 1: Output preferences. Re-runnable; `previous` re-seeds the defaults
+ * when the user jumps back to this step instead of restarting the wizard. */
+async function runOutputStep(
+  currentConfig: UserConfig,
+  previous?: OutputStepAnswers,
+): Promise<OutputStepAnswers> {
+  console.log(pc.bold("📝 Step 1: Output Preferences"));
+  return inquirer.prompt<OutputStepAnswers>([
+    {
+      type: "confirm",
+      name: "verbose",
+      message: "Enable verbose output (shows detailed information)?",
+      default: previous?.verbose ?? currentConfig.output?.verbose ?? false,
+    },
+    {
+      type: "confirm",
+      name: "useColors",
+      message:
+        "Enable colored output (recommended for terminals that support colors)?",
+      default:
+        previous?.useColors ?? currentConfig.output?.useColors !== false,
+    },
+  ]);
+}
+
+interface SafetyStepAnswers {
+  requireConfirmation: boolean;
+}
+
+/** Step 2: Safety preferences. Re-runnable like {@link runOutputStep}. */
+async function runSafetyStep(
+  previous?: SafetyStepAnswers,
+): Promise<SafetyStepAnswers> {
+  console.log(pc.bold("\n🔒 Step 2: Safety Preferences"));
+  return inquirer.prompt<SafetyStepAnswers>([
+    {
+      type: "confirm",
+      name: "requireConfirmation",
+      message:
+        "Require confirmation before cleaning caches (recommended for safety)?",
+      default: previous?.requireConfirmation ?? config.shouldRequireConfirmation(),
+    },
+  ]);
+}
+
+/** Step 3: Tool enablement by category. Re-runnable; `previous` re-seeds each
+ * checkbox from the last in-wizard answer rather than the persisted config. */
+async function runToolsStep(
+  groupedCleaners: Record<string, { name: string; description: string }[]>,
+  previous?: Record<string, boolean>,
+): Promise<Record<string, boolean>> {
+  console.log(pc.bold("\n🔧 Step 3: Tool Configuration"));
+  console.log(
+    pc.gray("Configure which cache cleaners should be enabled by category.\n"),
+  );
+
+  const toolAnswers: Record<string, boolean> = {};
+
+  for (const [type, cleaners] of Object.entries(groupedCleaners)) {
+    if (cleaners.length === 0) continue;
+
+    console.log(
+      pc.bold(
+        `\n${TOOL_TYPE_EMOJIS[type]} ${type.charAt(0).toUpperCase() + type.slice(1).replace("-", " ")} Tools:`,
+      ),
+    );
+
+    const categoryAnswers = await inquirer.prompt([
+      {
+        type: "checkbox",
+        name: "enabledTools",
+        message: `Select which ${type.replace("-", " ")} tools to enable:`,
+        // Bound the visible rows so long categories (13 package managers)
+        // page instead of flooding the terminal; loop:false stops wrap-around.
+        pageSize: 15,
+        loop: false,
+        choices: cleaners.map((cleaner) => ({
+          name: `${cleaner.name} - ${cleaner.description}`,
+          value: cleaner.name,
+          checked:
+            previous?.[cleaner.name] ?? config.isToolEnabled(cleaner.name as any),
+        })),
+      },
+    ]);
+
+    // Mark selected tools as enabled, others as disabled for this category
+    cleaners.forEach((cleaner) => {
+      toolAnswers[cleaner.name] = categoryAnswers.enabledTools.includes(
+        cleaner.name,
+      );
+    });
+  }
+
+  return toolAnswers;
+}
+
+interface AppCacheStepAnswers {
+  groupBy: AppCacheGroupAxis[];
+  expand: boolean;
+  topN: number;
+  exclude: string[];
+}
+
+/** Step 4: App caches (system-wide) display + exclusions. Re-runnable. */
+async function runAppCachesStep(
+  currentDisplay: ReturnType<typeof config.getAppCacheDisplay>,
+  currentExclude: string[],
+  previous?: AppCacheStepAnswers,
+): Promise<AppCacheStepAnswers> {
+  console.log(pc.bold("\n🧹 Step 4: App Caches (system-wide)"));
+  console.log(
+    pc.gray(
+      "Control how discovered application caches are shown and which apps to skip.\n",
+    ),
+  );
+  const groupBy = await promptGroupHierarchy(
+    previous?.groupBy ?? currentDisplay.groupBy,
+  );
+  const appCacheAnswers = await inquirer.prompt([
+    {
+      type: "confirm",
+      name: "expand",
+      message:
+        "Expand the full breakdown by default? (No = one-line summary; -v always expands)",
+      default: previous?.expand ?? currentDisplay.expand,
+    },
+    {
+      type: "input",
+      name: "topN",
+      message: "Top apps to show inline in the summary line:",
+      default: String(previous?.topN ?? currentDisplay.topN),
+      validate: (value: string) => {
+        const n = Number(value);
+        return Number.isInteger(n) && n >= 0
+          ? true
+          : "Enter a non-negative whole number";
+      },
+    },
+  ]);
+  const topN = Math.max(0, Math.floor(Number(appCacheAnswers.topN) || 0));
+  const exclude = await promptAppCacheExcludes(previous?.exclude ?? currentExclude);
+
+  return { groupBy, expand: appCacheAnswers.expand, topN, exclude };
+}
+
 async function interactiveConfigWizard(): Promise<void> {
   console.log("\n🧙‍♂️ Interactive Configuration Wizard");
   console.log(
@@ -582,173 +740,108 @@ async function interactiveConfigWizard(): Promise<void> {
     system: allCleaners.filter((c) => c.type === "system"),
   };
 
-  // Step 1: Output preferences
-  console.log(pc.bold("📝 Step 1: Output Preferences"));
-  const outputAnswers = await inquirer.prompt([
-    {
-      type: "confirm",
-      name: "verbose",
-      message: "Enable verbose output (shows detailed information)?",
-      default: currentConfig.output?.verbose || false,
-    },
-    {
-      type: "confirm",
-      name: "useColors",
-      message:
-        "Enable colored output (recommended for terminals that support colors)?",
-      default: currentConfig.output?.useColors !== false,
-    },
-  ]);
+  const currentDisplay = config.getAppCacheDisplay();
+  const currentExclude = config.getAppCacheExclude();
 
-  // Step 2: Safety preferences
-  console.log(pc.bold("\n🔒 Step 2: Safety Preferences"));
-  const safetyAnswers = await inquirer.prompt([
-    {
-      type: "confirm",
-      name: "requireConfirmation",
-      message:
-        "Require confirmation before cleaning caches (recommended for safety)?",
-      default: config.shouldRequireConfirmation(),
-    },
-  ]);
+  let outputAnswers = await runOutputStep(currentConfig);
+  let safetyAnswers = await runSafetyStep();
+  let toolAnswers = await runToolsStep(groupedCleaners);
+  let appCache = await runAppCachesStep(currentDisplay, currentExclude);
 
-  // Step 3: Tool enablement by category
-  console.log(pc.bold("\n🔧 Step 3: Tool Configuration"));
-  console.log(
-    pc.gray("Configure which cache cleaners should be enabled by category.\n"),
-  );
-
-  const toolAnswers: Record<string, boolean> = {};
-
-  for (const [type, cleaners] of Object.entries(groupedCleaners)) {
-    if (cleaners.length === 0) continue;
-
-    const typeEmojis: Record<string, string> = {
-      "package-manager": "📦",
-      "build-tool": "🔨",
-      ide: "💻",
-      browser: "🌐",
-      system: "⚙️",
-    };
-
+  // Review loop: replaces the old binary "Apply? y/n" with a menu that can
+  // jump back to a single step instead of discarding all answers and forcing
+  // a full restart of the wizard over one mistake.
+  reviewLoop: for (;;) {
+    console.log(pc.bold("\n📋 Step 5: Review Configuration"));
+    console.log("\nYour new configuration will be:");
     console.log(
-      pc.bold(
-        `\n${typeEmojis[type]} ${type.charAt(0).toUpperCase() + type.slice(1).replace("-", " ")} Tools:`,
-      ),
+      `  ${symbols.folder} Verbose output: ${outputAnswers.verbose ? pc.green("enabled") : pc.gray("disabled")}`,
+    );
+    console.log(
+      `  ${symbols.folder} Colored output: ${outputAnswers.useColors ? pc.green("enabled") : pc.gray("disabled")}`,
+    );
+    console.log(
+      `  ${symbols.folder} Require confirmation: ${safetyAnswers.requireConfirmation ? pc.yellow("yes") : pc.green("no")}`,
+    );
+    console.log(
+      `  ${symbols.folder} App-caches grouping: ${pc.cyan(formatHierarchy(appCache.groupBy))}${appCache.expand ? pc.gray(" (expanded)") : pc.gray(" (summary)")}`,
+    );
+    console.log(
+      `  ${symbols.folder} App-caches excludes: ${appCache.exclude.length > 0 ? pc.cyan(appCache.exclude.join(", ")) : pc.gray("none")}`,
     );
 
-    const categoryAnswers = await inquirer.prompt([
+    console.log("\n🔧 Enabled tools:");
+    const enabledTools = Object.entries(toolAnswers)
+      .filter(([_, enabled]) => enabled)
+      .map(([name, _]) => name);
+    const disabledTools = Object.entries(toolAnswers)
+      .filter(([_, enabled]) => !enabled)
+      .map(([name, _]) => name);
+
+    if (enabledTools.length > 0) {
+      enabledTools.forEach((tool) => {
+        console.log(`     ${pc.green("✓")} ${tool}`);
+      });
+    }
+
+    if (disabledTools.length > 0) {
+      console.log("\n🔧 Disabled tools:");
+      disabledTools.forEach((tool) => {
+        console.log(`     ${pc.red("✗")} ${tool}`);
+      });
+    }
+
+    const { reviewAction } = await inquirer.prompt([
       {
-        type: "checkbox",
-        name: "enabledTools",
-        message: `Select which ${type.replace("-", " ")} tools to enable:`,
-        // Bound the visible rows so long categories (13 package managers)
-        // page instead of flooding the terminal; loop:false stops wrap-around.
-        pageSize: 15,
-        loop: false,
-        choices: cleaners.map((cleaner) => ({
-          name: `${cleaner.name} - ${cleaner.description}`,
-          value: cleaner.name,
-          checked: config.isToolEnabled(cleaner.name as any),
-        })),
+        type: "list",
+        name: "reviewAction",
+        message: "\nApply this configuration?",
+        choices: [
+          { name: "✅ Apply this configuration", value: "apply" },
+          { name: "↩️  Go back and change a step", value: "edit" },
+          { name: "❌ Discard changes and exit", value: "discard" },
+        ],
       },
     ]);
 
-    // Mark selected tools as enabled, others as disabled for this category
-    cleaners.forEach((cleaner) => {
-      toolAnswers[cleaner.name] = categoryAnswers.enabledTools.includes(
-        cleaner.name,
-      );
-    });
-  }
+    if (reviewAction === "discard") {
+      printWarning("\nConfiguration changes cancelled.");
+      return;
+    }
 
-  // Step 4: App caches (system-wide) display + exclusions
-  console.log(pc.bold("\n🧹 Step 4: App Caches (system-wide)"));
-  console.log(
-    pc.gray(
-      "Control how discovered application caches are shown and which apps to skip.\n",
-    ),
-  );
-  const currentDisplay = config.getAppCacheDisplay();
-  const currentExclude = config.getAppCacheExclude();
-  const appCacheGroupBy = await promptGroupHierarchy(currentDisplay.groupBy);
-  const appCacheAnswers = await inquirer.prompt([
-    {
-      type: "confirm",
-      name: "expand",
-      message:
-        "Expand the full breakdown by default? (No = one-line summary; -v always expands)",
-      default: currentDisplay.expand,
-    },
-    {
-      type: "input",
-      name: "topN",
-      message: "Top apps to show inline in the summary line:",
-      default: String(currentDisplay.topN),
-      validate: (value: string) => {
-        const n = Number(value);
-        return Number.isInteger(n) && n >= 0
-          ? true
-          : "Enter a non-negative whole number";
-      },
-    },
-  ]);
-  const appCacheTopN = Math.max(
-    0,
-    Math.floor(Number(appCacheAnswers.topN) || 0),
-  );
-  const appCacheExclude = await promptAppCacheExcludes(currentExclude);
+    if (reviewAction === "edit") {
+      const { stepToEdit } = await inquirer.prompt([
+        {
+          type: "list",
+          name: "stepToEdit",
+          message: "Which step would you like to revisit?",
+          choices: [
+            { name: "📝 Step 1: Output Preferences", value: 1 },
+            { name: "🔒 Step 2: Safety Preferences", value: 2 },
+            { name: "🔧 Step 3: Tool Configuration", value: 3 },
+            { name: "🧹 Step 4: App Caches", value: 4 },
+            { name: "↩️  Back to review (no changes)", value: 0 },
+          ],
+        },
+      ]);
 
-  // Step 5: Review and apply
-  console.log(pc.bold("\n📋 Step 5: Review Configuration"));
-  console.log("\nYour new configuration will be:");
-  console.log(
-    `  ${symbols.folder} Verbose output: ${outputAnswers.verbose ? pc.green("enabled") : pc.gray("disabled")}`,
-  );
-  console.log(
-    `  ${symbols.folder} Colored output: ${outputAnswers.useColors ? pc.green("enabled") : pc.gray("disabled")}`,
-  );
-  console.log(
-    `  ${symbols.folder} Require confirmation: ${safetyAnswers.requireConfirmation ? pc.yellow("yes") : pc.green("no")}`,
-  );
-  console.log(
-    `  ${symbols.folder} App-caches grouping: ${pc.cyan(formatHierarchy(appCacheGroupBy))}${appCacheAnswers.expand ? pc.gray(" (expanded)") : pc.gray(" (summary)")}`,
-  );
-  console.log(
-    `  ${symbols.folder} App-caches excludes: ${appCacheExclude.length > 0 ? pc.cyan(appCacheExclude.join(", ")) : pc.gray("none")}`,
-  );
+      if (stepToEdit === 1) {
+        outputAnswers = await runOutputStep(currentConfig, outputAnswers);
+      } else if (stepToEdit === 2) {
+        safetyAnswers = await runSafetyStep(safetyAnswers);
+      } else if (stepToEdit === 3) {
+        toolAnswers = await runToolsStep(groupedCleaners, toolAnswers);
+      } else if (stepToEdit === 4) {
+        appCache = await runAppCachesStep(
+          currentDisplay,
+          currentExclude,
+          appCache,
+        );
+      }
 
-  console.log("\n🔧 Enabled tools:");
-  const enabledTools = Object.entries(toolAnswers)
-    .filter(([_, enabled]) => enabled)
-    .map(([name, _]) => name);
-  const disabledTools = Object.entries(toolAnswers)
-    .filter(([_, enabled]) => !enabled)
-    .map(([name, _]) => name);
+      continue reviewLoop;
+    }
 
-  if (enabledTools.length > 0) {
-    enabledTools.forEach((tool) => {
-      console.log(`     ${pc.green("✓")} ${tool}`);
-    });
-  }
-
-  if (disabledTools.length > 0) {
-    console.log("\n🔧 Disabled tools:");
-    disabledTools.forEach((tool) => {
-      console.log(`     ${pc.red("✗")} ${tool}`);
-    });
-  }
-
-  const { confirmApply } = await inquirer.prompt([
-    {
-      type: "confirm",
-      name: "confirmApply",
-      message: "\nApply this configuration?",
-      default: true,
-    },
-  ]);
-
-  if (confirmApply) {
     // Apply the configuration
     const newConfig = {
       ...currentConfig,
@@ -774,11 +867,11 @@ async function interactiveConfigWizard(): Promise<void> {
             currentConfig.toolSettings?.["app-caches"]?.enabled ??
             true,
           display: {
-            expand: appCacheAnswers.expand,
-            groupBy: appCacheGroupBy,
-            topN: appCacheTopN,
+            expand: appCache.expand,
+            groupBy: appCache.groupBy,
+            topN: appCache.topN,
           },
-          exclude: appCacheExclude,
+          exclude: appCache.exclude,
         },
       },
     };
@@ -789,7 +882,6 @@ async function interactiveConfigWizard(): Promise<void> {
     // Show final configuration
     console.log();
     await showCurrentConfig();
-  } else {
-    printWarning("\nConfiguration changes cancelled.");
+    return;
   }
 }

@@ -7,12 +7,36 @@ import {
   symbols,
 } from "../utils/cli";
 import { cacheManager } from "../cleaners";
+import { config } from "../config";
 import ora from "ora";
+import inquirer from "inquirer";
 
 interface AutoOptions {
   safe?: boolean;
   aggressive?: boolean;
+  dryRun?: boolean;
+  force?: boolean;
   verbose?: boolean;
+}
+
+function canPromptForConfirmation(): boolean {
+  return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+}
+
+async function confirmAutoClean(): Promise<boolean> {
+  try {
+    const { confirmed } = await inquirer.prompt<{ confirmed: boolean }>([
+      {
+        type: "confirm",
+        name: "confirmed",
+        message: "Proceed with automatic cache cleanup?",
+        default: false,
+      },
+    ]);
+    return confirmed;
+  } catch {
+    return false;
+  }
 }
 
 export async function autoCommand(options: AutoOptions): Promise<void> {
@@ -183,69 +207,123 @@ export async function autoCommand(options: AutoOptions): Promise<void> {
       ? recommendations.map((r) => r.cache.name)
       : safesToClean;
 
-    if (cachesToClean.length > 0) {
-      const excludeCaches = cacheInfos
-        .filter((cache) => !cachesToClean.includes(cache.name))
-        .map((cache) => cache.name);
+    if (cachesToClean.length === 0) {
+      printInfo("No caches selected for automatic cleaning.");
+      return;
+    }
+
+    if (options.dryRun) {
+      printInfo("🔍 Dry run: no caches will actually be cleaned.");
+    } else if (!options.force && config.shouldRequireConfirmation()) {
+      printWarning("This will permanently delete cache files.");
+      printInfo("Use --dry-run to preview or --force to skip this prompt.");
+
+      if (!canPromptForConfirmation()) {
+        printWarning(
+          "Confirmation is required, but this terminal cannot prompt.",
+        );
+        printInfo(
+          "No caches were cleaned. Re-run with --force to clean or --dry-run to preview.",
+        );
+        return;
+      }
+
+      const confirmed = await confirmAutoClean();
+      if (!confirmed) {
+        printInfo("Operation cancelled. No caches were cleaned.");
+        return;
+      }
+    }
+
+    console.log();
+    const cleanSpinner = ora(
+      options.dryRun
+        ? "Previewing recommended caches..."
+        : "Cleaning recommended caches...",
+    ).start();
+
+    try {
+      // `include` clears exactly the recommended caches without re-scanning
+      // every other cleaner just to build an exclude list.
+      const results = await cacheManager.cleanAllCaches({
+        dryRun: Boolean(options.dryRun),
+        include: cachesToClean,
+      });
+
+      cleanSpinner.stop();
+
+      let actualFreed = 0;
+      let errorCount = 0;
 
       console.log();
-      const cleanSpinner = ora("Cleaning recommended caches...").start();
+      for (const result of results) {
+        if (result.success) {
+          const freed = options.dryRun
+            ? result.sizeBefore || 0
+            : (result.sizeBefore || 0) - (result.sizeAfter || 0);
+          actualFreed += freed;
 
-      try {
-        const results = await cacheManager.cleanAllCaches({
-          dryRun: false,
-          exclude: excludeCaches,
-        });
+          if (freed > 0) {
+            const action = options.dryRun ? "would be freed" : "freed";
+            printSuccess(
+              `${symbols.bubbles} ${result.name}: ${formatSizeWithColor(freed)} ${action}`,
+            );
 
-        cleanSpinner.stop();
-
-        let actualFreed = 0;
-        let cleanedCount = 0;
-        let errorCount = 0;
-
-        console.log();
-        for (const result of results) {
-          if (!cachesToClean.includes(result.name)) continue;
-
-          if (result.success) {
-            const freed = (result.sizeBefore || 0) - (result.sizeAfter || 0);
-            actualFreed += freed;
-            cleanedCount++;
-
-            if (freed > 0) {
-              printSuccess(
-                `${symbols.bubbles} ${result.name}: ${formatSizeWithColor(freed)} freed`,
-              );
+            if (
+              options.verbose &&
+              result.clearedPaths &&
+              result.clearedPaths.length > 0
+            ) {
+              result.clearedPaths.forEach((path) => {
+                printInfo(`     → ${path}`);
+              });
             }
-          } else {
-            errorCount++;
-            printError(`❌ ${result.name}: ${result.error || "Unknown error"}`);
           }
+        } else {
+          errorCount++;
+          printError(`❌ ${result.name}: ${result.error || "Unknown error"}`);
         }
+      }
 
-        console.log();
+      console.log();
 
+      if (options.dryRun) {
         if (actualFreed > 0) {
           printSuccess(
-            `🎉 Auto-cleaning complete! Freed ${formatSizeWithColor(actualFreed)}`,
+            `🔍 Dry run complete: ${formatSizeWithColor(actualFreed)} would be freed`,
           );
-          printSuccess(`✨ Your dev environment is now squeaky clean!`);
         } else {
-          printInfo("No space was actually freed (caches may have been empty)");
+          printInfo(
+            "Dry run complete: no space would be freed (caches may be empty)",
+          );
         }
-
-        if (needsReview.length > 0 && !options.aggressive) {
-          console.log();
-          printInfo("💡 Pro tip: Review the flagged caches manually:");
-          printInfo("   `squeaky clean --dry-run` to preview all caches");
-          printInfo("   `squeaky auto --aggressive` to clean everything");
-        }
-      } catch (error) {
-        cleanSpinner.fail("Auto-cleaning failed");
-        throw error;
+        printInfo("Run without --dry-run to actually clean these caches.");
+      } else if (actualFreed > 0) {
+        printSuccess(
+          `🎉 Auto-cleaning complete! Freed ${formatSizeWithColor(actualFreed)}`,
+        );
+        printSuccess(`✨ Your dev environment is now squeaky clean!`);
+      } else {
+        printInfo("No space was actually freed (caches may have been empty)");
       }
-    } else {
-      printInfo("No caches selected for automatic cleaning.");
+
+      if (errorCount > 0) {
+        printWarning(
+          `${errorCount} cache${errorCount > 1 ? "s" : ""} had errors`,
+        );
+      }
+
+      if (needsReview.length > 0 && !options.aggressive) {
+        console.log();
+        printInfo("💡 Pro tip: Review the flagged caches manually:");
+        printInfo("   `squeaky clean --dry-run` to preview all caches");
+        printInfo("   `squeaky auto --aggressive` to clean everything");
+      }
+    } catch (error) {
+      cleanSpinner.fail(
+        options.dryRun ? "Auto preview failed" : "Auto-cleaning failed",
+      );
+      throw error;
     }
   } catch (error) {
     printError(`Auto command error: ${error}`);

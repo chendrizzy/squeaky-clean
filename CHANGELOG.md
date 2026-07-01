@@ -31,8 +31,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Conservative by default** — only user-owned items untouched for 3+ days are cleaned (`probably-safe`/`safe`); recently-touched items (`caution`) are protected unless you run `--profile aggressive`; reclaim more aggressively with `--older-than`
   - **Containment-guarded deletion** — every removal is canonicalized (`realpath`) and asserted to be a strict descendant of a temp root before deletion; symlinks are never followed and a temp root itself is never a target
   - Defers to dedicated cleaners (`go-build`, `pip`) to avoid double-cleaning; tune via `toolSettings.tmp.exclude` (name globs)
+- **Dynamic rerouting in `interactive` and `config -i`** - both workflows now loop back to a review/adjust menu instead of forcing a full restart on a wrong pick
+  - `squeaky interactive`: after a dry run, choose to clean now, adjust the selection (add/remove individual caches), pick a different selection method, or cancel — a dry-run surprise no longer means restarting the whole command
+  - `config -i`: the final review step can jump back to a single step (Output/Safety/Tools/App Caches) to fix one answer instead of discarding the entire wizard
+- **`auto --dry-run` and `auto --force`** - preview what smart cleaning would do before it runs, and skip the new confirmation prompt when scripting
+
+### Changed
+- **`interactive`/`auto` clear via `include` instead of computing an exclude list** - skips a redundant full-cleaner rescan on every clean/dry-run/preview cycle
 
 ### Fixed
+- **`auto` now confirms before deleting** - it was the only destructive command with no confirmation prompt at all; it now matches `clean`'s safety gate (prompts unless `--dry-run` or `--force` is given)
+- **`auto --verbose`** - the flag existed but was never read; it now lists cleared paths like `clean`/`interactive` do
 - **Session flags no longer persist** - `--json`, `--verbose`, `--quiet`, and `--no-color` are now applied in memory per invocation instead of being written to `config.json`; previously, using `--json` once made every later run emit JSON
 - **`categories` respects emoji mode** - the `categories` command now honors `squeaky emojis off` (it previously always printed emoji)
 - **`--json` for `clean`** - now produces valid machine-readable output; diagnostics and banners no longer leak onto stdout

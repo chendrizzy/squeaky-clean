@@ -406,12 +406,31 @@ program
   .description("automatically clear caches based on smart detection")
   .option("-s, --safe", "only clear safe caches")
   .option("-a, --aggressive", "include more cache types")
+  .option(
+    "-d, --dry-run",
+    "show what auto would clean without actually cleaning",
+  )
+  .option("-f, --force", "skip confirmation prompts")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  $ squeaky auto --dry-run           # See what smart mode would clean
+  $ squeaky auto --safe --force      # Clean safe caches without prompting
+
+Recommendations are scored by size/age/safety; "safe" mode (default) only
+clears caches verified safe to auto-clean, "aggressive" clears everything
+recommended. Prompts for confirmation unless --dry-run or --force is set.
+`,
+  )
   .action(async (options) => {
     try {
       printHeader("Smart Cache Clearing");
 
+      // Merge global flags (e.g. -v) so the command sees per-run options
+      // like verbose without them being persisted to config.
       const { autoCommand } = await import("./commands/auto");
-      await autoCommand(options);
+      await autoCommand({ ...program.opts(), ...options });
     } catch (error) {
       printError(
         `Failed to auto-clear: ${error instanceof Error ? error.message : error}`,
@@ -511,6 +530,7 @@ Examples:
   $ squeaky list --sizes             # Show all caches with sizes
   $ squeaky config --interactive     # Configure cache preferences
   $ squeaky config --enable xcode chrome universal-binary # Enable multiple cleaners
+  $ squeaky auto --dry-run           # Preview smart automatic cleaning first
   $ squeaky auto --safe              # Smart automatic cleaning (safe mode)
   $ squeaky ub --list                # List Universal Binaries (Apple Silicon)
   $ squeaky ub                       # Interactive binary thinning
