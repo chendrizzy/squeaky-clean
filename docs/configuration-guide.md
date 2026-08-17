@@ -25,6 +25,8 @@ squeaky config --interactive
 
 This will guide you through all configuration options step-by-step.
 
+The same configuration file and active cleaning profile are used by the terminal CLI, guided terminal prompts, and the macOS Raycast extension. See [Raycast Extension & Platform Notes](raycast-extension.md) for the Raycast surface.
+
 ---
 
 ## Interactive Configuration Wizard
@@ -319,7 +321,7 @@ squeaky clean --all --exclude app-caches
 ### Location
 
 The configuration file is stored in:
-- **macOS**: `~/Library/Preferences/squeaky-clean-nodejs/config.json`
+- **macOS**: `~/Library/Preferences/squeaky-clean/config.json`
 - **Linux**: `~/.config/squeaky-clean/config.json`
 - **Windows**: `%APPDATA%/squeaky-clean/config.json`
 
@@ -332,45 +334,54 @@ squeaky config --path
 
 ```json
 {
-  \"enabledCaches\": {
-    \"packageManagers\": true,
-    \"buildTools\": true,
-    \"browsers\": false,
-    \"ides\": true,
-    \"system\": false
+  "activeProfile": "balanced",
+  "tools": {
+    "npm": true,
+    "yarn": true,
+    "pnpm": true,
+    "bun": true,
+    "pip": true,
+    "cargo": true,
+    "poetry": true,
+    "pipenv": true,
+    "webpack": true,
+    "vite": true,
+    "nx": true,
+    "turbo": true,
+    "flutter": true,
+    "gradle": true,
+    "vscode": true,
+    "xcode": true,
+    "androidstudio": true,
+    "jetbrains": true,
+    "chrome": true,
+    "firefox": true,
+    "docker": true,
+    "app-caches": true,
+    "tmp": true
   },
-  \"tools\": {
-    \"npm\": true,
-    \"yarn\": true,
-    \"pnpm\": true,
-    \"bun\": false,
-    \"pip\": false,
-    \"webpack\": true,
-    \"vite\": true,
-    \"nx\": false,
-    \"turbo\": false,
-    \"flutter\": false,
-    \"gradle\": false,
-    \"vscode\": true,
-    \"xcode\": true,
-    \"androidstudio\": false,
-    \"jetbrains\": false,
-    \"chrome\": false,
-    \"firefox\": false,
-    \"docker\": false
+  "toolSettings": {
+    "app-caches": {
+      "display": {
+        "expand": false,
+        "groupBy": ["tier", "kind", "app"],
+        "topN": 5
+      },
+      "exclude": []
+    }
   },
-  \"safety\": {
-    \"requireConfirmation\": true,
-    \"dryRunDefault\": false,
-    \"backupBeforeClearing\": false,
-    \"excludeSystemCritical\": true
+  "safety": {
+    "requireConfirmation": true,
+    "dryRunDefault": false,
+    "backupBeforeClearing": false,
+    "excludeSystemCritical": true
   },
-  \"output\": {
-    \"verbose\": false,
-    \"showSizes\": true,
-    \"useColors\": true
-  },
-  \"customPaths\": []
+  "output": {
+    "verbose": false,
+    "showSizes": true,
+    "useColors": true,
+    "emojis": "on"
+  }
 }
 ```
 
@@ -529,14 +540,15 @@ squeaky doctor
 
 ### Environment Variables
 
-Override configuration with environment variables:
+Core cleaning behavior is controlled by CLI flags and the config file, not environment variables. Current environment variables are limited to developer diagnostics and presentation:
 
 ```bash
-# Disable colors for current session
-SQUEAKY_NO_COLOR=1 squeaky clean
+# Disable or enable fun console styling
+SQUEAKY_FUN_MODE=0 squeaky clean
+SQUEAKY_FUN_MODE=1 squeaky clean
 
-# Force verbose mode
-SQUEAKY_VERBOSE=1 squeaky clean
+# Print app-cache discovery timing details for profiling
+SQUEAKY_PROFILE=1 squeaky categories --tool app-caches
 ```
 
 ### Custom Cache Paths
@@ -545,9 +557,9 @@ For non-standard installations, add custom paths (future feature):
 
 ```json
 {
-  \"customPaths\": [
-    \"/custom/path/to/npm-cache\",
-    \"/another/custom/cache/location\"
+  "customPaths": [
+    "/custom/path/to/npm-cache",
+    "/another/custom/cache/location"
   ]
 }
 ```

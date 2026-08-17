@@ -596,8 +596,7 @@ async function runOutputStep(
       name: "useColors",
       message:
         "Enable colored output (recommended for terminals that support colors)?",
-      default:
-        previous?.useColors ?? currentConfig.output?.useColors !== false,
+      default: previous?.useColors ?? currentConfig.output?.useColors !== false,
     },
   ]);
 }
@@ -617,7 +616,8 @@ async function runSafetyStep(
       name: "requireConfirmation",
       message:
         "Require confirmation before cleaning caches (recommended for safety)?",
-      default: previous?.requireConfirmation ?? config.shouldRequireConfirmation(),
+      default:
+        previous?.requireConfirmation ?? config.shouldRequireConfirmation(),
     },
   ]);
 }
@@ -657,7 +657,8 @@ async function runToolsStep(
           name: `${cleaner.name} - ${cleaner.description}`,
           value: cleaner.name,
           checked:
-            previous?.[cleaner.name] ?? config.isToolEnabled(cleaner.name as any),
+            previous?.[cleaner.name] ??
+            config.isToolEnabled(cleaner.name as any),
         })),
       },
     ]);
@@ -717,7 +718,9 @@ async function runAppCachesStep(
     },
   ]);
   const topN = Math.max(0, Math.floor(Number(appCacheAnswers.topN) || 0));
-  const exclude = await promptAppCacheExcludes(previous?.exclude ?? currentExclude);
+  const exclude = await promptAppCacheExcludes(
+    previous?.exclude ?? currentExclude,
+  );
 
   return { groupBy, expand: appCacheAnswers.expand, topN, exclude };
 }

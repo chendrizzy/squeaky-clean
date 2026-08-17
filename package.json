@@ -94,6 +94,9 @@
     "README.md",
     "LICENSE"
   ],
+  "packageManager": {
+    "pnpm": "^11.0.0"
+  },
   "dependencies": {
     "commander": "^11.1.0",
     "execa": "^5.1.1",

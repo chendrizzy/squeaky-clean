@@ -55,6 +55,8 @@ squeaky --version
 
 ## Commands Overview
 
+The CLI is the canonical terminal surface for the shared Squeaky Clean engine. The macOS Raycast extension uses the same published package for inspection, dry runs, and profile-based cleaning; see [Raycast Extension & Platform Notes](raycast-extension.md).
+
 ### Core Commands
 - [`config`](#squeaky-config) - Configuration management with interactive wizard
 - [`profile`](#squeaky-profile) - Show or set the active cleaning profile
@@ -710,7 +712,7 @@ Squeaky Clean uses standard exit codes:
 
 ## Configuration File Location
 
-- **macOS**: `~/Library/Preferences/squeaky-clean-nodejs/config.json`
+- **macOS**: `~/Library/Preferences/squeaky-clean/config.json`
 - **Linux**: `~/.config/squeaky-clean/config.json`
 - **Windows**: `%APPDATA%/squeaky-clean/config.json`
 

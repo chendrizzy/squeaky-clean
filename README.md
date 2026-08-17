@@ -1,11 +1,11 @@
 # 🧼squeaky-clean✨
 <div align="center">
 
-**Easy cross-system development cache cleaner/manager with interactive configuration**
+**Easy cross-system development cache cleaner/manager with terminal and Raycast surfaces**
 
-Essentially a *"universal cachectl"*—**smart** *(sort of)*, **safe** (at least, I *think* it is...), and **configurable** cache cleaner/manager CLI-tool with support for *most* common development tools. Dsigned for easy integration expansion with additional tools *(forks **encouraged!**)*.
+Essentially a *"universal cachectl"*—**smart** *(sort of)*, **safe** (at least, I *think* it is...), and **configurable** cache cleaner/manager system with support for *most* common development tools. Designed as a shared core with multiple user-facing surfaces: the npm/Homebrew terminal CLI, guided TUI-style prompts, and the macOS Raycast extension.
 
-[Features](#features) • [Installation](#installation) • [Usage](#usage) • [Configuration](#configuration) • [Supported Tools](#supported-tools) • [Contributing](#contributing)
+[Features](#features) • [Installation](#installation) • [Raycast](#raycast-extension-macos) • [Usage](#usage) • [Configuration](#configuration) • [Supported Tools](#supported-tools) • [Contributing](#contributing)
 
 ---
 
@@ -19,15 +19,17 @@ Essentially a *"universal cachectl"*—**smart** *(sort of)*, **safe** (at least
 
 - **🎯 Smart Detection**: Automatically detects installed development tools and their cache locations
 - **🎨 Interactive Wizard**: Beautiful CLI interface with progress bars and colored output
+- **🧭 Raycast Extension**: Inspect, dry-run, and clean caches from Raycast on macOS using the same cleaner engine
 - **📡 Real-Time Progress**: Live parallel scanning status with animated indicators for 25+ tools simultaneously
 - **🔧 Highly Configurable**: Choose exactly which caches to clean and when
 - **📊 Size Analytics**: See how much space each cache is using before cleaning
-- **🛡️ Safe by Default**: Dry-run mode to preview what will be cleaned (v0.1.0+ defaults to dry-run)
+- **🛡️ Safe by Default**: Confirmation prompts are enabled by default; use `--dry-run` to preview without deleting files
 - **🚦 Safety Tiers & Cleaning Profiles**: Every cache classified `safe` → `manual`; pick a `conservative`, `balanced`, or `aggressive` profile
 - **🔎 System-Wide App Cache Discovery**: Finds non-developer app caches (Electron, GPU/shader, sandboxed/Flatpak/Snap apps, logs) guarded by a built-in safety database
 - **⚡ Performance**: Parallel cleaning operations for maximum speed
-- **🔄 Auto-clean Mode**: Schedule automatic cache cleaning based on your preferences
+- **🔄 Auto-clean Mode**: Get size/age/safety-based cleaning recommendations and optionally clean them
 - **📱 Cross-platform**: Works on macOS, Linux, and Windows
+- **🧩 Multi-surface Product**: Terminal CLI, guided terminal prompts, Raycast, and future platform-specific entry points share the same safety model
 - **🔄 Config Migration**: Automatic migration from legacy to new configuration format
 - **🔌 Plugin Support**: Discover and use community cleaners via npm packages
 - **📋 JSON Output**: Machine-readable output for scripting and automation
@@ -60,6 +62,12 @@ bun add -g squeaky-clean
 brew install chendrizzy/squeaky-clean/squeaky-clean
 ```
 
+### Raycast Extension (macOS)
+
+Install the Raycast surface from the [Raycast Store](https://www.raycast.com/chendrizzy/squeaky-clean).
+
+The extension is intentionally a thin UI over the published `squeaky-clean` engine, so Raycast actions use the same cache detection, safety tiers, cleaning profiles, dry-run behavior, and config path as the terminal tool. See the [Raycast extension guide](docs/raycast-extension.md) for command details.
+
 ### Local Installation
 
 ```bash
@@ -88,16 +96,25 @@ squeaky update --disable-auto
 
 ### Interactive Mode (Recommended)
 
-Start the interactive configuration wizard:
+Start the guided terminal flow:
 
 ```bash
 squeaky interactive
 ```
 
-This will guide you through:
-- Selecting which tools to clean
-- Configuring cleaning preferences
-- Setting up automatic cleaning schedules
+This will guide you through selecting which caches to clean and confirming the cleanup interactively.
+
+### Raycast
+
+The Raycast extension exposes the main workflows as three top-level commands:
+
+| Command | What it maps to |
+|---------|------------------|
+| **Inspect Caches** | `squeaky list`, `squeaky sizes`, per-cleaner dry runs, and category inspection |
+| **Clean Caches** | `squeaky clean` with profile, type, tool, age, size, priority, use-case, category, and manual-consent filters |
+| **Quick Clean** | A one-action profile-based dry run or cleanup using Raycast preferences |
+
+That three-command shape is deliberate: the deeper controls live inside the workflows instead of becoming a noisy one-command-per-CLI-subcommand palette. If a future workflow needs its own muscle memory, it can become a dedicated command without duplicating the existing dashboard.
 
 ### Command Line
 
@@ -117,7 +134,7 @@ squeaky clean --types package-manager
 squeaky clean --types package-manager,build-tool
 
 # Clean specific tools
-squeaky clean npm yarn webpack
+squeaky clean --include npm,yarn,webpack
 ```
 
 #### Dry run mode (preview without cleaning)
@@ -181,7 +198,7 @@ squeaky clean --config my-config.json --dry-run
 | `config` | Manage configuration | - |
 | `profile` | Show or set the active cleaning profile (`conservative`, `balanced`, `aggressive`) | - |
 | `doctor` | Check system and diagnose issues | - |
-| `auto` | Configure automatic cleaning | - |
+| `auto` | Recommend and clean caches using smart heuristics | - |
 | `update` | Check for and install updates | - |
 | `interactive` | Start interactive configuration wizard | `i` |
 
@@ -240,6 +257,8 @@ squeaky clean --config my-config.json --dry-run
 - `-v, --verbose` - Enable verbose output
 - `--no-color` - Disable colored output
 - `--config <path>` - Use custom configuration file
+- `--json` - Output supported command results as JSON
+- `-q, --quiet` - Suppress non-essential output
 - `--version` - Show version number
 - `-h, --help` - Display help
 
@@ -314,6 +333,12 @@ squeaky config --disable app-caches        # disable persistently
 | **pnpm** | `~/.pnpm-store`, `~/.cache/pnpm` |
 | **Bun** | `~/.bun/install/cache` |
 | **pip** | `~/.cache/pip` |
+| **Cargo** | Cargo registry, git, and build caches |
+| **Poetry** | Poetry package caches |
+| **Pipenv** | Pipenv caches |
+| **CocoaPods** | CocoaPods caches |
+| **SwiftPM** | Swift Package Manager caches |
+| **NuGet** | NuGet package caches |
 | **Homebrew** | `brew --cache`, old versions |
 | **Nix** | `/nix/store` garbage, old generations |
 
@@ -326,6 +351,11 @@ squeaky config --disable app-caches        # disable persistently
 | **Nx** | `node_modules/.cache/nx`, `.nx/cache` |
 | **Turbo** | `.turbo`, `node_modules/.cache/turbo` |
 | **Flutter** | `~/.pub-cache`, `build/` |
+| **node-gyp** | Native addon build caches |
+| **Go Build** | Go build caches |
+| **Maven** | Maven repository and build caches |
+| **Playwright** | Browser binaries and Playwright caches |
+| **Gradle** | `~/.gradle/caches`, `.gradle/` |
 
 ### IDEs & Editors
 
@@ -335,6 +365,10 @@ squeaky config --disable app-caches        # disable persistently
 | **Xcode** | `~/Library/Developer/Xcode/DerivedData` |
 | **Android Studio** | `~/.android/cache`, Build cache |
 | **JetBrains IDEs** | `~/.cache/JetBrains/*/caches` |
+| **Windsurf** | Windsurf editor caches, logs, extensions, and workspace data |
+| **Cursor** | Cursor editor caches, logs, extensions, and workspace data |
+| **Zed** | Zed editor caches and logs |
+| **Antigravity** | Antigravity IDE caches, logs, extensions, and workspace data |
 
 ### Browsers (Development)
 
@@ -348,16 +382,24 @@ squeaky config --disable app-caches        # disable persistently
 | Tool | Caches Cleaned |
 |------|----------------|
 | **Docker** | Unused containers, images, volumes |
-| **Gradle** | `~/.gradle/caches`, `.gradle/` |
+| **Universal Binary** (`universal-binary`) | Apple Silicon app thinning, handled by the separate `squeaky ub` command |
+| **ShipIt** | ShipIt and Google Keystone updater caches |
 | **App Caches** (`app-caches`) | System-wide discovered application caches, classified by [safety tier](#-safety-tiers--cleaning-profiles) |
+| **Temp Files** (`tmp`) | Abandoned user-owned temp files with active-task-aware filtering |
 
 ## ⚙️ Configuration
 
 Squeaky Clean can be configured through:
 
-1. **Interactive wizard**: `squeaky interactive`
-2. **Configuration file**: `~/.squeaky-clean/config.json`
-3. **Environment variables**: `SQUEAKY_*`
+1. **Interactive wizard**: `squeaky config --interactive`
+2. **Configuration commands**: `squeaky config --set`, `--enable`, `--disable`, `--reset`
+3. **Configuration file**: run `squeaky config --path` to print the exact path
+
+Default config locations:
+
+- **macOS**: `~/Library/Preferences/squeaky-clean/config.json`
+- **Linux**: `~/.config/squeaky-clean/config.json` unless `XDG_CONFIG_HOME` is set
+- **Windows**: `%APPDATA%/squeaky-clean/config.json`
 
 ### Configuration Migration (v0.2.0+)
 
@@ -379,31 +421,43 @@ squeaky config doctor --input old-config.json --output new-config.json
 
 ### Configuration File Examples
 
-#### New Schema (v0.2.0+)
+#### Current Runtime Config Shape
 ```json
 {
-  "cleaners": {
-    "npm": { "enabled": true },
-    "yarn": { "enabled": true },
-    "webpack": { "enabled": false }
+  "activeProfile": "balanced",
+  "tools": {
+    "npm": true,
+    "yarn": true,
+    "webpack": false,
+    "app-caches": true,
+    "tmp": true
   },
-  "scheduler": {
-    "enabled": true,
-    "interval": "weekly",
-    "thresholds": {
-      "size": "1GB",
-      "age": "30d"
+  "toolSettings": {
+    "app-caches": {
+      "display": {
+        "expand": false,
+        "groupBy": ["tier", "kind", "app"],
+        "topN": 5
+      },
+      "exclude": []
     }
   },
-  "defaults": {
+  "safety": {
+    "requireConfirmation": true,
+    "dryRunDefault": false,
+    "backupBeforeClearing": false,
+    "excludeSystemCritical": true
+  },
+  "output": {
     "verbose": false,
-    "colors": true,
-    "format": "text"
+    "showSizes": true,
+    "useColors": true,
+    "emojis": "on"
   }
 }
 ```
 
-#### Legacy Schema (still supported)
+#### Legacy Migration Input (still accepted by `config doctor`)
 ```json
 {
   "tools": {
@@ -425,29 +479,47 @@ squeaky config doctor --input old-config.json --output new-config.json
 
 ### Environment Variables
 
-- `SQUEAKY_AUTO_CLEAN` - Enable automatic cleaning
-- `SQUEAKY_DRY_RUN` - Always run in dry-run mode
-- `SQUEAKY_VERBOSE` - Enable verbose output
-- `SQUEAKY_NO_COLOR` - Disable colored output
+Core cleaning behavior is controlled by CLI flags and the config file, not environment variables. The current runtime only documents environment variables for developer diagnostics and presentation:
+
+- `SQUEAKY_FUN_MODE=0|1` - Disable or enable fun console styling
+- `SQUEAKY_PROFILE=1` - Print app-cache discovery timing details for profiling
 
 ## 🔄 Automatic Cleaning
 
-Configure automatic cache cleaning based on:
+`squeaky auto` is a smart recommendation command, not a scheduler. It scans caches, ranks candidates by size, age, and safety, then prompts before deleting unless you use `--dry-run` or `--force`.
 
-- **Schedule**: Daily, weekly, or monthly
-- **Size threshold**: Clean when caches exceed a certain size
-- **Smart detection**: Clean only when tools haven't been used recently
+- `--dry-run` previews the recommended cleanup
+- `--safe` restricts cleanup to caches verified safe to auto-clean
+- `--aggressive` includes more recommended caches
+- `--force` skips the confirmation prompt
 
 ```bash
-# Configure automatic cleaning
-squeaky auto
+# Preview recommendations
+squeaky auto --dry-run
 
-# Enable with weekly schedule
-squeaky auto --enable --schedule weekly
+# Clean safe recommendations without prompting
+squeaky auto --safe --force
 
-# Set size threshold
-squeaky auto --size-threshold 5GB
+# Include more recommended cache types
+squeaky auto --aggressive --dry-run
 ```
+
+## 🧭 Product Surfaces & Roadmap
+
+Squeaky Clean is a shared cache-cleaning core with multiple surfaces:
+
+- **Terminal CLI**: the canonical cross-platform interface distributed through npm and Homebrew
+- **Guided terminal prompts**: TUI-style selection flows for setup and interactive cleaning
+- **Raycast extension**: a macOS command-palette UI for inspection, dry runs, and profile-based cleaning
+- **Future package-manager hubs**: Python packaging is feasible as a distribution surface, but a full Python port would duplicate the TypeScript cleaner logic and safety rules. The practical path is to keep the TypeScript core authoritative and consider a small Python/pipx wrapper only if Python users need discovery from PyPI.
+
+For the current assessment, see [Raycast Extension & Platform Notes](docs/raycast-extension.md).
+
+## 🦆 Mascot
+
+Meet **Squeaky**, nicknamed **pip squeaky**: a cool, suave, but still cute duck who represents the repo in user-facing surfaces.
+
+![Squeaky mascot](docs/assets/squeaky.svg)
 
 ## 🏗️ Architecture
 
@@ -486,14 +558,14 @@ interface CleanerModule {
 
 ### Prerequisites
 
-- Node.js >= 16.0.0
+- Node.js >= 18.0.0
 - npm, yarn, pnpm, or bun
 
 ### Setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/justinchen/squeaky-clean.git
+git clone https://github.com/chendrizzy/squeaky-clean.git
 cd squeaky-clean
 
 # Install dependencies
@@ -558,7 +630,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Built with**:
 - *[Commander.js](https://github.com/tj/commander.js)* for CLI parsing
-- *[Chalk](https://github.com/chalk/chalk)* for puuurrrtty terminal output
+- *[picocolors](https://github.com/alexeyraspopov/picocolors)* for puuurrrtty terminal output
 - *[Inquirer.js](https://github.com/SBoudrias/Inquirer.js)* for interactive prompts
 - *[Ora](https://github.com/sindresorhus/ora)* for elegant terminal spinners
 
