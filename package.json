@@ -116,8 +116,8 @@
     "@types/fs-extra": "^11.0.4",
     "@types/inquirer": "^9.0.9",
     "@types/node": "^20.19.25",
-    "@typescript-eslint/eslint-plugin": "^6.21.0",
-    "@typescript-eslint/parser": "^6.21.0",
+    "@typescript-eslint/eslint-plugin": "^8.67.0",
+    "@typescript-eslint/parser": "^8.67.0",
     "@vitest/coverage-v8": "^3.2.4",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.2",
@@ -130,5 +130,13 @@
     "typescript-eslint": "^8.48.1",
     "vite": "^6.4.1",
     "vitest": "^3.2.4"
+  },
+  "allowScripts": {
+    "esbuild@0.25.9": true,
+    "esbuild@0.27.1": true,
+    "fsevents@2.3.3": true
+  },
+  "volta": {
+    "node": "24.19.0"
   }
 }
