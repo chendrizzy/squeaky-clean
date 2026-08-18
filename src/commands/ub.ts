@@ -12,6 +12,7 @@ import inquirer from "inquirer";
 
 interface UBOptions {
   all?: boolean;
+  exclude?: string;
   dryRun?: boolean;
   list?: boolean;
   verbose?: boolean;
@@ -92,9 +93,28 @@ export async function ubCommand(options: UBOptions): Promise<void> {
     let binariesToThin: string[] = [];
 
     if (options.all) {
-      // Thin all binaries
-      binariesToThin = categories.map((cat) => cat.id);
-      printInfo("All Universal Binaries selected for thinning.");
+      // Thin all binaries, minus any --exclude'd category ids. Duplicate ids
+      // (one app, several binaries) are excluded together.
+      const excluded = new Set(
+        (options.exclude ?? "")
+          .split(",")
+          .map((id) => id.trim().toLowerCase())
+          .filter(Boolean),
+      );
+      binariesToThin = [
+        ...new Set(
+          categories
+            .map((cat) => cat.id)
+            .filter((id) => !excluded.has(id.toLowerCase())),
+        ),
+      ];
+      if (excluded.size > 0) {
+        printInfo(
+          `All Universal Binaries selected for thinning (excluded: ${[...excluded].join(", ")}).`,
+        );
+      } else {
+        printInfo("All Universal Binaries selected for thinning.");
+      }
     } else {
       // Interactive selection
       console.log();

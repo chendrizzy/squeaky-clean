@@ -447,6 +447,10 @@ program
     "thin Universal Binaries on Apple Silicon to remove unused x86_64 code",
   )
   .option("-a, --all", "thin all Universal Binaries without prompting")
+  .option(
+    "--exclude <ids>",
+    "with --all: skip these category ids (comma-separated, e.g. universal-safari)",
+  )
   .option("-l, --list", "list Universal Binaries without thinning")
   .option(
     "-d, --dry-run",
