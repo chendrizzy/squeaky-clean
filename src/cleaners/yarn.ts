@@ -174,7 +174,11 @@ class YarnCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    return commandExists("yarn");
+    if (await commandExists("yarn")) return true;
+    // Caches on disk still count even without the CLI: clear() deletes the
+    // directories itself and needs no yarn binary. (With yarn off PATH the
+    // `yarn cache dir` probe fails fast and the default locations are used.)
+    return (await this.getYarnCachePaths()).length > 0;
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

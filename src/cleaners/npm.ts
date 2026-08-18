@@ -64,7 +64,13 @@ export class NpmCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    return commandExists("npm");
+    if (await commandExists("npm")) return true;
+    // Caches on disk still count even without the CLI: clear() falls back to
+    // deleting the directories directly when `npm cache clean` is unavailable.
+    for (const cachePath of this.getCachePaths()) {
+      if (await pathExists(cachePath)) return true;
+    }
+    return false;
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

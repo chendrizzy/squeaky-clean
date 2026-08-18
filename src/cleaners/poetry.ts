@@ -63,7 +63,10 @@ class PoetryCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    return commandExists("poetry");
+    if (await commandExists("poetry")) return true;
+    // Caches on disk still count even without the CLI: cleaning them is
+    // plain directory removal and needs no poetry binary.
+    return (await this.buildCategories()).length > 0;
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

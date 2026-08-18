@@ -67,7 +67,11 @@ class PnpmCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    return commandExists("pnpm");
+    if (await commandExists("pnpm")) return true;
+    // Caches on disk still count even without the CLI: clear() deletes the
+    // directories itself and needs no pnpm binary. (With pnpm off PATH the
+    // `pnpm store path` probe fails fast and the default locations are used.)
+    return (await this.getPnpmCachePaths()).length > 0;
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

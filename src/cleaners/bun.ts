@@ -65,7 +65,10 @@ class BunCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    return commandExists("bun");
+    if (await commandExists("bun")) return true;
+    // Caches on disk still count even without the CLI: clear() deletes the
+    // directories itself and needs no bun binary.
+    return (await this.getBunCachePaths()).length > 0;
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

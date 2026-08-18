@@ -56,7 +56,10 @@ class MavenCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    return commandExists("mvn");
+    if (await commandExists("mvn")) return true;
+    // Caches on disk still count even without the CLI: cleaning them is
+    // plain directory removal and needs no mvn binary.
+    return (await this.buildCategories()).length > 0;
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

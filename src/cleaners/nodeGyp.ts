@@ -5,13 +5,20 @@ import path from "path";
 import * as os from "os";
 import { printVerbose } from "../utils/cli";
 import { commandExists } from "../utils/which";
+import { pathExists } from "../utils/fs";
 
 export class NodeGypCleaner extends BaseCleaner {
   name = "node-gyp";
   type: CacheType = "build-tool";
   description = "Node.js native addon build tool cache";
 
-  private getCachePaths(): string[] {
+  /**
+   * node-gyp's own home-scoped cache directories: legacy ~/.node-gyp plus the
+   * platform devdir (~/Library/Caches/node-gyp on macOS, XDG cache on Linux,
+   * LOCALAPPDATA on Windows). Shared by detection and cleaning so the two can
+   * never disagree about where node-gyp keeps its headers.
+   */
+  private getHomeCachePaths(): string[] {
     const paths: string[] = [];
     const homeDir = os.homedir();
 
@@ -31,6 +38,13 @@ export class NodeGypCleaner extends BaseCleaner {
         process.env.XDG_CACHE_HOME || path.join(homeDir, ".cache");
       paths.push(path.join(xdgCache, "node-gyp"));
     }
+
+    return paths;
+  }
+
+  private getCachePaths(): string[] {
+    const paths: string[] = this.getHomeCachePaths();
+    const homeDir = os.homedir();
 
     // Node.js headers cache
     paths.push(path.join(homeDir, ".npm", "_cacache"));
@@ -65,10 +79,14 @@ export class NodeGypCleaner extends BaseCleaner {
       return true;
     }
 
-    // Check if node-gyp cache directory exists
-    const homeDir = os.homedir();
-    const nodeGypDir = path.join(homeDir, ".node-gyp");
-    return existsSync(nodeGypDir);
+    // node-gyp is usually invoked through npm rather than installed on PATH,
+    // so a header cache in any of its home directories counts as detected.
+    // (~/.npm/_cacache and project build dirs are deliberately excluded here:
+    // they exist on machines that never ran node-gyp.)
+    for (const cachePath of this.getHomeCachePaths()) {
+      if (await pathExists(cachePath)) return true;
+    }
+    return false;
   }
 
   async getCacheInfo(): Promise<CacheInfo> {

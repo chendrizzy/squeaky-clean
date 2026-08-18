@@ -63,7 +63,10 @@ class PipenvCleaner implements CleanerModule {
   }
 
   async isAvailable(): Promise<boolean> {
-    return commandExists("pipenv");
+    if (await commandExists("pipenv")) return true;
+    // Caches on disk still count even without the CLI: cleaning them is
+    // plain directory removal and needs no pipenv binary.
+    return (await this.buildCategories()).length > 0;
   }
 
   async getCacheInfo(): Promise<CacheInfo> {
