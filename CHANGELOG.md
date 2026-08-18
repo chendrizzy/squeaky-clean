@@ -70,6 +70,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced `CacheManager.getAllCacheInfo()` with optional `showProgress` parameter
 - Enhanced `CacheManager.cleanAllCaches()` with optional `showProgress` parameter
 
+## [0.6.4] - 2026-08-18
+
+### Fixed
+
+- **Cache detection no longer requires the tool on PATH.** Ten cleaners (npm,
+  yarn, pnpm, bun, cargo, maven, nuget, pipenv, poetry, node-gyp) reported
+  "Not detected" when the tool was uninstalled even though their caches sat on
+  disk, so `auto --safe` skipped reclaimable space. Detection is now
+  tool-on-PATH OR cache-dir-exists; node-gyp additionally checks its platform
+  devdir (`~/Library/Caches/node-gyp` on macOS). docker, brew, and nix remain
+  CLI-keyed because their cleaning requires the tool's own CLI.
+- Universal Binary thinning no longer shell-interprets binary paths (lipo and
+  chmod now run without a shell) and preserves the original file mode instead
+  of a blanket `chmod +x`.
+
+### Added
+
+- **Per-volume reclaim reporting.** `clean` and `auto` group freed bytes by
+  physical volume (realpath-resolved, so caches symlinked onto external
+  volumes are attributed where the bytes actually live), and `clean --json`
+  carries a `volumes` map. Freed bytes that cannot be tied to a filesystem
+  path (e.g. docker) appear under an explicit "(unattributable)" row.
+- `ub --exclude <ids>` skips specific apps during `ub --all` for scripted,
+  curated thinning runs.
+
 ## [0.0.2] - 2025-08-18
 
 ### Added:
