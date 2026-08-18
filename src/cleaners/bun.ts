@@ -7,6 +7,7 @@ import {
 import * as path from "path";
 import * as os from "os";
 import { pathExists, getDirectorySize, safeRmrf } from "../utils/fs";
+import { volumeBreakdownForPaths } from "../utils/volumes";
 import { printVerbose, symbols } from "../utils/cli";
 import { commandExists } from "../utils/which";
 import { minimatch } from "minimatch";
@@ -135,6 +136,10 @@ class BunCleaner implements CleanerModule {
     const clearedPaths: string[] = [];
     let errors: string[] = [];
 
+    // Volume attribution is captured before deletion: per-path sizes are
+    // warm cache hits from the scan that just ran.
+    const volumeBreakdown = await volumeBreakdownForPaths(info.paths);
+
     // Clear cache directories
     for (const cachePath of info.paths) {
       // Check if the path is protected
@@ -183,6 +188,7 @@ class BunCleaner implements CleanerModule {
       sizeAfter: 0, // Set to 0 as we don't want to rescan
       error: errors.length > 0 ? errors.join("; ") : undefined,
       clearedPaths,
+      volumeBreakdown,
     };
   }
 }

@@ -44,6 +44,15 @@ export interface VolumeEntry {
 }
 
 /**
+ * Bucket for freed bytes that cannot be tied to a filesystem path - some
+ * custom cleaners report human-readable labels in clearedPaths ("Docker
+ * system"), or none at all. Kept visible so the per-volume rows always sum
+ * to the printed total instead of silently dropping bytes or attributing
+ * them to whatever volume the CLI happened to run from.
+ */
+export const UNATTRIBUTABLE = "unknown";
+
+/**
  * Group freed bytes by physical volume. Each entry (one cache category, or
  * one whole ClearResult as fallback) attributes its size to its paths'
  * volumes.
@@ -125,12 +134,19 @@ async function attributeFreedAcrossPaths(
   resolve: VolumeResolver,
   sizeOf: (p: string) => Promise<number>,
 ): Promise<Record<string, number>> {
-  if (paths.length > 1) {
-    const weights = await Promise.all(paths.map((p) => sizeOf(p)));
+  // Only absolute filesystem paths can be volume-resolved; anything else in
+  // clearedPaths is a display label (docker reports "Build cache" etc.),
+  // which path.resolve would otherwise turn into a phantom path under cwd.
+  const realPaths = paths.filter((p) => path.isAbsolute(p));
+  if (realPaths.length === 0) {
+    return { [UNATTRIBUTABLE]: freed };
+  }
+  if (realPaths.length > 1) {
+    const weights = await Promise.all(realPaths.map((p) => sizeOf(p)));
     const totalWeight = weights.reduce((sum, w) => sum + (w || 0), 0);
     if (totalWeight > 0) {
       return computeVolumeBreakdown(
-        paths.map((p, i) => ({
+        realPaths.map((p, i) => ({
           paths: [p],
           size: (freed * (weights[i] || 0)) / totalWeight,
         })),
@@ -140,10 +156,30 @@ async function attributeFreedAcrossPaths(
     // No size data (cold cache after a long real clean): fall through to the
     // even split below rather than dropping the bytes.
   }
-  return computeVolumeBreakdown([{ paths, size: freed }], resolve);
+  return computeVolumeBreakdown([{ paths: realPaths, size: freed }], resolve);
+}
+
+/**
+ * Volume breakdown for a custom clear() implementation, built from the paths
+ * it is about to delete. Call BEFORE deleting or invalidating size caches:
+ * the per-path sizes are then warm cache hits from the scan that just ran,
+ * and the paths still exist for realpath resolution.
+ */
+export async function volumeBreakdownForPaths(
+  paths: string[],
+  resolve: VolumeResolver = resolveVolume,
+  sizeOf: (p: string) => Promise<number> = getCachedDirectorySize,
+): Promise<Record<string, number>> {
+  const entries: VolumeEntry[] = [];
+  for (const entryPath of paths.filter((p) => path.isAbsolute(p))) {
+    entries.push({ paths: [entryPath], size: await sizeOf(entryPath) });
+  }
+  return computeVolumeBreakdown(entries, resolve);
 }
 
 /** Human label: keep mount paths as-is, name the boot volume explicitly. */
 export function volumeLabel(volume: string): string {
-  return volume === "/" ? "/ (internal)" : volume;
+  if (volume === "/") return "/ (internal)";
+  if (volume === UNATTRIBUTABLE) return "(unattributable)";
+  return volume;
 }

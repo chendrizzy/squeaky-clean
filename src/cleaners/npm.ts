@@ -14,6 +14,7 @@ import {
   safeRmrf,
   invalidateSizeCachePrefix,
 } from "../utils/fs";
+import { volumeBreakdownForPaths } from "../utils/volumes";
 import { printVerbose } from "../utils/cli";
 import { minimatch } from "minimatch";
 import { commandExists } from "../utils/which";
@@ -149,6 +150,10 @@ export class NpmCleaner implements CleanerModule {
       };
     }
 
+    // Volume attribution is captured before deletion and cache invalidation:
+    // per-path sizes are warm cache hits from the scan that just ran.
+    const volumeBreakdown = await volumeBreakdownForPaths(info.paths);
+
     try {
       if (dryRun) {
         printVerbose(
@@ -160,6 +165,7 @@ export class NpmCleaner implements CleanerModule {
           sizeBefore,
           sizeAfter: sizeBefore, // No change in dry run
           clearedPaths: info.paths,
+          volumeBreakdown,
         };
       }
 
@@ -209,6 +215,7 @@ export class NpmCleaner implements CleanerModule {
         sizeAfter: 0, // Set to 0 as we don't want to rescan
         error,
         clearedPaths,
+        volumeBreakdown,
       };
     } catch (clearError) {
       return {

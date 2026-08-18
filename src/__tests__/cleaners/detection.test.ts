@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as path from "path";
+import execa from "execa";
 import npmCleaner from "../../cleaners/npm";
 import yarnCleaner from "../../cleaners/yarn";
 import pnpmCleaner from "../../cleaners/pnpm";
@@ -19,9 +20,9 @@ import { cacheManager } from "../../utils/cache";
 // where node-gyp reported "Not detected" while 4GB sat in its devdir cache,
 // so `auto --safe` skipped it.
 
-// No process spawns: yarn/pnpm probe their CLI for cache locations, which must
-// fail fast (as it does when the tool is uninstalled) and fall back to the
-// default locations.
+// pnpm's cache-dir fallback probes `pnpm store path`, which must fail fast
+// (as it does when the tool is uninstalled) and fall back to the default
+// locations; yarn's detection never spawns at all.
 vi.mock("execa", () => ({
   default: vi.fn(() => Promise.reject(new Error("spawn ENOENT"))),
   __esModule: true,
@@ -54,9 +55,9 @@ vi.mock("os", async (importOriginal) => {
 
 const home = "/Users/test";
 
-// node-gyp resolves its devdir from process.platform (not os.platform()),
-// which cannot be mocked - mirror its branch so the test runs on both
-// macOS and Linux CI.
+// node-gyp resolves its devdir from process.platform (not os.platform());
+// mirror the host's branch here so this table runs on both macOS and Linux
+// CI. The win32 branch gets its own defineProperty-based test below.
 const nodeGypDevdir =
   process.platform === "darwin"
     ? path.join(home, "Library", "Caches", "node-gyp")
@@ -153,10 +154,54 @@ describe("cache-dir detection (tool-on-PATH OR cache-dir-exists)", () => {
     expect(info.isInstalled).toBe(true);
   });
 
-  it("tool on PATH still detects with no cache dirs (spot check)", async () => {
+  it("node-gyp: win32 devdir (LOCALAPPDATA) detects", async () => {
+    const platformDescriptor = Object.getOwnPropertyDescriptor(
+      process,
+      "platform",
+    )!;
+    const originalLocalAppData = process.env.LOCALAPPDATA;
+    Object.defineProperty(process, "platform", {
+      value: "win32",
+      configurable: true,
+    });
+    process.env.LOCALAPPDATA = "C:\\Users\\test\\AppData\\Local";
+    try {
+      existing.add(
+        path.join("C:\\Users\\test\\AppData\\Local", "node-gyp", "Cache"),
+      );
+      await expect(nodeGypCleaner.isAvailable()).resolves.toBe(true);
+    } finally {
+      Object.defineProperty(process, "platform", platformDescriptor);
+      if (originalLocalAppData === undefined) {
+        delete process.env.LOCALAPPDATA;
+      } else {
+        process.env.LOCALAPPDATA = originalLocalAppData;
+      }
+    }
+  });
+
+  it("cargo: a cwd target/ dir alone does NOT count as detection", async () => {
+    // target/ is also Maven/sbt's build-output dir, and cargo's default
+    // clear() skips the target category - detecting on it would produce a
+    // detected-but-uncleanable cargo on Rust-less machines.
+    existing.add(path.join(process.cwd(), "target"));
+    await expect(cargoCleaner.isAvailable()).resolves.toBe(false);
+  });
+
+  it("tool on PATH detects with no cache dirs, without spawning", async () => {
     vi.mocked(commandExists).mockResolvedValue(true);
     vi.mocked(anyCommandExists).mockResolvedValue(true);
-    await expect(cargoCleaner.isAvailable()).resolves.toBe(true);
-    await expect(nugetCleaner.isAvailable()).resolves.toBe(true);
+    for (const { cleaner } of cases) {
+      await expect(cleaner.isAvailable()).resolves.toBe(true);
+    }
+    // Perf invariant: with the tool on PATH no isAvailable() may spawn a
+    // process (execa) - PATH lookup answers availability by itself.
+    expect(vi.mocked(execa)).not.toHaveBeenCalled();
+  });
+
+  it("yarn: cache-dir detection never spawns or walks projects", async () => {
+    existing.add(path.join(home, ".yarn", "cache"));
+    await expect(yarnCleaner.isAvailable()).resolves.toBe(true);
+    expect(vi.mocked(execa)).not.toHaveBeenCalled();
   });
 });

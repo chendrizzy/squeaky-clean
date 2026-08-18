@@ -1,9 +1,15 @@
+// The mocked suite runs on memfs (src/test/setup.ts mocks "fs"), so these
+// tests build their fixtures - including a fake /Volumes mount - inside the
+// in-memory volume.
 import { describe, expect, it, vi } from "vitest";
 import * as path from "path";
+import { promises as fs } from "fs";
 import {
   aggregateVolumeBreakdown,
   computeVolumeBreakdown,
   resolveVolume,
+  UNATTRIBUTABLE,
+  volumeBreakdownForPaths,
   volumeLabel,
   volumeOf,
 } from "../../utils/volumes";
@@ -37,11 +43,20 @@ describe("resolveVolume", () => {
     ).resolves.toBe("/");
   });
 
-  it("resolves an existing path", async () => {
-    const volume = await resolveVolume(process.cwd());
-    // This repo lives on an external volume on the dev machine and on "/" in
-    // CI - either way the result must be a well-formed volume label.
-    expect(volume === "/" || volume.startsWith("/Volumes/")).toBe(true);
+  it("resolves an existing path to its realpath's volume", async () => {
+    await fs.mkdir("/plain/dir", { recursive: true });
+    await expect(resolveVolume("/plain/dir")).resolves.toBe("/");
+  });
+
+  it("crosses symlinks even for deleted children (the ~/.cache -> /Volumes/BOLT layout)", async () => {
+    await fs.mkdir("/Volumes/FAKE/store", { recursive: true });
+    await fs.mkdir("/home/u", { recursive: true });
+    await fs.symlink("/Volumes/FAKE/store", "/home/u/.cache");
+    // The child never existed: the ancestor walk must reach the symlink and
+    // resolve THROUGH it to the external volume - not stop at /home/u.
+    await expect(
+      resolveVolume("/home/u/.cache/deleted-child"),
+    ).resolves.toBe("/Volumes/FAKE");
   });
 });
 
@@ -187,6 +202,35 @@ describe("aggregateVolumeBreakdown", () => {
     expect(totals).toEqual({ "/Volumes/BOLT": 50, "/": 50 });
   });
 
+  it("routes label-only clearedPaths to the unattributable bucket", async () => {
+    // Docker reports display labels, not paths ("Docker system (dry run)").
+    // Those bytes must neither vanish nor be pinned to cwd's volume.
+    const totals = await aggregateVolumeBreakdown(
+      [
+        {
+          success: true,
+          sizeBefore: 500,
+          sizeAfter: 0,
+          clearedPaths: ["Docker system (dry run)"],
+        },
+      ],
+      true,
+      fakeResolve,
+      async () => 0,
+    );
+    expect(totals).toEqual({ [UNATTRIBUTABLE]: 500 });
+  });
+
+  it("routes freed bytes with no clearedPaths to the unattributable bucket", async () => {
+    const totals = await aggregateVolumeBreakdown(
+      [{ success: true, sizeBefore: 42, sizeAfter: 0, clearedPaths: [] }],
+      false,
+      fakeResolve,
+      async () => 0,
+    );
+    expect(totals).toEqual({ [UNATTRIBUTABLE]: 42 });
+  });
+
   it("uses sizeBefore as freed under dry-run", async () => {
     const totals = await aggregateVolumeBreakdown(
       [
@@ -205,10 +249,26 @@ describe("aggregateVolumeBreakdown", () => {
   });
 });
 
+describe("volumeBreakdownForPaths", () => {
+  it("sizes each path individually and groups by volume", async () => {
+    const sizes: Record<string, number> = {
+      "/ext/store": 900,
+      "/home/u/cache": 100,
+    };
+    const totals = await volumeBreakdownForPaths(
+      ["/ext/store", "/home/u/cache", "not-a-path-label"],
+      fakeResolve,
+      async (p) => sizes[p] ?? 0,
+    );
+    expect(totals).toEqual({ "/Volumes/BOLT": 900, "/": 100 });
+  });
+});
+
 describe("volumeLabel", () => {
   it("labels the boot volume and keeps mounts verbatim", () => {
     expect(volumeLabel("/")).toBe("/ (internal)");
     expect(volumeLabel("/Volumes/BOLT")).toBe("/Volumes/BOLT");
+    expect(volumeLabel(UNATTRIBUTABLE)).toBe("(unattributable)");
   });
 });
 
@@ -243,23 +303,45 @@ class VolumeTestCleaner extends BaseCleaner {
 }
 
 describe("BaseCleaner volumeBreakdown wiring", () => {
+  const category = (id: string, cachePath: string, size: number) => ({
+    id,
+    name: id.toUpperCase(),
+    description: `cache ${id}`,
+    paths: [cachePath],
+    size,
+    priority: "normal" as const,
+    useCase: "development" as const,
+    safety: "safe" as const,
+  });
+
   it("clear() reports freed bytes grouped by volume", async () => {
     const fakePath = path.join("/no-such-root", "cache-a");
-    const cleaner = new VolumeTestCleaner([
-      {
-        id: "a",
-        name: "A",
-        description: "cache a",
-        paths: [fakePath],
-        size: 128,
-        priority: "normal",
-        useCase: "development",
-        safety: "safe",
-      },
-    ]);
+    const cleaner = new VolumeTestCleaner([category("a", fakePath, 128)]);
 
     const result = await cleaner.clear(true);
     // Real resolver: the fake path ancestor-walks to the boot volume.
     expect(result.volumeBreakdown).toEqual({ "/": 128 });
+  });
+
+  it("clearByCategory() also reports volumeBreakdown", async () => {
+    const fakePath = path.join("/no-such-root", "cache-b");
+    const cleaner = new VolumeTestCleaner([category("b", fakePath, 64)]);
+
+    const result = await cleaner.clearByCategory(["b"], true);
+    expect(result.volumeBreakdown).toEqual({ "/": 64 });
+  });
+
+  it("real clear() resolves volumes against paths that existed pre-deletion", async () => {
+    const cacheDir = "/Volumes/FAKE2/cache";
+    await fs.mkdir(cacheDir, { recursive: true });
+    await fs.writeFile(path.join(cacheDir, "blob"), "x".repeat(32));
+    const cleaner = new VolumeTestCleaner([category("c", cacheDir, 32)]);
+
+    const result = await cleaner.clear(false);
+
+    // Contents removed, directory kept (clearPath contract) - and the
+    // breakdown reflects the volume the cleaned tree actually lived on.
+    expect(result.volumeBreakdown).toEqual({ "/Volumes/FAKE2": 32 });
+    await expect(fs.readdir(cacheDir)).resolves.toEqual([]);
   });
 });

@@ -9,6 +9,7 @@ import {
   CleanerModule,
 } from "../types";
 import { getDirectorySize, pathExists, safeRmrf } from "../utils/fs";
+import { computeVolumeBreakdown } from "../utils/volumes";
 import { printVerbose } from "../utils/cli";
 import { minimatch } from "minimatch";
 import { commandExists } from "../utils/which";
@@ -119,6 +120,12 @@ class MavenCleaner implements CleanerModule {
       };
     }
 
+    // Per-category sizes are already in hand; attribute them to volumes now,
+    // before any deletion.
+    const volumeBreakdown = await computeVolumeBreakdown(
+      categories.map((c) => ({ paths: c.paths, size: c.size ?? 0 })),
+    );
+
     if (dryRun) {
       printVerbose(
         `[DRY RUN] Would clear maven caches: ${pathsToClear.join(", ")}`,
@@ -130,6 +137,7 @@ class MavenCleaner implements CleanerModule {
         clearedCategories: categories.map((c) => c.id),
         sizeBefore,
         sizeAfter: sizeBefore,
+        volumeBreakdown,
       };
     }
 
@@ -165,6 +173,7 @@ class MavenCleaner implements CleanerModule {
       clearedCategories: categories.map((c) => c.id),
       sizeBefore,
       sizeAfter: success ? 0 : sizeBefore,
+      volumeBreakdown,
     };
   }
 

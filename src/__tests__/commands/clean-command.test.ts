@@ -122,6 +122,28 @@ describe("clean command", () => {
     ]);
   });
 
+  it("prints freed bytes grouped by physical volume", async () => {
+    const { cleanCommand } = await import("../../commands/clean.js");
+
+    vi.mocked(cacheManager.cleanAllCaches).mockResolvedValue([
+      {
+        name: "cargo",
+        success: true,
+        sizeBefore: 2048,
+        sizeAfter: 0,
+        clearedPaths: ["/mock/.cargo/registry"],
+        volumeBreakdown: { "/Volumes/BOLT": 1536, "/": 512 },
+      },
+    ]);
+
+    await cleanCommand({ dryRun: true });
+    const output = getConsoleOutput();
+
+    expect(output).toContain("By volume:");
+    expect(output).toContain("/Volumes/BOLT");
+    expect(output).toContain("/ (internal)");
+  });
+
   it("does not convert forced clean runs into dry-runs", async () => {
     const { cleanCommand } = await import("../../commands/clean.js");
 

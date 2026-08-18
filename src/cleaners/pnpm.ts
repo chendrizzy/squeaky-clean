@@ -12,6 +12,7 @@ import {
   safeRmrf,
   invalidateSizeCachePrefix,
 } from "../utils/fs";
+import { volumeBreakdownForPaths } from "../utils/volumes";
 import execa from "execa";
 import { printVerbose, symbols } from "../utils/cli";
 import { commandExists } from "../utils/which";
@@ -137,6 +138,10 @@ class PnpmCleaner implements CleanerModule {
     const clearedPaths: string[] = [];
     let errors: string[] = [];
 
+    // Volume attribution is captured before deletion and cache invalidation:
+    // per-path sizes are warm cache hits from the scan that just ran.
+    const volumeBreakdown = await volumeBreakdownForPaths(info.paths);
+
     // Use pnpm store prune command first if available
     if (!dryRun && (await this.isAvailable())) {
       try {
@@ -195,6 +200,7 @@ class PnpmCleaner implements CleanerModule {
       sizeAfter: 0, // Set to 0 as we don't want to rescan
       error: errors.length > 0 ? errors.join("; ") : undefined,
       clearedPaths,
+      volumeBreakdown,
     };
   }
 }

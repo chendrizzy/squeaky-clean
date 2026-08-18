@@ -13,6 +13,7 @@ import {
   safeRmrf,
   invalidateSizeCachePrefix,
 } from "../utils/fs";
+import { volumeBreakdownForPaths } from "../utils/volumes";
 import execa from "execa";
 import { printVerbose, symbols } from "../utils/cli";
 import { commandExists } from "../utils/which";
@@ -21,6 +22,16 @@ class YarnCleaner implements CleanerModule {
   name = "yarn";
   type = "package-manager" as const;
   description = "Yarn package manager caches and global store";
+
+  /** Default yarn cache locations (used when `yarn cache dir` is unavailable). */
+  private defaultCachePaths(): string[] {
+    const homeDir = os.homedir();
+    return [
+      path.join(homeDir, ".yarn", "cache"),
+      path.join(homeDir, ".cache", "yarn"),
+      path.join(homeDir, "Library", "Caches", "Yarn"), // macOS
+    ];
+  }
 
   private async getYarnCachePaths(): Promise<string[]> {
     const paths: string[] = [];
@@ -33,15 +44,7 @@ class YarnCleaner implements CleanerModule {
         paths.push(cacheDir);
       }
     } catch {
-      // Fallback to default yarn cache locations
-      const homeDir = os.homedir();
-      const defaultPaths = [
-        path.join(homeDir, ".yarn", "cache"),
-        path.join(homeDir, ".cache", "yarn"),
-        path.join(homeDir, "Library", "Caches", "Yarn"), // macOS
-      ];
-
-      for (const cachePath of defaultPaths) {
+      for (const cachePath of this.defaultCachePaths()) {
         if (await pathExists(cachePath)) {
           paths.push(cachePath);
         }
@@ -176,9 +179,13 @@ class YarnCleaner implements CleanerModule {
   async isAvailable(): Promise<boolean> {
     if (await commandExists("yarn")) return true;
     // Caches on disk still count even without the CLI: clear() deletes the
-    // directories itself and needs no yarn binary. (With yarn off PATH the
-    // `yarn cache dir` probe fails fast and the default locations are used.)
-    return (await this.getYarnCachePaths()).length > 0;
+    // directories itself and needs no yarn binary. Only the default home
+    // locations are checked - no `yarn cache dir` probe (yarn is off PATH
+    // here) and no project-directory walk (too slow for a scan path).
+    for (const cachePath of this.defaultCachePaths()) {
+      if (await pathExists(cachePath)) return true;
+    }
+    return false;
   }
 
   async getCacheInfo(): Promise<CacheInfo> {
@@ -244,6 +251,10 @@ class YarnCleaner implements CleanerModule {
     const clearedPaths: string[] = [];
     let errors: string[] = [];
 
+    // Volume attribution is captured before deletion and cache invalidation:
+    // per-path sizes are warm cache hits from the scan that just ran.
+    const volumeBreakdown = await volumeBreakdownForPaths(info.paths);
+
     for (const cachePath of info.paths) {
       try {
         if (dryRun) {
@@ -280,6 +291,7 @@ class YarnCleaner implements CleanerModule {
       sizeAfter: 0, // Set to 0 as we don't want to rescan
       error: errors.length > 0 ? errors.join("; ") : undefined,
       clearedPaths,
+      volumeBreakdown,
     };
   }
 }

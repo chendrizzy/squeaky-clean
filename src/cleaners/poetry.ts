@@ -9,6 +9,7 @@ import {
   CleanerModule,
 } from "../types";
 import { getDirectorySize, pathExists, safeRmrf } from "../utils/fs";
+import { computeVolumeBreakdown } from "../utils/volumes";
 import { printVerbose } from "../utils/cli";
 import { commandExists } from "../utils/which";
 import { minimatch } from "minimatch";
@@ -126,6 +127,12 @@ class PoetryCleaner implements CleanerModule {
       };
     }
 
+    // Per-category sizes are already in hand; attribute them to volumes now,
+    // before any deletion.
+    const volumeBreakdown = await computeVolumeBreakdown(
+      categories.map((c) => ({ paths: c.paths, size: c.size ?? 0 })),
+    );
+
     if (dryRun) {
       printVerbose(
         `[DRY RUN] Would clear poetry cache: ${pathsToClear.join(", ")}`,
@@ -137,6 +144,7 @@ class PoetryCleaner implements CleanerModule {
         clearedCategories: categories.map((c) => c.id),
         sizeBefore,
         sizeAfter: sizeBefore,
+        volumeBreakdown,
       };
     }
 
@@ -172,6 +180,7 @@ class PoetryCleaner implements CleanerModule {
       clearedCategories: categories.map((c) => c.id),
       sizeBefore,
       sizeAfter: success ? 0 : sizeBefore,
+      volumeBreakdown,
     };
   }
 

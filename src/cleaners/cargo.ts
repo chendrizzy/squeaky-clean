@@ -9,6 +9,7 @@ import {
   CleanerModule,
 } from "../types";
 import { getDirectorySize, pathExists, safeRmrf } from "../utils/fs";
+import { computeVolumeBreakdown } from "../utils/volumes";
 import { printVerbose } from "../utils/cli";
 import { commandExists } from "../utils/which";
 import { minimatch } from "minimatch";
@@ -70,9 +71,18 @@ class CargoCleaner implements CleanerModule {
 
   async isAvailable(): Promise<boolean> {
     if (await commandExists("cargo")) return true;
-    // Caches on disk still count even without the CLI: cleaning them is
-    // plain directory removal and needs no cargo binary.
-    return (await this.buildCategories()).length > 0;
+    // Home caches only: cleaning them is plain directory removal and needs
+    // no cargo binary. The cwd target/ category deliberately stays out of
+    // detection - target/ is also Maven/sbt's build dir, and the default
+    // clear() skips it anyway, so it would be detected-but-uncleanable.
+    const home = os.homedir();
+    for (const cachePath of [
+      path.join(home, ".cargo", "registry"),
+      path.join(home, ".cargo", "git"),
+    ]) {
+      if (await pathExists(cachePath)) return true;
+    }
+    return false;
   }
 
   async getCacheInfo(): Promise<CacheInfo> {
@@ -132,6 +142,12 @@ class CargoCleaner implements CleanerModule {
       };
     }
 
+    // Per-category sizes are already in hand; attribute them to volumes now,
+    // before any deletion.
+    const volumeBreakdown = await computeVolumeBreakdown(
+      categories.map((c) => ({ paths: c.paths, size: c.size ?? 0 })),
+    );
+
     if (dryRun) {
       printVerbose(
         `[DRY RUN] Would clear cargo caches: ${pathsToClear.join(", ")}`,
@@ -143,6 +159,7 @@ class CargoCleaner implements CleanerModule {
         sizeBefore,
         sizeAfter: sizeBefore,
         clearedCategories: categories.map((c) => c.id),
+        volumeBreakdown,
       };
     }
 
@@ -178,6 +195,7 @@ class CargoCleaner implements CleanerModule {
       clearedCategories: categories.map((c) => c.id),
       sizeBefore,
       sizeAfter: success ? 0 : sizeBefore,
+      volumeBreakdown,
     };
   }
 
