@@ -1,8 +1,8 @@
 class SqueakyClean < Formula
   desc "Smart, safe, configurable cache cleaner CLI for 25+ dev tools"
   homepage "https://github.com/chendrizzy/squeaky-clean"
-  url "https://registry.npmjs.org/squeaky-clean/-/squeaky-clean-0.6.3.tgz"
-  sha256 "a6cbcefaaacda9d5720c8e7b755d97f64f72c4e031abe682cd3d18da4b7b8749"
+  url "https://registry.npmjs.org/squeaky-clean/-/squeaky-clean-0.6.4.tgz"
+  sha256 "aa109d350402d347fc509a0154f4b51aae6e7298744e9cec7d854605f01c26e5"
   license "MIT"
 
   depends_on "node"
