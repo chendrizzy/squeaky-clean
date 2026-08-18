@@ -8,6 +8,7 @@ import {
 } from "../utils/cli";
 import { cacheManager } from "../cleaners";
 import { config } from "../config";
+import { aggregateVolumeBreakdown, volumeLabel } from "../utils/volumes";
 import ora from "ora";
 import inquirer from "inquirer";
 
@@ -287,6 +288,14 @@ export async function autoCommand(options: AutoOptions): Promise<void> {
 
       console.log();
 
+      // Per-volume attribution: many cache dirs are symlinks onto external
+      // volumes, so the plain total overstates internal-disk reclaim.
+      const volumes = await aggregateVolumeBreakdown(
+        results,
+        Boolean(options.dryRun),
+      );
+      const volumeRows = Object.entries(volumes).sort((a, b) => b[1] - a[1]);
+
       if (options.dryRun) {
         if (actualFreed > 0) {
           printSuccess(
@@ -305,6 +314,15 @@ export async function autoCommand(options: AutoOptions): Promise<void> {
         printSuccess(`✨ Your dev environment is now squeaky clean!`);
       } else {
         printInfo("No space was actually freed (caches may have been empty)");
+      }
+
+      if (actualFreed > 0 && volumeRows.length > 0) {
+        printInfo(`${options.dryRun ? "Would free" : "Freed"} by volume:`);
+        for (const [volume, bytes] of volumeRows) {
+          console.log(
+            `   ${volumeLabel(volume)}: ${formatSizeWithColor(bytes)}`,
+          );
+        }
       }
 
       if (errorCount > 0) {

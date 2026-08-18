@@ -113,6 +113,13 @@ export interface ClearResult {
   // simple single-cache cleaners stay unaffected. Reuses sizes already
   // computed during clearing - no extra scan.
   categoryBreakdown?: CategoryBreakdownEntry[];
+  // Freed bytes grouped by physical volume (realpath-resolved), e.g.
+  // { "/": 123, "/Volumes/BOLT": 456 }. Many cache dirs are symlinks onto
+  // external volumes, so a plain total overstates what the internal disk got
+  // back. Populated by BaseCleaner from per-category sizes; cleaners with a
+  // fully custom clear() may omit it and display falls back to attributing
+  // their freed bytes across clearedPaths.
+  volumeBreakdown?: Record<string, number>;
 }
 
 // Tool-specific granular settings

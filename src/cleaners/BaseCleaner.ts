@@ -13,6 +13,7 @@ import { basename, join, resolve } from "path";
 import { minimatch } from "minimatch";
 import { printVerbose } from "../utils/cli";
 import { getCachedDirectorySize } from "../utils/fs";
+import { computeVolumeBreakdown, VolumeEntry } from "../utils/volumes";
 import { effectiveSafety } from "../safety";
 
 export abstract class BaseCleaner implements CleanerModule {
@@ -139,6 +140,7 @@ export abstract class BaseCleaner implements CleanerModule {
     let clearedPaths: string[] = [];
     let clearedCategories: string[] = [];
     const breakdown: CategoryBreakdownEntry[] = [];
+    const volumeEntries: VolumeEntry[] = [];
 
     for (const category of filteredCategories) {
       // Filter out protected paths from this category
@@ -152,12 +154,17 @@ export abstract class BaseCleaner implements CleanerModule {
         clearedPaths.push(...allowedPaths);
         clearedCategories.push(category.id);
         breakdown.push(this.toBreakdownEntry(category));
+        volumeEntries.push({ paths: allowedPaths, size: category.size || 0 });
       } else if (category.paths.length > 0) {
         printVerbose(
           `Skipping category ${category.id} - all paths are protected`,
         );
       }
     }
+
+    // Resolve volumes before clearing: a cleared path may be a symlink whose
+    // target realpath() can no longer see once it is gone.
+    const volumeBreakdown = await computeVolumeBreakdown(volumeEntries);
 
     if (!dryRun) {
       // Actual clearing logic would go here
@@ -174,6 +181,7 @@ export abstract class BaseCleaner implements CleanerModule {
       clearedPaths,
       clearedCategories,
       categoryBreakdown: breakdown.length > 1 ? breakdown : undefined,
+      volumeBreakdown,
     };
   }
 
@@ -206,6 +214,7 @@ export abstract class BaseCleaner implements CleanerModule {
     let clearedPaths: string[] = [];
     let clearedCategories: string[] = [];
     const breakdown: CategoryBreakdownEntry[] = [];
+    const volumeEntries: VolumeEntry[] = [];
 
     for (const category of selectedCategories) {
       // Filter out protected paths from this category
@@ -219,12 +228,16 @@ export abstract class BaseCleaner implements CleanerModule {
         clearedPaths.push(...allowedPaths);
         clearedCategories.push(category.id);
         breakdown.push(this.toBreakdownEntry(category));
+        volumeEntries.push({ paths: allowedPaths, size: category.size || 0 });
       } else if (category.paths.length > 0) {
         printVerbose(
           `Skipping category ${category.id} - all paths are protected`,
         );
       }
     }
+
+    // Resolve volumes before clearing (see clear()).
+    const volumeBreakdown = await computeVolumeBreakdown(volumeEntries);
 
     if (!dryRun) {
       for (const path of clearedPaths) {
@@ -240,6 +253,7 @@ export abstract class BaseCleaner implements CleanerModule {
       clearedPaths,
       clearedCategories,
       categoryBreakdown: breakdown.length > 1 ? breakdown : undefined,
+      volumeBreakdown,
     };
   }
 

@@ -37,6 +37,7 @@ import {
   summarizeAppCaches,
 } from "../utils/categoryView";
 import { normalizeHierarchy } from "../utils/groupHierarchy";
+import { aggregateVolumeBreakdown, volumeLabel } from "../utils/volumes";
 
 function parseCsvOption(value?: string | string[]): string[] | undefined {
   if (!value) return undefined;
@@ -324,6 +325,8 @@ interface RenderContext {
   useColor: boolean;
   emojiMode: "on" | "off" | "minimal";
   topN: number;
+  // Freed bytes per physical volume (realpath-resolved), for the JSON payload.
+  volumes: Record<string, number>;
 }
 
 /**
@@ -360,6 +363,7 @@ function renderCleanResults(
     const payload = {
       dryRun: ctx.dryRun,
       totalFreed,
+      volumes: ctx.volumes,
       results: rows.map(({ result, freed }) => ({
         name: result.name,
         success: result.success,
@@ -635,6 +639,10 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
       throw error;
     }
 
+    // Per-volume attribution: many cache dirs are symlinks onto external
+    // volumes, so the plain total overstates internal-disk reclaim.
+    const volumes = await aggregateVolumeBreakdown(results, dryRun);
+
     // Report results. The renderer emits one machine-readable object under
     // --json (no banners); otherwise the per-cleaner human summary, with
     // app-caches collapsed to a summary line (expandable with -v).
@@ -644,6 +652,7 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
       {
         dryRun,
         json,
+        volumes,
         // --summary forces collapse; otherwise expansion follows the explicit
         // per-run -v or the saved display.expand preference - NOT the persisted
         // global `verbose` (that is for diagnostics).
@@ -663,6 +672,16 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
         printSuccess(
           `Total ${dryRun ? "potential " : ""}space freed: ${totalFreedFormatted}`,
         );
+
+        const volumeRows = Object.entries(volumes).sort((a, b) => b[1] - a[1]);
+        if (volumeRows.length > 0) {
+          printInfo("By volume:");
+          for (const [volume, bytes] of volumeRows) {
+            console.log(
+              `   ${volumeLabel(volume)}: ${formatSizeWithColor(bytes)}`,
+            );
+          }
+        }
       }
 
       if (errorCount > 0) {
