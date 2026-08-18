@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import * as os from "os";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import {
   CacheInfo,
@@ -14,7 +14,7 @@ import { pathExists } from "../utils/fs";
 import { printVerbose } from "../utils/cli";
 import { commandExists } from "../utils/which";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // Common application directories to scan for Universal binaries
 const APP_DIRECTORIES = [
@@ -361,10 +361,20 @@ export class UniversalBinaryCleaner implements CleanerModule {
         const tempPath = `${binary.binaryPath}.thin`;
 
         try {
-          // Extract arm64 slice to temp file
-          await execAsync(
-            `lipo -thin arm64 "${binary.binaryPath}" -output "${tempPath}"`,
-          );
+          // Capture the original mode so the thinned file keeps setuid/exec
+          // bits exactly (a blanket chmod +x would drop special bits).
+          const originalMode = (await fs.stat(binary.binaryPath)).mode & 0o7777;
+
+          // Extract arm64 slice to temp file. execFile (argv array, no
+          // shell): binary paths come from app names on disk and must never
+          // be shell-interpreted.
+          await execFileAsync("lipo", [
+            "-thin",
+            "arm64",
+            binary.binaryPath,
+            "-output",
+            tempPath,
+          ]);
 
           // Backup original
           await fs.rename(binary.binaryPath, backupPath);
@@ -373,7 +383,7 @@ export class UniversalBinaryCleaner implements CleanerModule {
           await fs.rename(tempPath, binary.binaryPath);
 
           // Preserve permissions
-          await execAsync(`chmod +x "${binary.binaryPath}"`);
+          await fs.chmod(binary.binaryPath, originalMode);
 
           // Remove backup on success
           await fs.unlink(backupPath);
