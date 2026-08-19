@@ -1,16 +1,23 @@
 name: Auto Version Bump
 
 on:
+  # Manual entry point: lets a release stranded by a [skip ci] head commit be
+  # forced without pushing a dummy commit. The releasable-commit gate below
+  # still applies, so a dispatch with nothing to ship exits as a no-op.
+  workflow_dispatch:
   push:
     branches:
       - main
+    # Pushes touching ONLY these paths never start the workflow. Keep this list
+    # in sync with SHIPPABLE in the "Decide whether (and how) to bump" step.
+    # package.json/package-lock.json are deliberately NOT ignored: a dependency
+    # fix must be able to ship. The release commit this workflow pushes carries
+    # [skip ci], which is what prevents a release loop.
     paths-ignore:
       - '**.md'
       - 'docs/**'
       - '.github/workflows/**'
       - 'Formula/**'
-      - 'package.json'
-      - 'package-lock.json'
 
 jobs:
   bump-version:
@@ -37,68 +44,107 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
       
-      - name: Check commit messages for version bump type
+      - name: Decide whether (and how) to bump
         id: check_commits
+        env:
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          # Get commits since last tag
+          # Only commits that touched shippable files count. paths-ignore
+          # decides which PUSHES run this workflow; without the same filter
+          # here, a `fix:` that edited only a README would sit in the range and
+          # arm a release for the next unrelated push.
+          # KEEP IN SYNC WITH paths-ignore AT THE TOP OF THIS FILE.
+          SHIPPABLE=(. ':(exclude)*.md' ':(exclude)docs/**' ':(exclude).github/workflows/**' ':(exclude)Formula/**')
+
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          
-          if [ -z "$LAST_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"%s")
-          else
-            COMMITS=$(git log "${LAST_TAG}..HEAD" --pretty=format:"%s")
+          if [ -n "$LAST_TAG" ]; then RANGE="${LAST_TAG}..HEAD"; else RANGE="HEAD"; fi
+
+          SUBJECTS=$(git log "$RANGE" --pretty=format:"%s" -- "${SHIPPABLE[@]}")
+          # Full messages: markers are also honored in bodies/footers, which is
+          # where conventional-commits puts BREAKING CHANGE.
+          BODIES=$(git log "$RANGE" --pretty=format:"%B" -- "${SHIPPABLE[@]}")
+
+          # A commit can veto itself out of every future release decision, not
+          # just the push it rode in on.
+          SUBJECTS=$(printf '%s\n' "$SUBJECTS" | grep -viE '\[(skip release|no release)\]' || true)
+
+          echo "Shippable commits since ${LAST_TAG:-repo start}:"
+          printf '%s\n' "$SUBJECTS" | head -20
+          echo "---"
+
+          LAST_COMMIT=$(git log -1 --pretty=format:"%s")
+
+          # A manual dispatch is an explicit human request, so it bypasses the
+          # head-commit suppressors (that is the whole point of the escape
+          # hatch); the releasable-commit gate below still applies.
+          if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            if echo "$LAST_COMMIT" | grep -qE '^chore\(release\):|\[skip ci\]'; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "Skipping: head commit is a release commit or carries [skip ci]"
+              exit 0
+            fi
+
+            if echo "$LAST_COMMIT" | grep -qiE '\[(skip release|no release)\]'; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "Skipping: head commit requests [skip release]"
+              exit 0
+            fi
           fi
-          
-          # More strict version bump detection for 0.x.x versions
-          VERSION_TYPE="patch"  # Default to patch for most changes
-          
-          # Get current version
+
+          # Default is NO release. A push earns one only when a shippable commit
+          # since the last tag is release-worthy: a conventional
+          # feat/fix/perf/revert subject, a git-generated `Revert "..."`, a
+          # trailing [release] override, or an ALL-CAPS marker starting a line.
+          # chore/style/docs/ci/test/refactor/build never ship on their own.
+          # Markers are anchored so that merely MENTIONING one (e.g. a commit
+          # documenting this workflow) cannot trigger a release.
+          TYPES_RE='^(feat|fix|perf|revert)(\([^)]*\))?!?:|^(feat|fix|perf|revert)!(\([^)]*\))?:|^Revert "|\[release\]$'
+          MARKERS_RE='^(BREAKING CHANGE|MAJOR CHANGE|MINOR CHANGE|FEATURE RELEASE):'
+
+          if ! echo "$SUBJECTS" | grep -qiE "$TYPES_RE" && ! echo "$BODIES" | grep -qE "$MARKERS_RE"; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping: no release-worthy commits since ${LAST_TAG:-repo start}."
+            echo "(Releases need feat:/fix:/perf:/revert:, an explicit ALL-CAPS marker, or a trailing [release].)"
+            exit 0
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+          # Bump type: unchanged policy — strict about minor while on 0.x.
+          VERSION_TYPE="patch"
           CURRENT_VERSION=$(node -p "require('./package.json').version")
           MAJOR_VERSION=$(echo "$CURRENT_VERSION" | cut -d. -f1)
-          
           echo "Current version: $CURRENT_VERSION (major: $MAJOR_VERSION)"
-          
-          # For 0.x.x versions, be very strict about minor bumps
+
           if [ "$MAJOR_VERSION" = "0" ]; then
-            # Only bump minor for significant new features with explicit markers
-            if echo "$COMMITS" | grep -qE "^feat!(\(.*\))?:|MINOR CHANGE:|FEATURE RELEASE:"; then
-              VERSION_TYPE="minor"
-              echo "Found explicit minor version indicator"
-            # Major bumps only for breaking changes (will become 1.0.0)
-            elif echo "$COMMITS" | grep -qE "BREAKING CHANGE:|MAJOR CHANGE:"; then
+            # Major bumps only for breaking changes (will become 1.0.0), and
+            # they outrank a minor marker in the same range.
+            if echo "$BODIES" | grep -qE '^(BREAKING CHANGE|MAJOR CHANGE):'; then
               VERSION_TYPE="major"
               echo "Found breaking change indicator"
-            # Everything else is a patch
+            # Minor only for significant new features with explicit markers
+            # (accept the bang both conventional-style and legacy-style).
+            elif echo "$SUBJECTS" | grep -qE '^feat(\([^)]*\))?!:|^feat!(\([^)]*\))?:' \
+              || echo "$BODIES" | grep -qE '^(MINOR CHANGE|FEATURE RELEASE):'; then
+              VERSION_TYPE="minor"
+              echo "Found explicit minor version indicator"
             else
               # Even regular feat: commits are patches in 0.x.x
               VERSION_TYPE="patch"
-              echo "Defaulting to patch for 0.x.x version"
+              echo "Release-worthy commits present; patch for 0.x.x"
             fi
           else
             # For 1.x.x and above, use standard conventional commits
-            if echo "$COMMITS" | grep -qE "BREAKING CHANGE:|!:"; then
+            if echo "$BODIES" | grep -qE '^(BREAKING CHANGE|MAJOR CHANGE):' \
+              || echo "$SUBJECTS" | grep -qE '^(feat|fix|perf|revert)(\([^)]*\))?!:'; then
               VERSION_TYPE="major"
-            elif echo "$COMMITS" | grep -qE "^feat(\(.*\))?:"; then
+            elif echo "$SUBJECTS" | grep -qE '^feat(\([^)]*\))?:'; then
               VERSION_TYPE="minor"
             fi
           fi
-          
+
           echo "version_type=$VERSION_TYPE" >> "$GITHUB_OUTPUT"
-          
-          # Log the decision for debugging
-          echo "Commits analyzed:"
-          echo "$COMMITS" | head -10
-          echo "---"
           echo "Version bump type: $VERSION_TYPE"
-          
-          # Check if we should skip (e.g., if last commit was a version bump)
-          LAST_COMMIT=$(git log -1 --pretty=format:"%s")
-          if echo "$LAST_COMMIT" | grep -qE "^chore\(release\):|\[skip ci\]"; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Skipping: Last commit was a release or has [skip ci]"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
       
       - name: Bump version
         if: steps.check_commits.outputs.skip == 'false'
