@@ -25,6 +25,9 @@ jobs:
       - name: Release-gate decision table
         run: bash scripts/tests/version-bump-decision.test.sh
 
+      - name: PR-title lint decision table
+        run: bash scripts/tests/pr-title-lint.test.sh
+
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:

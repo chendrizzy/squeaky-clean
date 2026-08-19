@@ -1,0 +1,28 @@
+name: PR Title
+
+# Squash-merge uses the PR title as the commit subject, and the release gate in
+# version-bump.yml only recognises conventional subjects — so an unconventional
+# title means a merged fix silently never ships.
+on:
+  pull_request:
+    # edited catches retitles; synchronize keeps the check present on the head
+    # SHA so it can be used as a required status check.
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-title:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Lint PR title
+        # The title is untrusted input: pass it through env, never interpolate
+        # ${{ }} into the shell.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: bash scripts/lint-pr-title.sh
