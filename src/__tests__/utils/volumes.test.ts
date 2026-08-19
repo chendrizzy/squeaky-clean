@@ -54,9 +54,9 @@ describe("resolveVolume", () => {
     await fs.symlink("/Volumes/FAKE/store", "/home/u/.cache");
     // The child never existed: the ancestor walk must reach the symlink and
     // resolve THROUGH it to the external volume - not stop at /home/u.
-    await expect(
-      resolveVolume("/home/u/.cache/deleted-child"),
-    ).resolves.toBe("/Volumes/FAKE");
+    await expect(resolveVolume("/home/u/.cache/deleted-child")).resolves.toBe(
+      "/Volumes/FAKE",
+    );
   });
 });
 

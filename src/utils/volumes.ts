@@ -90,7 +90,11 @@ export async function aggregateVolumeBreakdown(
   results: Array<
     Pick<
       ClearResult,
-      "success" | "sizeBefore" | "sizeAfter" | "clearedPaths" | "volumeBreakdown"
+      | "success"
+      | "sizeBefore"
+      | "sizeAfter"
+      | "clearedPaths"
+      | "volumeBreakdown"
     >
   >,
   dryRun: boolean,
