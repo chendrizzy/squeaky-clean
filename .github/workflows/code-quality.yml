@@ -19,12 +19,18 @@ jobs:
         with:
           fetch-depth: 0
       
+      # Pure bash/git/awk — runs before npm so a broken release gate fails fast.
+      # Extracts the decision step out of version-bump.yml and asserts which
+      # commit shapes may publish a release.
+      - name: Release-gate decision table
+        run: bash scripts/tests/version-bump-decision.test.sh
+
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
       
