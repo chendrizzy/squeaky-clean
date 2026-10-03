@@ -105,6 +105,8 @@ export interface ClearResult {
   success: boolean;
   sizeBefore?: number;
   sizeAfter?: number;
+  // bytes freed only after backups are released; UB thinning keeps originals for keepBackupsDays
+  heldBytes?: number;
   error?: string;
   clearedPaths: string[];
   clearedCategories?: string[];

@@ -1,434 +1,246 @@
 import { promises as fs } from "fs";
-import path from "path";
 import * as os from "os";
-import { execFile } from "child_process";
-import { promisify } from "util";
-import {
-  CacheInfo,
-  ClearResult,
-  CleanerModule,
-  CacheSelectionCriteria,
-  CacheCategory,
-} from "../types";
-import { pathExists } from "../utils/fs";
+import * as path from "path";
+import { CacheInfo, ClearResult, CleanerModule, CacheSelectionCriteria, CacheCategory } from "../types";
 import { printVerbose } from "../utils/cli";
-import { commandExists } from "../utils/which";
+import { classifySlices, readBundleInfo, readMachOSlices, type BundleInfo } from "../ub/bundle";
+import { loadSeal, type Seal } from "../ub/seal";
+import { DEFAULT_MIN_SAVINGS, selectCandidates, thinBundle, type Candidate, type ThinOutcome } from "../ub/thinner";
+import { classifyApp, probeApp, type AppClass } from "../ub/policy";
+import { ensureAgentHome } from "../ub/paths";
+import { acquireLock } from "../ub/lock";
+import { recoverJournal } from "../ub/restore";
+import { pruneExpiredBackups } from "../ub/backups";
 
-const execFileAsync = promisify(execFile);
+/** Until Plan 2 adds `universalBinary.keepBackupsDays` to config. */
+export const DEFAULT_KEEP_BACKUP_DAYS = 3;
+export type RecoveryItem = Awaited<ReturnType<typeof recoverJournal>>[number];
 
-// Common application directories to scan for Universal binaries
-const APP_DIRECTORIES = [
-  "/Applications",
-  "/Applications/Utilities",
-  path.join(os.homedir(), "Applications"),
-];
+const LIPO = "/usr/bin/lipo";
+const SCAN_DEPTH = 3;
+const LOCK_WAIT_MS = 150_000;
+/** With no readable seal only the main executable is estimated (classifyFile: main first, everything else unsealed). */
+const NO_SEAL: Seal = { files2: Object.create(null), nestedRules: [] };
+const SIGNAL_EXIT: Record<string, number> = { SIGINT: 130, SIGTERM: 143 };
 
-// Executables to skip (system critical or known problematic)
-const SKIP_EXECUTABLES = new Set([
-  "Finder",
-  "SystemUIServer",
-  "loginwindow",
-  "launchd",
-  "kernel",
-]);
-
-// Mach-O cputype values (CPU_ARCH_ABI64 flag = 0x01000000)
-const CPU_TYPE_NAMES: Record<number, string> = {
-  0x00000007: "i386",
-  0x01000007: "x86_64",
-  0x0000000c: "arm",
-  0x0100000c: "arm64",
-  0x00000012: "ppc",
-  0x01000012: "ppc64",
-};
-
-function cpuTypeName(cputype: number): string {
-  return CPU_TYPE_NAMES[cputype] ?? `cpu_0x${cputype.toString(16)}`;
+interface ScannedApp {
+  id: string;
+  info: BundleInfo;
+  cls: AppClass | null;
+  candidates: Candidate[];
+  savings: number;
 }
 
-interface UniversalBinaryInfo {
-  appPath: string;
-  appName: string;
-  binaryPath: string;
-  totalSize: number;
-  architectures: string[];
-  potentialSavings: number;
-}
+const sum = (xs: number[]) => xs.reduce((n, x) => n + x, 0);
+const appName = (p: string) => path.basename(p, ".app");
+const underSystem = (real: string) => real === "/System" || real.startsWith("/System/");
 
 export class UniversalBinaryCleaner implements CleanerModule {
   name = "universal-binary";
   type = "system" as const;
-  description =
-    "Thin Universal Binaries on Apple Silicon to remove unused x86_64 code";
+  description = "Thin Universal Binaries on Apple Silicon to remove unused x86_64 code";
 
-  private universalBinaries: UniversalBinaryInfo[] = [];
+  /** Engine outcomes of the last clear(), one per app handed to the engine (dry run: estimates). */
+  lastOutcomes: ThinOutcome[] = [];
+  /** Journal recovery results of the last non-dry clear(), unfiltered. */
+  lastRecovery: RecoveryItem[] = [];
+  private scanned = new Map<string, ScannedApp>();
 
   async isAvailable(): Promise<boolean> {
-    // Only available on macOS with Apple Silicon
     if (process.platform !== "darwin") {
       printVerbose("Universal Binary cleaner only available on macOS");
       return false;
     }
-
-    const arch = os.arch();
-    if (arch !== "arm64") {
-      printVerbose(
-        `Universal Binary cleaner requires Apple Silicon (arm64), found: ${arch}`,
-      );
+    if (os.arch() !== "arm64") {
+      printVerbose(`Universal Binary cleaner requires Apple Silicon (arm64), found: ${os.arch()}`);
       return false;
     }
-
-    // Verify lipo is available
-    return commandExists("lipo");
+    // the engine runs /usr/bin/lipo by absolute path; a PATH lipo (e.g. conda's) is irrelevant
+    return (await fs.stat(LIPO).catch(() => null))?.isFile() ?? false;
   }
 
-  /**
-   * Read Mach-O architecture info straight from the file's header bytes -
-   * what `file` + `lipo -info` report, without two process spawns per file.
-   * Returns [] when the file is not a Mach-O binary.
-   */
-  private async readMachOArchitectures(binaryPath: string): Promise<string[]> {
-    let file;
-    try {
-      file = await fs.open(binaryPath, "r");
-      const buffer = Buffer.alloc(1024);
-      const { bytesRead } = await file.read(buffer, 0, 1024, 0);
-      if (bytesRead < 8) return [];
-
-      const beMagic = buffer.readUInt32BE(0);
-
-      // Fat (universal) binary: big-endian header listing each arch slice
-      if (beMagic === 0xcafebabe || beMagic === 0xcafebabf) {
-        const count = buffer.readUInt32BE(4);
-        // Java .class files share the CAFEBABE magic; their version field
-        // here is always far larger than any real architecture count.
-        if (count === 0 || count > 30) return [];
-
-        const entrySize = beMagic === 0xcafebabf ? 32 : 20;
-        const architectures: string[] = [];
-        for (let i = 0; i < count; i++) {
-          const offset = 8 + i * entrySize;
-          if (offset + 4 > bytesRead) break;
-          architectures.push(cpuTypeName(buffer.readUInt32BE(offset)));
-        }
-        return architectures;
-      }
-
-      // Thin Mach-O (little-endian on modern macOS, big-endian on PPC-era)
-      const leMagic = buffer.readUInt32LE(0);
-      if (leMagic === 0xfeedface || leMagic === 0xfeedfacf) {
-        return [cpuTypeName(buffer.readUInt32LE(4))];
-      }
-      if (beMagic === 0xfeedface || beMagic === 0xfeedfacf) {
-        return [cpuTypeName(buffer.readUInt32BE(4))];
-      }
-
-      return [];
-    } catch {
-      return [];
-    } finally {
-      await file?.close().catch(() => {});
-    }
+  /** `SQUEAKY_AGENT_ROOTS` (colon-separated) is honoured only under tests, like `SQUEAKY_AGENT_HOME`. */
+  scanRoots(): string[] {
+    const override = process.env.SQUEAKY_AGENT_ROOTS;
+    if (override && (process.env.VITEST || process.env.NODE_ENV === "test")) return override.split(":").filter(Boolean);
+    return ["/Applications", "/Applications/Utilities", path.join(os.homedir(), "Applications")];
   }
 
-  private async scanApp(appPath: string): Promise<UniversalBinaryInfo[]> {
-    const found: UniversalBinaryInfo[] = [];
-    const macosPath = path.join(appPath, "Contents", "MacOS");
-
-    let entries: string[];
-    try {
-      entries = await fs.readdir(macosPath);
-    } catch {
-      return found; // No Contents/MacOS directory or unreadable
-    }
-
-    for (const entry of entries) {
-      if (SKIP_EXECUTABLES.has(entry)) continue;
-
-      const binaryPath = path.join(macosPath, entry);
-      try {
-        const stat = await fs.stat(binaryPath);
-        if (!stat.isFile()) continue;
-
-        // Skip macOS dataless/offloaded files (iCloud "Optimize Mac Storage"):
-        // blocks===0 with size>0 means the bytes aren't local, and reading the
-        // header would force a download just to inspect the architecture.
-        if (stat.blocks === 0 && stat.size > 0) {
-          printVerbose(`Skipping dataless (offloaded) binary: ${binaryPath}`);
-          continue;
-        }
-
-        const architectures = await this.readMachOArchitectures(binaryPath);
-        const isUniversal = architectures.length > 1;
-        if (!isUniversal || !architectures.includes("arm64")) continue;
-
-        // Estimate savings as the x86 slices' share of the binary size
-        const totalSize = stat.size;
-        const x86Archs = architectures.filter(
-          (a) => a.includes("x86") || a.includes("i386"),
-        );
-        const potentialSavings = Math.round(
-          (totalSize * x86Archs.length) / architectures.length,
-        );
-
-        found.push({
-          appPath,
-          appName: path.basename(appPath, ".app"),
-          binaryPath,
-          totalSize,
-          architectures,
-          potentialSavings,
-        });
-
-        printVerbose(
-          `Found Universal Binary: ${path.basename(appPath)} (${architectures.join(", ")}) - potential savings: ${(potentialSavings / (1024 * 1024)).toFixed(1)} MB`,
-        );
-      } catch {
-        // Skip files we can't read
-      }
-    }
-
-    return found;
+  /** Category id -> auto-ignore class from the last scan (§6.2 row 5), or null. */
+  autoIgnoredClass(categoryId: string): AppClass | null {
+    return this.scanned.get(categoryId)?.cls ?? null;
   }
 
-  private async scanForUniversalBinaries(): Promise<UniversalBinaryInfo[]> {
-    const appPaths: string[] = [];
-
-    for (const appDir of APP_DIRECTORIES) {
-      if (!(await pathExists(appDir))) {
-        continue;
+  /** `.app` realpaths under the roots: depth 3 through non-.app folders, symlinks followed, cycles cut by realpath. */
+  private async findApps(): Promise<string[]> {
+    const seenDirs = new Set<string>();
+    const apps = new Set<string>();
+    const visit = async (dir: string, depth: number): Promise<void> => {
+      const real = await fs.realpath(dir).catch(() => null);
+      if (!real || underSystem(real) || seenDirs.has(real)) return;
+      seenDirs.add(real);
+      const names = await fs.readdir(real).catch(() => [] as string[]);
+      for (const n of names) {
+        const p = path.join(real, n);
+        if (!(await fs.stat(p).catch(() => null))?.isDirectory()) continue;
+        if (n.endsWith(".app")) {
+          const r = await fs.realpath(p).catch(() => null);
+          if (r && !underSystem(r)) apps.add(r);
+        } else if (depth < SCAN_DEPTH) await visit(p, depth + 1);
       }
-
-      printVerbose(`Scanning ${appDir} for Universal Binaries...`);
-
-      try {
-        const entries = await fs.readdir(appDir);
-        for (const entry of entries) {
-          if (entry.endsWith(".app")) {
-            appPaths.push(path.join(appDir, entry));
-          }
-        }
-      } catch (error) {
-        printVerbose(`Error scanning ${appDir}: ${error}`);
-      }
-    }
-
-    // Scan apps concurrently; each app is a handful of small header reads
-    const universalBinaries: UniversalBinaryInfo[] = [];
-    let nextIndex = 0;
-    const workers = Array.from(
-      { length: Math.min(8, appPaths.length) },
-      async () => {
-        while (nextIndex < appPaths.length) {
-          const appPath = appPaths[nextIndex++];
-          universalBinaries.push(...(await this.scanApp(appPath)));
-        }
-      },
-    );
-    await Promise.all(workers);
-
-    return universalBinaries;
-  }
-
-  async getCacheInfo(): Promise<CacheInfo> {
-    if (!(await this.isAvailable())) {
-      return {
-        name: this.name,
-        type: this.type,
-        description: this.description,
-        paths: [],
-        isInstalled: false,
-        size: 0,
-      };
-    }
-
-    printVerbose("Scanning for Universal Binaries on Apple Silicon...");
-    this.universalBinaries = await this.scanForUniversalBinaries();
-
-    const totalSavings = this.universalBinaries.reduce(
-      (sum, b) => sum + b.potentialSavings,
-      0,
-    );
-
-    printVerbose(`Found ${this.universalBinaries.length} Universal Binaries`);
-    printVerbose(
-      `Total potential savings: ${(totalSavings / (1024 * 1024)).toFixed(1)} MB`,
-    );
-
-    return {
-      name: this.name,
-      type: this.type,
-      description: this.description,
-      paths: this.universalBinaries.map((b) => b.binaryPath),
-      isInstalled: true,
-      size: totalSavings, // Report potential savings as "cache size"
-      categories: await this.getCacheCategories(),
     };
+    for (const root of this.scanRoots()) await visit(root, 0);
+    return [...apps].sort();
+  }
+
+  /** Spawn-free: in-process plist (bplist -> bundleId null), header reads, seal and policy probes. */
+  private async scanApp(real: string): Promise<Omit<ScannedApp, "id"> | null> {
+    const info = await readBundleInfo(real, { allowSpawn: false });
+    if (!info) return null;
+    const main = path.join(real, "Contents", "MacOS", info.executable);
+    if (!classifySlices(await readMachOSlices(main)).thinnable) return null;
+    const { candidates } = await selectCandidates(info, (await loadSeal(real)) ?? NO_SEAL);
+    const cls = classifyApp(info, await probeApp(real))?.cls ?? null;
+    return { info, cls, candidates, savings: sum(candidates.map((c) => c.savings)) };
+  }
+
+  private async scan(): Promise<ScannedApp[]> {
+    const paths = await this.findApps();
+    const found: Array<Omit<ScannedApp, "id">> = [];
+    let next = 0;
+    // bounded: each app is a few header reads; unbounded would risk EMFILE on big /Applications
+    const workers = Array.from({ length: Math.min(8, paths.length) }, async () => {
+      while (next < paths.length) {
+        const p = paths[next++];
+        const s = await this.scanApp(p).catch((e: unknown) => {
+          printVerbose(`Skipping ${p}: ${e instanceof Error ? e.message : String(e)}`);
+          return null;
+        });
+        if (s) found.push(s);
+      }
+    });
+    await Promise.all(workers);
+    found.sort((a, b) => (a.info.realpath < b.info.realpath ? -1 : a.info.realpath > b.info.realpath ? 1 : 0));
+
+    const used = new Set<string>();
+    const apps = found.map((s) => {
+      const base = `universal-${s.info.name.toLowerCase().replace(/\s+/g, "-")}`;
+      let id = base;
+      for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
+      used.add(id);
+      return { id, ...s };
+    });
+    this.scanned = new Map(apps.map((a) => [a.id, a]));
+    return apps;
   }
 
   async getCacheCategories(): Promise<CacheCategory[]> {
-    if (this.universalBinaries.length === 0) {
-      this.universalBinaries = await this.scanForUniversalBinaries();
-    }
-
-    // Group by application for user-friendly selection
-    return this.universalBinaries.map((binary) => ({
-      id: `universal-${binary.appName.toLowerCase().replace(/\s+/g, "-")}`,
-      name: binary.appName,
-      description: `Universal Binary: ${binary.architectures.join(", ")} - ${(binary.potentialSavings / (1024 * 1024)).toFixed(1)} MB potential savings`,
-      paths: [binary.binaryPath],
-      size: binary.potentialSavings,
-      priority: "low" as const, // Thinning is optional optimization
-      useCase: "archived" as const, // x86_64 code is legacy on Apple Silicon
+    const apps = await this.scan();
+    return apps.map((a) => ({
+      id: a.id,
+      name: a.info.name,
+      description:
+        `Universal binary: ${(a.savings / (1024 * 1024)).toFixed(1)} MB of x86_64 code` +
+        (a.cls ? `; auto-ignored: ${a.cls}` : ""),
+      paths: [a.info.realpath],
+      size: a.savings,
+      priority: "low" as const,
+      useCase: "archived" as const,
       isProjectSpecific: false,
+      appKey: a.info.bundleId ?? undefined,
     }));
   }
 
-  async clear(
-    dryRun = false,
-    criteria?: CacheSelectionCriteria,
-    cacheInfo?: CacheInfo,
-  ): Promise<ClearResult> {
-    const info = cacheInfo || (await this.getCacheInfo());
-
-    if (!info.isInstalled) {
-      return {
-        name: this.name,
-        success: false,
-        error:
-          "Universal Binary cleaner requires macOS on Apple Silicon (arm64)",
-        clearedPaths: [],
-        sizeBefore: 0,
-        sizeAfter: 0,
-      };
-    }
-
-    // Filter binaries based on criteria
-    let binariesToThin = this.universalBinaries;
-
-    if (criteria?.categories && criteria.categories.length > 0) {
-      binariesToThin = binariesToThin.filter((b) => {
-        const categoryId = `universal-${b.appName.toLowerCase().replace(/\s+/g, "-")}`;
-        return criteria.categories!.includes(categoryId);
-      });
-    }
-
-    if (binariesToThin.length === 0) {
-      return {
-        name: this.name,
-        success: true,
-        clearedPaths: [],
-        sizeBefore: 0,
-        sizeAfter: 0,
-      };
-    }
-
-    const sizeBefore = binariesToThin.reduce((sum, b) => sum + b.totalSize, 0);
-    if (dryRun) {
-      printVerbose(
-        `[DRY RUN] Would thin ${binariesToThin.length} Universal Binaries:`,
-      );
-      for (const binary of binariesToThin) {
-        printVerbose(
-          `  • ${binary.appName}: ${binary.architectures.join(", ")} → arm64 only`,
-        );
-        printVerbose(
-          `    Potential savings: ${(binary.potentialSavings / (1024 * 1024)).toFixed(1)} MB`,
-        );
-      }
-      return {
-        name: this.name,
-        success: true,
-        sizeBefore,
-        sizeAfter: sizeBefore,
-        clearedPaths: binariesToThin.map((b) => b.binaryPath),
-      };
-    }
-
-    const clearedPaths: string[] = [];
-    let totalFreed = 0;
-    let error: string | undefined;
-
-    for (const binary of binariesToThin) {
-      try {
-        printVerbose(`Thinning ${binary.appName}...`);
-
-        // Create backup first (optional safety measure)
-        const backupPath = `${binary.binaryPath}.universal.bak`;
-
-        // Thin the binary to arm64 only
-        // Note: This requires proper permissions and may need sudo for system apps
-        const tempPath = `${binary.binaryPath}.thin`;
-
-        try {
-          // Capture the original mode so the thinned file keeps setuid/exec
-          // bits exactly (a blanket chmod +x would drop special bits).
-          const originalMode = (await fs.stat(binary.binaryPath)).mode & 0o7777;
-
-          // Extract arm64 slice to temp file. execFile (argv array, no
-          // shell): binary paths come from app names on disk and must never
-          // be shell-interpreted.
-          await execFileAsync("lipo", [
-            "-thin",
-            "arm64",
-            binary.binaryPath,
-            "-output",
-            tempPath,
-          ]);
-
-          // Backup original
-          await fs.rename(binary.binaryPath, backupPath);
-
-          // Move thinned version
-          await fs.rename(tempPath, binary.binaryPath);
-
-          // Preserve permissions
-          await fs.chmod(binary.binaryPath, originalMode);
-
-          // Remove backup on success
-          await fs.unlink(backupPath);
-
-          clearedPaths.push(binary.binaryPath);
-          totalFreed += binary.potentialSavings;
-
-          printVerbose(
-            `✓ Thinned ${binary.appName}: saved ${(binary.potentialSavings / (1024 * 1024)).toFixed(1)} MB`,
-          );
-        } catch (thinError) {
-          // Restore backup if it exists
-          if (await pathExists(backupPath)) {
-            try {
-              await fs.rename(backupPath, binary.binaryPath);
-            } catch {
-              // Backup restore failed
-            }
-          }
-          throw thinError;
-        }
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        printVerbose(`Failed to thin ${binary.appName}: ${errMsg}`);
-
-        if (!error) {
-          error = `Some binaries could not be thinned (may require elevated permissions): ${errMsg}`;
-        }
-      }
-    }
-
+  async getCacheInfo(): Promise<CacheInfo> {
+    const base = { name: this.name, type: this.type, description: this.description };
+    if (!(await this.isAvailable())) return { ...base, paths: [], isInstalled: false, size: 0 };
+    const categories = await this.getCacheCategories();
     return {
-      name: this.name,
-      success: clearedPaths.length > 0,
-      sizeBefore,
-      sizeAfter: sizeBefore - totalFreed,
-      error,
-      clearedPaths,
+      ...base,
+      paths: categories.map((c) => c.paths[0]),
+      isInstalled: true,
+      // auto-ignored apps are never thinned by default, so they are not counted as reclaimable
+      size: sum(categories.filter((c) => !this.autoIgnoredClass(c.id)).map((c) => c.size ?? 0)),
+      categories,
     };
   }
 
-  async clearByCategory(
-    categoryIds: string[],
-    dryRun = false,
-  ): Promise<ClearResult> {
+  /**
+   * No `criteria.categories`: every scanned app minus auto-ignored classes, under the 5 MB per-app floor.
+   * With categories: exactly those (an explicit choice beats class and floor, spec §6.2); an empty list selects nothing.
+   * Nothing is freed yet: originals are held as backups, so sizeAfter === sizeBefore and heldBytes says what will be freed.
+   */
+  async clear(dryRun = false, criteria?: CacheSelectionCriteria): Promise<ClearResult> {
+    this.lastOutcomes = [];
+    this.lastRecovery = [];
+    const result: ClearResult = { name: this.name, success: false, clearedPaths: [], sizeBefore: 0, sizeAfter: 0, heldBytes: 0 };
+    if (!(await this.isAvailable())) {
+      return { ...result, error: "Universal Binary cleaner requires macOS on Apple Silicon (arm64)" };
+    }
+    const explicit = criteria?.categories ? new Set(criteria.categories) : null;
+    const apps = (await this.scan()).filter((a) => (explicit ? explicit.has(a.id) : !a.cls));
+
+    if (dryRun) {
+      // estimate only: no lock, no agent home, no spawns (so no baseline or running checks)
+      for (const a of apps) {
+        const floor = explicit ? 0 : DEFAULT_MIN_SAVINGS; // same floor thinBundle applies, so a dry run predicts the real decision
+        const out: ThinOutcome = { app: a.info.realpath, status: "skipped", heldBytes: 0, candidates: a.candidates, skipped: [] };
+        if (a.candidates.length === 0 || a.savings < floor) out.reason = "below-threshold";
+        else Object.assign(out, { reason: "dry-run", heldBytes: a.savings });
+        this.lastOutcomes.push(out);
+      }
+    } else {
+      const home = await ensureAgentHome();
+      const lock = await acquireLock(home, { waitMs: LOCK_WAIT_MS });
+      if (!lock) return { ...result, error: "agent busy" };
+      // SIGTERM/SIGINT: let the app in flight reach a terminal state, start no other, release the lock, then exit
+      let stopSignal: NodeJS.Signals | undefined;
+      const onSignal = (s: NodeJS.Signals) => {
+        stopSignal = s;
+      };
+      process.on("SIGTERM", onSignal);
+      process.on("SIGINT", onSignal);
+      try {
+        this.lastRecovery = await recoverJournal(home, lock.runId);
+        await pruneExpiredBackups(home, DEFAULT_KEEP_BACKUP_DAYS, Date.now());
+        for (const [seq, a] of apps.entries()) {
+          if (stopSignal) break;
+          this.lastOutcomes.push(
+            await thinBundle(a.info.realpath, { home, runId: lock.runId, seq, minSavingsBytes: explicit ? 0 : undefined }),
+          );
+        }
+      } finally {
+        process.off("SIGTERM", onSignal);
+        process.off("SIGINT", onSignal);
+        await lock.release();
+        if (stopSignal) process.exit(SIGNAL_EXIT[stopSignal] ?? 1);
+      }
+    }
+
+    const done = this.lastOutcomes.filter((o) => o.status === "thinned" || o.reason === "dry-run");
+    const problems = [
+      ...this.lastRecovery
+        .filter((r) => r.result === "restore-failed" || r.result === "unreachable" || r.notes.length > 0)
+        .map((r) => `recovery ${appName(r.entry.bundle)}: ${r.result}${r.notes.length ? ` (${r.notes.join("; ")})` : ""}`),
+      ...this.lastOutcomes
+        .filter((o) => !done.includes(o))
+        .map((o) => `${appName(o.app)}: ${o.status}${o.reason ? `:${o.reason}` : ""}`),
+    ];
+    const sizeBefore = sum(done.flatMap((o) => o.candidates.map((c) => c.size)));
+    return {
+      ...result,
+      success:
+        !this.lastOutcomes.some((o) => o.status === "aborted" || o.status === "blocked" || o.status === "restore-failed") &&
+        !this.lastRecovery.some((r) => r.result === "restore-failed"),
+      sizeBefore,
+      sizeAfter: sizeBefore,
+      heldBytes: sum(this.lastOutcomes.map((o) => o.heldBytes)),
+      clearedPaths: done.map((o) => o.app),
+      error: problems.length ? problems.join("; ") : undefined,
+    };
+  }
+
+  async clearByCategory(categoryIds: string[], dryRun = false): Promise<ClearResult> {
     return this.clear(dryRun, { categories: categoryIds });
   }
 

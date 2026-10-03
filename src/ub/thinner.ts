@@ -48,7 +48,7 @@ const WALK_DIRS = ["MacOS", "Frameworks", "Helpers", "XPCServices"];
 /** v1 ceiling: nested bundles are not descended into. */
 const NESTED_BUNDLE = /\.(framework|app|xpc|bundle)$/;
 const MIN_FILE_SAVINGS = 65536;
-const DEFAULT_MIN_SAVINGS = 5 * 1024 * 1024;
+export const DEFAULT_MIN_SAVINGS = 5 * 1024 * 1024;
 
 /** Regular files below `dir` (no symlinks followed, nested bundles skipped). */
 async function walk(bundleReal: string, rel: string, out: string[]): Promise<void> {
