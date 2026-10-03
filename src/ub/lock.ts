@@ -155,26 +155,23 @@ async function createLock(home: AgentHome, runId: string, start: string): Promis
 }
 
 /**
- * Move a dead claimer's claim aside, then confirm it is the claim judged dead. A live racer's fresh
- * claim moved by mistake is put back. true = cleared (retry), false = a live claimer holds it (busy).
+ * rename(p, aside), then confirm the moved file is the one judged; one replaced since is linked back
+ * and `aside` removed. "gone": nothing at p. "moved": the judged file is now at `aside`.
  */
-async function clearDeadClaim(claim: string, judged: Seen, aside: string): Promise<boolean> {
+async function moveAside(p: string, judged: Seen, aside: string): Promise<"gone" | "moved" | "changed"> {
   try {
-    await fs.promises.rename(claim, aside);
+    await fs.promises.rename(p, aside);
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return true;
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return "gone";
     throw e;
   }
   const moved = await look(aside);
-  if (moved && same(moved, judged)) {
-    await rmQuiet(aside);
-    return true;
-  }
-  // ponytail: POSIX has no compare-and-swap rename, so a third racer that creates a claim inside this
-  // put-back window overlaps two takeovers (needs a dead claimer plus 3 racers). flock(2) closes it; needs a native addon.
-  await fs.promises.link(aside, claim).catch(() => undefined);
+  if (moved && same(moved, judged)) return "moved";
+  // ponytail: POSIX has no compare-and-swap rename, so a file created at p inside this put-back window
+  // loses the link and two takeovers can overlap (needs 3 racers in one interleaving). flock(2) closes it; needs a native addon.
+  await fs.promises.link(aside, p).catch(() => undefined);
   await rmQuiet(aside);
-  return false;
+  return "changed";
 }
 
 async function attempt(home: AgentHome, runId: string, start: string, pollMs: number): Promise<Attempt> {
@@ -189,24 +186,26 @@ async function attempt(home: AgentHome, runId: string, start: string, pollMs: nu
   // Takeover, one racer at a time. The claim is an O_EXCL file naming its claimer, so a claimer that
   // died mid-takeover is judged like a lock holder and its claim cleared instead of wedging every later run.
   const claim = `${p}.claim`;
-  if ((await writeExcl(claim, JSON.stringify({ runId, pid: process.pid, processStart: start }))) === null) {
+  const claimIno = await writeExcl(claim, JSON.stringify({ runId, pid: process.pid, processStart: start }));
+  if (claimIno === null) {
     const c = await settle(claim, pollMs);
     if (!c) return "retry";
     if (!(await dead(c))) return "busy";
-    return (await clearDeadClaim(claim, c, `${p}.dead-${runId}`)) ? "retry" : "busy";
+    const r = await moveAside(claim, c, `${p}.dead-${runId}`);
+    if (r === "moved") await rmQuiet(`${p}.dead-${runId}`);
+    return r === "changed" ? "busy" : "retry";
   }
+  // same guard as createLock: stalled for a poll before its write, this claim may have been cleared as
+  // dead and replaced; then it is not ours to act on, nor to unlink
+  if ((await look(claim))?.ino !== claimIno) return "retry";
   const stale = `${p}.stale-${runId}`;
   try {
     // the claim does not pin which lock was judged: a racer may have replaced it since
     const now = await look(p);
     if (!now) return "retry";
     if (!same(now, seen)) return "busy";
-    try {
-      await fs.promises.rename(p, stale);
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === "ENOENT") return "retry";
-      throw e;
-    }
+    // ...and again across the rename: a lock replaced inside that window is put back, never displaced
+    if ((await moveAside(p, seen, stale)) !== "moved") return "retry";
     const got = await createLock(home, runId, start);
     return got === "exists" ? "retry" : got;
   } finally {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -59,7 +59,6 @@ describe.skipIf(!gate)("ub run lock", () => {
   it("an empty or torn lock still unparseable after one poll is taken over (crash between create and write)", async () => {
     for (const raw of ["", "{not json"]) {
       fs.writeFileSync(lockPath, raw);
-      fs.utimesSync(lockPath, 0, 0);
       const a = await acquireLock(h, { waitMs: 0, pollMs: 20 });
       expect(a).not.toBeNull();
       expect((await readLock(h))!.runId).toBe(a!.runId);
@@ -70,14 +69,84 @@ describe.skipIf(!gate)("ub run lock", () => {
 
   it("a lock that becomes valid within the poll is respected (its writer was between create and write)", async () => {
     fs.writeFileSync(lockPath, "");
-    // the write lands after acquireLock has spawned ps and first seen the empty file, well inside its poll
-    const t = setTimeout(() => fs.writeFileSync(lockPath, JSON.stringify({ runId: "w", pid: process.pid, processStart: ourStart() })), 150);
+    const valid = JSON.stringify({ runId: "w", pid: process.pid, processStart: ourStart() });
+    // The writer finishes 100 ms after acquireLock first READS the empty lock (not after it starts, which
+    // includes a ps spawn): inside the 1000 ms poll, long after an acquirer without one would have taken over.
+    let t: NodeJS.Timeout | undefined;
+    let armed = true;
+    const realOpen = fs.promises.open;
+    const spy = vi.spyOn(fs.promises, "open").mockImplementation((async (...a: Parameters<typeof realOpen>) => {
+      const fh = await realOpen(...a);
+      if (armed && a[0] === lockPath && a[1] === "r") {
+        armed = false;
+        const read = fh.readFile.bind(fh);
+        fh.readFile = (async (...r: Parameters<typeof read>) => {
+          const out = await read(...r);
+          t = setTimeout(() => fs.writeFileSync(lockPath, valid), 100);
+          return out;
+        }) as typeof fh.readFile;
+      }
+      return fh;
+    }) as typeof realOpen);
     try {
       expect(await acquireLock(h, { waitMs: 0, pollMs: 1000 })).toBeNull();
     } finally {
+      spy.mockRestore();
       clearTimeout(t);
     }
+    expect(t).toBeDefined(); // the first read saw the empty lock
     expect((await readLock(h))!.runId).toBe("w");
+  });
+
+  it("a stalled claimer whose claim was cleared and replaced neither proceeds nor unlinks the other claim", async () => {
+    writeLock({ runId: "x", pid: deadPid(), processStart: "Thu Jan  1 00:00:00 1970" });
+    const other = JSON.stringify({ runId: "c", pid: process.pid, processStart: ourStart() });
+    let armed = true;
+    const realOpen = fs.promises.open;
+    const spy = vi.spyOn(fs.promises, "open").mockImplementation((async (...a: Parameters<typeof realOpen>) => {
+      const fh = await realOpen(...a);
+      if (armed && a[0] === claimPath && typeof a[1] === "number") {
+        armed = false;
+        // stalled between its O_EXCL create and its write, this claimer's empty claim is judged dead by
+        // another racer, moved aside, and replaced by that racer's own claim
+        fs.renameSync(claimPath, claimPath + ".cleared");
+        fs.writeFileSync(claimPath, other, { mode: 0o600 });
+      }
+      return fh;
+    }) as typeof realOpen);
+    try {
+      expect(await acquireLock(h, { waitMs: 0, pollMs: 20 })).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+    expect(armed).toBe(false);
+    expect(fs.readFileSync(claimPath, "utf8")).toBe(other);
+    expect((await readLock(h))!.runId).toBe("x");
+  });
+
+  it("a lock replaced between the re-check and the rename is put back, not displaced", async () => {
+    writeLock({ runId: "x", pid: deadPid(), processStart: "Thu Jan  1 00:00:00 1970" });
+    const live = JSON.stringify({ runId: "live", pid: process.pid, processStart: ourStart() });
+    let liveIno = 0;
+    const realRename = fs.promises.rename;
+    const spy = vi.spyOn(fs.promises, "rename").mockImplementation(async (from, to) => {
+      if (from === lockPath && !liveIno) {
+        // a racer replaced the dead lock just after this acquirer re-checked it
+        fs.writeFileSync(lockPath + ".new", live, { mode: 0o600 });
+        fs.renameSync(lockPath + ".new", lockPath);
+        liveIno = fs.statSync(lockPath).ino;
+      }
+      return realRename(from, to);
+    });
+    try {
+      expect(await acquireLock(h, { waitMs: 0, pollMs: 20 })).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+    expect(liveIno).not.toBe(0);
+    expect(fs.statSync(lockPath).ino).toBe(liveIno);
+    expect((await readLock(h))!.runId).toBe("live");
+    expect(fs.readdirSync(tmp)).toEqual(["agent.lock"]);
   });
 
   it("a leftover claim from a dead (or never-written) claimer is cleared and the stale lock taken over", async () => {
