@@ -139,7 +139,11 @@ export async function makeStagingDir(
   }
 }
 
+/** Name of a bundle's per-app directory under backups/. */
+export function bundleHash(bundleReal: string): string {
+  return crypto.createHash("sha256").update(bundleReal).digest("hex").slice(0, 16);
+}
+
 export function backupDirFor(home: AgentHome, bundleReal: string, build: string, runId: string): string {
-  const h = crypto.createHash("sha256").update(bundleReal).digest("hex").slice(0, 16);
-  return path.join(home.backups, h, `${sanitizeComponent(build)}-${runId}`);
+  return path.join(home.backups, bundleHash(bundleReal), `${sanitizeComponent(build)}-${runId}`);
 }

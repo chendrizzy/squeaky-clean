@@ -440,7 +440,7 @@ recommended. Prompts for confirmation unless --dry-run or --force is set.
   });
 
 // Universal Binary command - thin Universal Binaries on Apple Silicon
-program
+const ub = program
   .command("ub")
   .aliases(["thin", "universal-binaries"])
   .description(
@@ -457,6 +457,8 @@ program
     "show what would be thinned without actually thinning",
   )
   .option("-f, --force", "skip confirmation prompts")
+  // an unknown word (a mistyped subcommand) must never fall through to thinning
+  .allowExcessArguments(false)
   .action(async (options) => {
     try {
       const { ubCommand } = await import("./commands/ub");
@@ -464,6 +466,39 @@ program
     } catch (error) {
       printError(
         `Failed to thin binaries: ${error instanceof Error ? error.message : error}`,
+      );
+      process.exit(1);
+    }
+  });
+
+ub.command("restore <app>")
+  .description("put back an app's original binaries from its newest backup")
+  .action(async (app: string) => {
+    try {
+      const { ubRestoreCommand } = await import("./commands/ub");
+      await ubRestoreCommand(app);
+    } catch (error) {
+      printError(
+        `Failed to restore: ${error instanceof Error ? error.message : error}`,
+      );
+      process.exit(1);
+    }
+  });
+
+ub.command("prune [app]")
+  .description("release backups early: one app's (path to the .app), or every app's with --all")
+  .option("-a, --all", "release the backups of every app")
+  .action(async (app: string | undefined, _opts, cmd: Command) => {
+    try {
+      // `ub` owns -a/--all too and consumes it first; read it through the parent chain.
+      // (program.enablePositionalOptions() would route it here, but breaks global flags after
+      // any subcommand, e.g. the documented `squeaky clean --json`.)
+      const { all } = cmd.optsWithGlobals<{ all?: boolean }>();
+      const { ubPruneCommand } = await import("./commands/ub");
+      await ubPruneCommand(app, { all });
+    } catch (error) {
+      printError(
+        `Failed to prune backups: ${error instanceof Error ? error.message : error}`,
       );
       process.exit(1);
     }

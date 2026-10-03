@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { listIncomplete } from "./journal";
-import type { AgentHome } from "./paths";
+import { bundleHash, type AgentHome } from "./paths";
 
 export async function backupFile(
   src: string,
@@ -36,28 +36,59 @@ async function treeBytes(p: string): Promise<number> {
   return n;
 }
 
+export interface PruneResult {
+  removedDirs: string[];
+  freedBytes: number;
+  /** kept because an incomplete journal entry still references them */
+  heldDirs: string[];
+}
+
+/** Removes `backups/<h>/<name>` dirs (real dirs only) that `remove` accepts and no incomplete journal entry references. */
+async function pruneWhere(home: AgentHome, remove: (st: fs.Stats) => boolean, onlyHash?: string): Promise<PruneResult> {
+  const held = new Set((await listIncomplete(home, "")).map((e) => e.backupDir));
+  const out: PruneResult = { removedDirs: [], freedBytes: 0, heldDirs: [] };
+  const hashes = onlyHash === undefined ? await fs.promises.readdir(home.backups) : [onlyHash];
+  for (const h of hashes) {
+    const hd = path.join(home.backups, h);
+    const hst = await fs.promises.lstat(hd).catch((e: NodeJS.ErrnoException) => {
+      if (e.code === "ENOENT") return null;
+      throw e;
+    });
+    if (!hst?.isDirectory()) continue;
+    for (const v of await fs.promises.readdir(hd)) {
+      const d = path.join(hd, v);
+      const st = await fs.promises.lstat(d);
+      if (!st.isDirectory() || !remove(st)) continue;
+      if (held.has(d)) {
+        out.heldDirs.push(d);
+        continue;
+      }
+      const bytes = await treeBytes(d);
+      await fs.promises.rm(d, { recursive: true, force: true });
+      out.removedDirs.push(d);
+      out.freedBytes += bytes;
+    }
+    if ((await fs.promises.readdir(hd)).length === 0) await fs.promises.rmdir(hd).catch(() => {});
+  }
+  return out;
+}
+
 export async function pruneExpiredBackups(
   home: AgentHome,
   keepDays: number,
   nowMs: number,
 ): Promise<{ removedDirs: string[]; freedBytes: number }> {
   const cutoff = nowMs - keepDays * 86_400_000;
-  const held = new Set((await listIncomplete(home, "")).map((e) => e.backupDir));
-  const removedDirs: string[] = [];
-  let freedBytes = 0;
-  for (const h of await fs.promises.readdir(home.backups)) {
-    const hd = path.join(home.backups, h);
-    if (!(await fs.promises.lstat(hd)).isDirectory()) continue;
-    for (const v of await fs.promises.readdir(hd)) {
-      const d = path.join(hd, v);
-      const st = await fs.promises.lstat(d);
-      if (!st.isDirectory() || st.mtimeMs >= cutoff || held.has(d)) continue;
-      const bytes = await treeBytes(d);
-      await fs.promises.rm(d, { recursive: true, force: true });
-      removedDirs.push(d);
-      freedBytes += bytes;
-    }
-    if ((await fs.promises.readdir(hd)).length === 0) await fs.promises.rmdir(hd).catch(() => {});
-  }
+  const { removedDirs, freedBytes } = await pruneWhere(home, (st) => st.mtimeMs < cutoff);
   return { removedDirs, freedBytes };
+}
+
+/**
+ * `squeaky ub prune`: releases backups early regardless of age. With `appPath`, only that app's
+ * backups (keyed by its realpath, or the resolved path when the app is gone); without it, every app's.
+ */
+export async function pruneBackups(home: AgentHome, appPath?: string): Promise<PruneResult> {
+  if (appPath === undefined) return pruneWhere(home, () => true);
+  const real = await fs.promises.realpath(appPath).catch(() => path.resolve(appPath));
+  return pruneWhere(home, () => true, bundleHash(real));
 }

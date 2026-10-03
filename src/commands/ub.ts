@@ -9,11 +9,16 @@ import {
 } from "../utils/cli";
 import {
   DEFAULT_KEEP_BACKUP_DAYS,
+  LOCK_WAIT_MS,
   UniversalBinaryCleaner,
   outcomeLine,
   recoveryLine,
 } from "../cleaners/universalBinary";
 import { DEFAULT_MIN_SAVINGS } from "../ub/thinner";
+import { ensureAgentHome, type AgentHome } from "../ub/paths";
+import { acquireLock } from "../ub/lock";
+import { recoverJournal, restoreAppFromNewestBackup } from "../ub/restore";
+import { pruneBackups } from "../ub/backups";
 import { config } from "../config";
 import type { ClearResult } from "../types";
 import ora from "ora";
@@ -285,4 +290,44 @@ export async function ubCommand(options: UBOptions): Promise<void> {
     printError(`Universal Binary command error: ${error}`);
     throw error;
   }
+}
+
+/** Runs fn under the agent lock (the same wait as a thinning run). A busy lock is an error: nothing is touched. */
+async function withAgentLock<T>(fn: (home: AgentHome, runId: string) => Promise<T>): Promise<T> {
+  const home = await ensureAgentHome();
+  const lock = await acquireLock(home, { waitMs: LOCK_WAIT_MS });
+  if (!lock) throw new Error("agent busy: another squeaky ub run holds the lock");
+  try {
+    return await fn(home, lock.runId);
+  } finally {
+    await lock.release();
+  }
+}
+
+/** `squeaky ub restore <app>`: put back the originals from the app's newest backup. Throws unless restored or nothing to do. */
+export async function ubRestoreCommand(app: string): Promise<void> {
+  const name = path.basename(app, ".app");
+  const { status, notes } = await withAgentLock(async (home, runId) => {
+    // an interrupted run is finished by its own journal entry first (it may be this very app)
+    for (const r of await recoverJournal(home, runId)) {
+      if (r.result === "restore-failed" || r.result === "unreachable") printError(recoveryLine(r));
+      else printInfo(recoveryLine(r));
+    }
+    return restoreAppFromNewestBackup(home, app);
+  });
+  if (status === "restored") printSuccess(`Restored ${name} from its backup (signature verified)`);
+  else if (status === "nothing-to-do") printInfo(`${name}: nothing to restore`);
+  for (const n of notes) printWarning(`  ${n}`);
+  if (status !== "restored" && status !== "nothing-to-do") throw new Error(`${name} was not restored: ${status}`);
+}
+
+/** `squeaky ub prune [<app>|--all]`: release backups early. Neither or both is an error that removes nothing. */
+export async function ubPruneCommand(app: string | undefined, opts: { all?: boolean }): Promise<void> {
+  if ((app === undefined) === !opts.all) throw new Error("give an app path or --all (not both)");
+  const r = await withAgentLock((home) => pruneBackups(home, app));
+  const what = app === undefined ? "all apps" : path.basename(app, ".app");
+  if (r.removedDirs.length === 0 && r.heldDirs.length === 0) printInfo(`No backups found for ${what}.`);
+  else printSuccess(`Removed ${r.removedDirs.length} backup(s) for ${what}, freed ${formatSizeWithColor(r.freedBytes)}`);
+  for (const d of r.heldDirs) printWarning(`  kept ${d}: an unfinished thin or restore still needs it`);
+  if (r.heldDirs.length > 0) throw new Error(`${r.heldDirs.length} backup(s) kept; run \`squeaky ub restore <app>\` to finish the interrupted run first`);
 }

@@ -19,7 +19,7 @@ export type RecoveryItem = Awaited<ReturnType<typeof recoverJournal>>[number];
 
 const LIPO = "/usr/bin/lipo";
 const SCAN_DEPTH = 3;
-const LOCK_WAIT_MS = 150_000;
+export const LOCK_WAIT_MS = 150_000;
 /** With no readable seal only the main executable is estimated (classifyFile: main first, everything else unsealed). */
 const NO_SEAL: Seal = { files2: Object.create(null), nestedRules: [] };
 const SIGNAL_EXIT: Record<string, number> = { SIGINT: 130, SIGTERM: 143 };
