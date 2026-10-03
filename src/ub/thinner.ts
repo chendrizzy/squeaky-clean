@@ -249,6 +249,8 @@ export async function thinBundle(
 
     // 11. verify the whole bundle
     if ((await verify(bundleReal)).ok) {
+      // this `done` entry is the restore record (`ub restore` reads its thinIno/thinSize and backupDir):
+      // never prune it while its backupDir exists
       await journal("done");
       out.heldBytes = total;
       return end("thinned");

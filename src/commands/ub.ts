@@ -17,7 +17,7 @@ import {
 import { DEFAULT_MIN_SAVINGS } from "../ub/thinner";
 import { ensureAgentHome, type AgentHome } from "../ub/paths";
 import { acquireLock } from "../ub/lock";
-import { recoverJournal, restoreAppFromNewestBackup } from "../ub/restore";
+import { recoverJournal, restoreAppFromJournal } from "../ub/restore";
 import { pruneBackups } from "../ub/backups";
 import { config } from "../config";
 import type { ClearResult } from "../types";
@@ -304,7 +304,7 @@ async function withAgentLock<T>(fn: (home: AgentHome, runId: string) => Promise<
   }
 }
 
-/** `squeaky ub restore <app>`: put back the originals from the app's newest backup. Throws unless restored or nothing to do. */
+/** `squeaky ub restore <app>`: put back the originals recorded by the app's last thin. Throws unless restored or nothing to do. */
 export async function ubRestoreCommand(app: string): Promise<void> {
   const name = path.basename(app, ".app");
   const { status, notes } = await withAgentLock(async (home, runId) => {
@@ -313,7 +313,7 @@ export async function ubRestoreCommand(app: string): Promise<void> {
       if (r.result === "restore-failed" || r.result === "unreachable") printError(recoveryLine(r));
       else printInfo(recoveryLine(r));
     }
-    return restoreAppFromNewestBackup(home, app);
+    return restoreAppFromJournal(home, app);
   });
   if (status === "restored") printSuccess(`Restored ${name} from its backup (signature verified)`);
   else if (status === "nothing-to-do") printInfo(`${name}: nothing to restore`);

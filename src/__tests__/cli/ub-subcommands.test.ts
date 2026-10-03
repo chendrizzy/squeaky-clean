@@ -28,7 +28,7 @@ vi.mock("../../ub/backups", async (orig) => ({ ...(await orig<object>()), pruneB
 vi.mock("../../ub/restore", async (orig) => ({
   ...(await orig<object>()),
   recoverJournal: h.recoverJournal,
-  restoreAppFromNewestBackup: h.restoreApp,
+  restoreAppFromJournal: h.restoreApp,
 }));
 
 const PKG = path.resolve(__dirname, "../../../package.json");
@@ -169,10 +169,10 @@ describe("ub restore / prune commands", () => {
     expect(h.recoverJournal.mock.invocationCallOrder[0]).toBeLessThan(h.restoreApp.mock.invocationCallOrder[0]);
     h.restoreApp.mockResolvedValue({ status: "nothing-to-do", notes: [] });
     await expect(cmds.ubRestoreCommand("/Apps/Foo.app")).resolves.toBeUndefined();
-    for (const status of ["superseded", "restore-failed", "unreachable"]) {
+    for (const status of ["superseded", "restore-failed", "unreachable", "no-record"]) {
       h.restoreApp.mockResolvedValue({ status, notes: ["why"] });
       await expect(cmds.ubRestoreCommand("/Apps/Foo.app")).rejects.toThrow(`Foo was not restored: ${status}`);
     }
-    expect(h.release).toHaveBeenCalledTimes(5);
+    expect(h.release).toHaveBeenCalledTimes(6);
   });
 });

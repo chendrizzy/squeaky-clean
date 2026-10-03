@@ -3,11 +3,8 @@ import * as path from "path";
 import { codesignVerify } from "./exec";
 import { backupFile } from "./backups";
 import { classifySlices, readBundleInfo, readMachOSlices } from "./bundle";
-import { listIncomplete, writeEntry, type JournalEntry, type JournalFile, type JournalPhase } from "./journal";
-import { newRunId } from "./lock";
-import {
-  bundleHash, isInside, makeStagingDir, mountPointOf, resolveCandidate, sanitizeComponent, type AgentHome, type PathDeps,
-} from "./paths";
+import { listEntries, listIncomplete, writeEntry, type JournalEntry, type JournalFile, type JournalPhase } from "./journal";
+import { isInside, makeStagingDir, mountPointOf, resolveCandidate, type AgentHome, type PathDeps } from "./paths";
 
 export type RestoreStatus = "restored" | "nothing-to-do" | "superseded" | "restore-failed" | "unreachable";
 
@@ -189,109 +186,59 @@ export async function recoverJournal(
   return out;
 }
 
-/** The most recently written `backups/<h>/<name>` dir for this bundle; symlinks are never followed. */
-async function newestBackupDir(home: AgentHome, bundleReal: string): Promise<string | null> {
-  const hd = path.join(home.backups, bundleHash(bundleReal));
-  const hst = await fs.promises.lstat(hd).catch((err: NodeJS.ErrnoException) => {
-    if (err.code === "ENOENT") return null;
-    throw err;
-  });
-  if (!hst?.isDirectory()) return null;
-  let best: { dir: string; mtimeMs: number } | null = null;
-  for (const name of await fs.promises.readdir(hd)) {
-    const dir = path.join(hd, name);
-    const st = await fs.promises.lstat(dir);
-    if (st.isDirectory() && (!best || st.mtimeMs > best.mtimeMs)) best = { dir, mtimeMs: st.mtimeMs };
-  }
-  return best?.dir ?? null;
+/** runId is `<base36 ms>-<pid>-<counter>` (newRunId): order by time, then counter, then seq. Unparseable sorts oldest. */
+function age(e: JournalEntry): number[] {
+  const [ms, , n] = e.runId.split("-");
+  return [parseInt(ms, 36) || 0, Number(n) || 0, e.seq];
 }
+const newer = (a: JournalEntry, b: JournalEntry) => {
+  const [x, y] = [age(a), age(b)];
+  const i = x.findIndex((v, k) => v !== y[k]);
+  return i >= 0 && x[i] > y[i];
+};
 
-/** Regular files under dir as `/`-joined relative paths; symlinks and other node types are ignored, never followed. */
-async function listBackupFiles(dir: string, prefix = ""): Promise<string[]> {
-  const out: string[] = [];
-  for (const name of (await fs.promises.readdir(dir)).sort()) {
-    const st = await fs.promises.lstat(path.join(dir, name));
-    const rel = prefix ? `${prefix}/${name}` : name;
-    if (st.isDirectory()) out.push(...(await listBackupFiles(path.join(dir, name), rel)));
-    else if (st.isFile()) out.push(rel);
-  }
-  return out;
+/** What an app we never thinned, or fully restored, looks like: its main executable is still universal. */
+async function mainIsFat(bundleReal: string): Promise<boolean> {
+  const info = await readBundleInfo(bundleReal, { allowSpawn: true });
+  if (!info) return false;
+  return classifySlices(await readMachOSlices(path.join(bundleReal, "Contents", "MacOS", info.executable))).thinnable;
 }
 
 /**
- * `squeaky ub restore <app>`: puts back the originals from the app's newest backup. The journal entry
- * of that thin may be long gone, so a synthetic one is built and handed to restoreEntry, whose identity
- * checks then hold: thinIno/thinSize are the CURRENT file's, and only when it is arm64-only (what the
- * thinner leaves); origIno is the backup's own inode, which cannot be the current file. A missing file,
- * a file that is not arm64-only, or a build that differs from the one the backup was taken of means the
- * app changed since → `superseded`, nothing written (not even the journal).
+ * `squeaky ub restore <app>` (spec §5.2): restores from the thin's own persisted record, never from
+ * "the newest backup". The record is the newest valid `done` journal entry for this bundle whose
+ * backupDir still exists; it goes to restoreEntry unchanged, so the identity checks compare the app's
+ * files with the thinIno/thinSize journaled at swap time (a vendor update is `superseded`, nothing written).
+ * With no record nothing is written, not even the journal:
+ * - `nothing-to-do` when the main executable is universal and the app was restored before or never journaled;
+ * - otherwise `no-record`: squeaky cannot prove what is in the app now is what it left there.
  * Callers run recoverJournal first (ubRestoreCommand does), so an interrupted run is finished by its own entry.
  */
-export async function restoreAppFromNewestBackup(
+export async function restoreAppFromJournal(
   home: AgentHome,
   appPath: string,
   deps: RestoreDeps = {},
-): Promise<{ status: RestoreStatus; notes: string[] }> {
+): Promise<{ status: RestoreStatus | "no-record"; notes: string[] }> {
   let bundleReal: string;
   try {
     bundleReal = await fs.promises.realpath(appPath);
   } catch {
     return { status: "unreachable", notes: [`bundle not found: ${appPath}`] };
   }
-  const backupDir = await newestBackupDir(home, bundleReal);
-  if (!backupDir) return { status: "nothing-to-do", notes: [`no backup found for ${bundleReal}`] };
-
-  const info = await readBundleInfo(bundleReal, { allowSpawn: true });
-  if (!info || !path.basename(backupDir).startsWith(`${sanitizeComponent(info.build)}-`)) {
-    return { status: "superseded", notes: [`the app's build changed since ${backupDir} was taken; not restoring`] };
+  const mine = (await listEntries(home)).filter((e) => e.bundle === bundleReal);
+  let record: JournalEntry | undefined;
+  for (const e of mine) {
+    if (e.phase !== "done" || (record && !newer(e, record))) continue;
+    const st = await fs.promises.lstat(e.backupDir).catch(() => null);
+    if (st?.isDirectory()) record = e;
   }
+  if (record) return restoreEntry(home, record, deps);
 
-  const notes: string[] = [];
-  const files: JournalFile[] = [];
-  let foreign = false;
-  let error = false;
-  for (const rel of await listBackupFiles(backupDir)) {
-    const backup = await fs.promises.lstat(path.join(backupDir, rel));
-    let cur: fs.Stats;
-    try {
-      cur = await fs.promises.lstat(path.join(bundleReal, rel));
-    } catch (err) {
-      notes.push(`${rel}: ${msg(err)}`);
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code === "ENOENT" || code === "ENOTDIR") foreign = true;
-      else error = true;
-      continue;
-    }
-    if (!cur.isFile()) {
-      notes.push(`${rel}: no longer a regular file`);
-      foreign = true;
-      continue;
-    }
-    let abs: string;
-    try {
-      abs = await resolveCandidate(bundleReal, rel);
-    } catch (err) {
-      notes.push(`${rel}: ${msg(err)}`);
-      error = true;
-      continue;
-    }
-    const slices = await readMachOSlices(abs);
-    if (slices.length !== 1 || slices[0].arch !== "arm64") {
-      notes.push(`${rel}: not the arm64-only file the thinner leaves; not overwriting`);
-      foreign = true;
-      continue;
-    }
-    files.push({ rel, origIno: backup.ino, origSize: backup.size, origMtimeMs: backup.mtimeMs, thinIno: cur.ino, thinSize: cur.size });
+  if ((mine.length === 0 || mine.some((e) => e.phase === "restored")) && (await mainIsFat(bundleReal))) {
+    return { status: "nothing-to-do", notes: [] };
   }
-  // same precedence as restoreEntry: an unreadable file blocks the decision rather than superseding
-  if (error) return { status: "restore-failed", notes };
-  if (foreign) return { status: "superseded", notes };
-  if (files.length === 0) return { status: "nothing-to-do", notes: [`${backupDir} holds no files`] };
-
-  const runId = newRunId();
-  const entry: JournalEntry = {
-    runId, seq: 0, bundle: bundleReal, bundleId: info.bundleId, version: info.version, build: info.build,
-    backupDir, stagingDir: path.join(home.staging, `${runId}-0`), files, phase: "restoring",
+  return {
+    status: "no-record",
+    notes: [`squeaky has no completed thin of ${bundleReal} with a kept backup (backups are released after a few days, or by \`squeaky ub prune\`); nothing was changed`],
   };
-  return restoreEntry(home, entry, deps);
 }

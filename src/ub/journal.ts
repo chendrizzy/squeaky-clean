@@ -32,7 +32,8 @@ const PHASES: ReadonlySet<string> = new Set<JournalPhase>([
   "staged", "backed-up", "swapping", "done", "restoring", "restored", "superseded", "restore-failed",
 ]);
 const FINISHED: ReadonlySet<string> = new Set<JournalPhase>(["done", "restored", "superseded"]);
-const RUN_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
+/** Valid run ids (journal entries and the run lock): never long enough to overflow a file name. */
+export const RUN_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isNat = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
@@ -102,6 +103,15 @@ async function reject(home: AgentHome, name: string, why: string): Promise<void>
 }
 
 export async function listIncomplete(home: AgentHome, exceptRunId: string): Promise<JournalEntry[]> {
+  return (await listEntries(home)).filter((e) => e.runId !== exceptRunId && !FINISHED.has(e.phase));
+}
+
+/**
+ * Every valid entry, finished ones included, in filename order. A `done` entry is the restore record of
+ * its thin (`ub restore` reads it), so finished entries must not be pruned while their backupDir exists.
+ * Invalid files are quarantined to `journal/rejected/` and never returned.
+ */
+export async function listEntries(home: AgentHome): Promise<JournalEntry[]> {
   const names = (await fs.promises.readdir(home.journal)).filter((n) => n.endsWith(".json")).sort();
   const out: JournalEntry[] = [];
   for (const name of names) {
@@ -119,7 +129,7 @@ export async function listIncomplete(home: AgentHome, exceptRunId: string): Prom
       await reject(home, name, "failed validation");
       continue;
     }
-    if (parsed.runId !== exceptRunId && !FINISHED.has(parsed.phase)) out.push(parsed);
+    out.push(parsed);
   }
   return out;
 }
