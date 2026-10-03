@@ -166,6 +166,75 @@ describe.skipIf(!gate)("ub thinner", () => {
     expect(await listIncomplete(h, "")).toEqual([]);
   });
 
+  it("post-swap EPERM rolls every original back: blocked:app-management, byte-identical, seal valid, nothing left", async () => {
+    const f = await buildFixtureApp(apps, { helper: true, dylib: true });
+    const files = [f.mainExe, f.helper!, f.dylib!];
+    const orig = files.map(sha);
+    const afterSwap = (n: number) => {
+      if (n === 1) throw Object.assign(new Error("x"), { code: "EPERM" });
+    };
+    const o = await thinBundle(f.app, ctx({ deps: { afterSwap } }));
+    expect([o.status, o.reason]).toEqual(["blocked", "app-management"]);
+    expect(files.map(sha)).toEqual(orig);
+    expect((await codesignVerify(f.app)).ok).toBe(true);
+    expect(fs.readdirSync(h.staging)).toEqual([]);
+    expect(await listIncomplete(h, "")).toEqual([]);
+  });
+
+  it("a candidate replaced by a symlink before the re-check -> skipped:changed-during-thin", async () => {
+    const f = await buildFixtureApp(apps, { helper: true });
+    const orig = sha(f.mainExe);
+    let calls = 0;
+    const snapshot = async () => {
+      if (++calls === 2) {
+        fs.renameSync(f.helper!, f.helper! + ".away");
+        fs.symlinkSync(f.mainExe, f.helper!);
+      }
+      return new Set<string>();
+    };
+    const o = await thinBundle(f.app, ctx({ deps: { snapshot } }));
+    expect([o.status, o.reason]).toEqual(["skipped", "changed-during-thin"]);
+    expect(sha(f.mainExe)).toBe(orig);
+    agentEmpty();
+    expect(await listIncomplete(h, "")).toEqual([]);
+  });
+
+  it("a candidate that vanished before the re-check -> skipped:changed-during-thin", async () => {
+    const f = await buildFixtureApp(apps, { helper: true });
+    let calls = 0;
+    const snapshot = async () => {
+      if (++calls === 2) fs.unlinkSync(f.helper!);
+      return new Set<string>();
+    };
+    const o = await thinBundle(f.app, ctx({ deps: { snapshot } }));
+    expect([o.status, o.reason]).toEqual(["skipped", "changed-during-thin"]);
+    agentEmpty();
+  });
+
+  it("a failing process snapshot aborts (never 'not running') with a detail", async () => {
+    const f = await buildFixtureApp(apps, { helper: true });
+    const before = sha(f.mainExe);
+    const snapshot = async () => {
+      throw new Error("ps exited 1");
+    };
+    const o = await thinBundle(f.app, ctx({ deps: { snapshot } }));
+    expect([o.status, o.reason]).toEqual(["aborted", "error"]);
+    expect(o.detail).toMatch(/ps exited 1/);
+    expect(sha(f.mainExe)).toBe(before);
+    agentEmpty();
+  });
+
+  it("a staging dir that cannot be removed is reported in detail", async () => {
+    const f = await buildFixtureApp(apps, { helper: true });
+    const rm = vi.spyOn(fs.promises, "rm").mockImplementation(async (p) => {
+      if (String(p).startsWith(h.staging)) throw new Error("EBUSY stuck");
+    });
+    const o = await thinBundle(f.app, ctx());
+    rm.mockRestore();
+    expect(o.status).toBe("thinned");
+    expect(o.detail).toMatch(/could not remove .*EBUSY stuck/);
+  });
+
   it("aborts cleanly when bundle vanished", async () => {
     const f = await buildFixtureApp(apps, { helper: true });
     fs.renameSync(f.app, f.app + ".away");

@@ -3,7 +3,7 @@ import * as path from "path";
 import { classifySlices, readBundleInfo, readMachOSlices, type BundleInfo } from "./bundle";
 import { classifyFile, loadSeal, type Seal } from "./seal";
 import { codesignVerify, ExecTimeoutError, lipoArchs, lipoThin, processSnapshot } from "./exec";
-import { backupDirFor, makeStagingDir, resolveCandidate, type AgentHome } from "./paths";
+import { backupDirFor, makeStagingDir, resolveCandidate, UnsafePathError, type AgentHome } from "./paths";
 import { backupFile } from "./backups";
 import { writeEntry, type JournalEntry, type JournalPhase } from "./journal";
 import { restoreEntry } from "./restore";
@@ -129,6 +129,16 @@ function failure(err: unknown): [ThinStatus, string] {
 
 const msg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
+/** lstat of a candidate through resolveCandidate; one that vanished or was swapped for a symlink/non-file since selection is a changed-during-thin stop, not an error. */
+async function lstatCandidate(bundleReal: string, rel: string): Promise<fs.Stats> {
+  try {
+    return await fs.promises.lstat(await resolveCandidate(bundleReal, rel));
+  } catch (err) {
+    if (err instanceof UnsafePathError || (err as NodeJS.ErrnoException)?.code === "ENOENT") throw new Stop("skipped", "changed-during-thin");
+    throw err;
+  }
+}
+
 export async function thinBundle(
   appPath: string,
   ctx: { home: AgentHome; runId: string; seq: number; dryRun?: boolean; minSavingsBytes?: number; deps?: ThinDeps },
@@ -216,7 +226,7 @@ export async function thinBundle(
     if (await running()) throw new Stop("skipped", "running");
     const modes: number[] = [];
     for (const c of candidates) {
-      const st = await fs.promises.lstat(await resolveCandidate(bundleReal, c.rel));
+      const st = await lstatCandidate(bundleReal, c.rel);
       if (st.ino !== c.ino || st.size !== c.size || st.mtimeMs !== c.mtimeMs) throw new Stop("skipped", "changed-during-thin");
       modes.push(st.mode & 0o7777);
     }
@@ -229,8 +239,8 @@ export async function thinBundle(
       entry.files[i].thinIno = st.ino; // rename keeps the inode
       entry.files[i].thinSize = st.size;
       await journal("swapping");
-      const target = await resolveCandidate(bundleReal, c.rel); // a parent swapped for a symlink must not redirect the rename
-      const cur = await fs.promises.lstat(target);
+      const cur = await lstatCandidate(bundleReal, c.rel); // a parent swapped for a symlink must not redirect the rename
+      const target = path.join(bundleReal, c.rel); // resolveCandidate (inside lstatCandidate) proved this path has no symlink component
       if (cur.ino !== c.ino || cur.size !== c.size) throw new Stop("skipped", "changed-during-thin");
       await fs.promises.rename(s, target);
       renamed++;
@@ -266,6 +276,11 @@ export async function thinBundle(
     if (entry) await journal("superseded").catch(() => {});
     return end(status, reason);
   } finally {
-    if (stagingDir) await fs.promises.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
+    if (stagingDir) {
+      const dir = stagingDir;
+      await fs.promises.rm(dir, { recursive: true, force: true }).catch((e: unknown) => {
+        out.detail = [out.detail, `could not remove ${dir}: ${msg(e)}`].filter(Boolean).join("; ");
+      });
+    }
   }
 }

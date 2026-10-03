@@ -60,7 +60,9 @@ export async function lipoThin(src: string, out: string): Promise<void> {
     LIPO_TIMEOUT,
   );
   if (r.code !== 0) {
-    throw new Error(`lipo -thin failed (${r.code}): ${r.stderr.trim()}`);
+    const m = `lipo -thin failed (${r.code}): ${r.stderr.trim()}`;
+    // lipo reports a full disk only in text; surface it as ENOSPC so the thinner maps it to aborted:no-space
+    throw /No space left on device/i.test(m) ? Object.assign(new Error(m), { code: "ENOSPC" }) : new Error(m);
   }
 }
 
@@ -83,13 +85,19 @@ export async function codesignVerify(
   return { ok: r.code === 0, errorText: r.stderr.trim() };
 }
 
-/** Full executable paths of running processes, exactly as `ps` prints them. */
+/**
+ * Full executable paths of running processes, exactly as `ps` prints them.
+ * Throws when ps fails or yields nothing: a live macOS always has absolute-path processes,
+ * so an empty set means ps failed and must never read as "app not running".
+ */
 export async function processSnapshot(): Promise<Set<string>> {
   const r = await run("/bin/ps", ["-axww", "-o", "comm="], PS_TIMEOUT);
+  if (r.code !== 0) throw new Error(`ps failed (${r.code}): ${r.stderr.trim()}`);
   const out = new Set<string>();
   for (const line of r.stdout.split("\n")) {
     const t = line.trim();
     if (t.startsWith("/")) out.add(t);
   }
+  if (out.size === 0) throw new Error("ps returned no processes");
   return out;
 }
