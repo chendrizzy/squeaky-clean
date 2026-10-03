@@ -53,19 +53,31 @@ async function checkBackup(backupsReal: string, f: JournalFile, backup: string):
   return st.mode & 0o7777;
 }
 
-/** Stage the backup on the bundle's device, prove it is the original, then rename it over our thin. */
-async function swapBack(f: JournalFile, target: string, backup: string, staged: string, persist: () => Promise<void>): Promise<void> {
+/** Stage the backup on the bundle's device and prove it is the original. Nothing in the bundle is touched. */
+async function stageOriginal(f: JournalFile, backup: string, staged: string, mode: number): Promise<void> {
   await backupFile(backup, staged);
   const st = await fs.promises.lstat(staged);
   if (st.size !== f.origSize) throw new Error(`${f.rel}: backup size differs from the journaled original size`);
   // the journal has no arch set; every candidate was selected by exactly this predicate
   if (!classifySlices(await readMachOSlices(staged)).thinnable) throw new Error(`${f.rel}: backup is not a fat arm64+x86_64 Mach-O`);
-  const cur = await fs.promises.lstat(target); // pass 1 was a while ago: still our thin?
+  await fs.promises.chmod(staged, mode); // complete before it ever appears in the bundle
+  f.restoredIno = st.ino; // rename keeps the inode; journaled before the first rename so a retry knows this file is ours
+}
+
+/** Rename a staged original over our thin. Pass 1 was a while ago, so containment and identity are re-checked first. */
+async function swapIn(bundleReal: string, f: JournalFile, staged: string): Promise<void> {
+  const target = await resolveCandidate(bundleReal, f.rel); // a parent swapped for a symlink must not redirect the rename
+  const cur = await fs.promises.lstat(target);
   if (cur.ino !== f.thinIno || cur.size !== f.thinSize) throw new Error(`${f.rel}: changed during restore; not overwriting`);
-  f.restoredIno = st.ino; // rename keeps the inode; journal it first so a retry knows this file is ours
-  await persist();
   await fs.promises.rename(staged, target);
 }
+
+/** rm -rf that reports instead of throwing: one stuck dir must not abort recovery of the other entries. */
+const rmNote = (dir: string): Promise<string | undefined> =>
+  fs.promises.rm(dir, { recursive: true, force: true }).then(
+    () => undefined,
+    (err: unknown) => `could not remove ${dir}: ${msg(err)}`,
+  );
 
 /** Backups are stored at `<entry.backupDir>/<rel>` (rel is bundle-root-relative). */
 export async function restoreEntry(
@@ -95,15 +107,23 @@ export async function restoreEntry(
     else if (todo.length === 0) status = "nothing-to-do";
     else {
       const backupsReal = await fs.promises.realpath(home.backups);
-      const modes: number[] = [];
-      for (const { f } of todo) modes.push(await checkBackup(backupsReal, f, path.join(e.backupDir, f.rel)));
-      for (const [i, { f, thin }] of todo.entries()) {
-        const target = path.join(bundleReal, f.rel);
+      // stage and prove every original before the first rename: a bad backup leaves the bundle untouched
+      const jobs: Array<{ f: JournalFile; mode: number; staged?: string }> = [];
+      for (const { f, thin } of todo) {
+        const backup = path.join(e.backupDir, f.rel);
+        const mode = await checkBackup(backupsReal, f, backup);
+        let staged: string | undefined;
         if (thin) {
           if (!stagingDir) stagingDir = await makeStagingDir(home, bundleReal, `${e.runId}-${e.seq}-restore-${Date.now().toString(36)}`, deps);
-          await swapBack(f, target, path.join(e.backupDir, f.rel), path.join(stagingDir, f.rel + ".restore"), () => setPhase("restoring"));
+          staged = path.join(stagingDir, f.rel + ".restore");
+          await stageOriginal(f, backup, staged, mode);
         }
-        await fs.promises.chmod(target, modes[i]);
+        jobs.push({ f, mode, staged });
+      }
+      await setPhase("restoring"); // journals every restoredIno before the first rename
+      for (const { f, mode, staged } of jobs) {
+        if (staged) await swapIn(bundleReal, f, staged);
+        else await fs.promises.chmod(await resolveCandidate(bundleReal, f.rel), mode); // ours: renamed by an earlier attempt
       }
       const v = await (deps.verify ?? codesignVerify)(bundleReal);
       if (v.ok) status = "restored";
@@ -116,7 +136,8 @@ export async function restoreEntry(
     status = "restore-failed";
     notes.push(msg(err));
   } finally {
-    if (stagingDir) await fs.promises.rm(stagingDir, { recursive: true, force: true });
+    const failed = stagingDir && (await rmNote(stagingDir));
+    if (failed) notes.push(failed);
   }
   await setPhase(status === "nothing-to-do" ? "restored" : status);
   return { status, notes };
@@ -127,8 +148,7 @@ async function removeStaging(home: AgentHome, e: JournalEntry, deps: PathDeps): 
   const parent = path.dirname(e.stagingDir);
   const ok = parent === home.staging || parent === (await mountPointOf(e.bundle, deps).catch(() => null));
   if (!ok) return `left ${e.stagingDir} in place: not a squeaky staging location`;
-  await fs.promises.rm(e.stagingDir, { recursive: true, force: true });
-  return undefined;
+  return rmNote(e.stagingDir);
 }
 
 const TERMINAL: ReadonlySet<RestoreStatus> = new Set<RestoreStatus>(["restored", "superseded", "nothing-to-do"]);
@@ -141,15 +161,15 @@ export async function recoverJournal(
   const out: Array<{ entry: JournalEntry; result: RestoreStatus | "cleaned"; notes: string[] }> = [];
   for (const entry of await listIncomplete(home, currentRunId)) {
     const notes: string[] = [];
+    const note = (n: string | undefined) => n && notes.push(n);
     let result: RestoreStatus | "cleaned";
     if (entry.phase === "staged" || entry.phase === "backed-up") {
-      const refused = await removeStaging(home, entry, deps);
-      if (refused) notes.push(refused);
+      note(await removeStaging(home, entry, deps));
       // backupDirFor shape: <backups>/<hash>/<name>; refuse anything shallower (would take sibling backups with it)
       if (path.dirname(path.dirname(entry.backupDir)) === home.backups) {
-        await fs.promises.rm(entry.backupDir, { recursive: true, force: true });
+        note(await rmNote(entry.backupDir));
         await fs.promises.rmdir(path.dirname(entry.backupDir)).catch(() => {});
-      } else notes.push(`left ${entry.backupDir} in place: not a squeaky backup location`);
+      } else note(`left ${entry.backupDir} in place: not a squeaky backup location`);
       await writeEntry(home, { ...entry, phase: "superseded" });
       result = "cleaned";
     } else {
@@ -157,8 +177,7 @@ export async function recoverJournal(
       notes.push(...r.notes);
       if (TERMINAL.has(r.status)) {
         // the crashed thin run's own staging; the restore's own staging was already removed by restoreEntry
-        const refused = await removeStaging(home, entry, deps);
-        if (refused) notes.push(refused);
+        note(await removeStaging(home, entry, deps));
       }
       result = r.status;
     }

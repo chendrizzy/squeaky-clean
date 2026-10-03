@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { vol } from "memfs";
 import * as fs from "fs";
 import { recoverJournal } from "../../ub/restore";
-import { writeEntry, type JournalEntry } from "../../ub/journal";
+import { listIncomplete, writeEntry, type JournalEntry } from "../../ub/journal";
 import { backupDirFor, type AgentHome } from "../../ub/paths";
 
 const h: AgentHome = { home: "/agent", staging: "/agent/staging", backups: "/agent/backups", journal: "/agent/journal" };
@@ -32,5 +32,32 @@ describe("recoverJournal cross-volume staging removal", () => {
     expect(fs.readFileSync(`${forged}/keep.txt`, "utf8")).toBe("precious");
     expect(res[0].notes).toEqual([]);
     expect(res[1].notes.join("\n")).toMatch(/not a squeaky staging location/);
+  });
+});
+
+describe("recoverJournal removal errors", () => {
+  it("turns an rm error into a note and still processes the next entry", async () => {
+    const s0 = "/agent/staging/r1-0";
+    const s1 = "/agent/staging/r1-1";
+    const e0 = entry(0, s0);
+    const e1 = entry(1, s1);
+    vol.fromJSON({ "/agent/journal/.keep": "", [`${s0}/t`]: "", [`${s1}/t`]: "", [`${e1.backupDir}/b`]: "" });
+    await writeEntry(h, e0);
+    await writeEntry(h, e1);
+    const rm = fs.promises.rm;
+    const fail = (code: string) => Object.assign(new Error(`${code}: simulated`), { code });
+    vi.spyOn(fs.promises, "rm").mockImplementation(async (p, o) => {
+      if (p === s0) throw fail("EBUSY");
+      if (p === e1.backupDir) throw fail("EACCES");
+      return rm(p, o);
+    });
+
+    const res = await recoverJournal(h, "other", { stat });
+
+    expect(res.map((x) => x.result)).toEqual(["cleaned", "cleaned"]);
+    expect(res[0].notes.join("\n")).toMatch(/EBUSY/);
+    expect(res[1].notes.join("\n")).toMatch(/EACCES/);
+    expect(fs.existsSync(s1)).toBe(false); // the second entry's staging was still removed
+    expect(await listIncomplete(h, "")).toEqual([]);
   });
 });

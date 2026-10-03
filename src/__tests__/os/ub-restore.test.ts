@@ -55,6 +55,22 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     fs.writeFileSync(t, text);
     fs.renameSync(t, p);
   };
+  /** deps.stat seam: makeStagingDir stats after pass 1 and before any rename, so `fn` lands exactly between them. */
+  const raceOnce = (fn: () => void) => {
+    let done = false;
+    return (async (p: fs.PathLike) => {
+      if (!done) {
+        done = true;
+        fn();
+      }
+      return fs.promises.stat(p);
+    }) as unknown as typeof fs.promises.stat;
+  };
+  const addMainExe = () => {
+    const mainRel = "Contents/MacOS/fixture-main";
+    entry.files.push(fileEntry(mainRel)); // after the helper: files[1]
+    return { mainRel, mainFile: path.join(app, mainRel) };
+  };
 
   /** Simulate the thinner up to `phase` for every journaled file: back up, stage thin, (for swapping) rename over the original. */
   async function thin(phase: JournalPhase) {
@@ -199,17 +215,15 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     expect(fs.readFileSync(path.join(victim, "keep.txt"), "utf8")).toBe("precious");
   });
 
-  it("mixed: one file replaced, another still thin -> superseded and nothing written", async () => {
-    const mainRel = "Contents/MacOS/fixture-main";
-    entry.files.push(fileEntry(mainRel));
+  it("mixed: the LAST file replaced, an earlier one still thin -> superseded and nothing written", async () => {
+    const { mainFile } = addMainExe();
     await thin("swapping");
-    const mainFile = path.join(app, mainRel);
-    const thinSha = sha(mainFile);
-    replaceWithNewInode(file, "app was updated");
+    const thinSha = sha(file);
+    replaceWithNewInode(mainFile, "app was updated"); // foreign comes after the thin: single-pass would write first
     const r = await restoreEntry(h, entry, okVerify);
     expect(r.status).toBe("superseded");
-    expect(sha(mainFile)).toBe(thinSha); // still the thin, byte for byte
-    expect(fs.readFileSync(file, "utf8")).toBe("app was updated");
+    expect(sha(file)).toBe(thinSha); // still the thin, byte for byte
+    expect(fs.readFileSync(mainFile, "utf8")).toBe("app was updated");
   });
 
   it("a file with no thinIno that is no longer the original is foreign -> superseded", async () => {
@@ -272,18 +286,52 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
 
   it("a file replaced between classification and swap is not overwritten -> restore-failed, then superseded", async () => {
     await thin("swapping");
-    let raced = false;
-    // makeStagingDir stats after pass 1 and before the swap: the updater lands exactly there
-    const stat = (async (p: fs.PathLike) => {
-      if (!raced) {
-        raced = true;
-        replaceWithNewInode(file, "app was updated");
-      }
-      return fs.promises.stat(p);
-    }) as unknown as typeof fs.promises.stat;
+    const stat = raceOnce(() => replaceWithNewInode(file, "app was updated"));
     expect((await restoreEntry(h, entry, { ...okVerify, stat })).status).toBe("restore-failed");
     expect(fs.readFileSync(file, "utf8")).toBe("app was updated");
     expect((await restoreEntry(h, entry, okVerify)).status).toBe("superseded");
+  });
+
+  it("a parent dir swapped for a symlink between the passes cannot redirect the rename out of the bundle", async () => {
+    await thin("swapping");
+    const thinSha = sha(file);
+    const macos = path.join(app, "Contents", "MacOS");
+    const outside = path.join(tmp, "outside-MacOS");
+    const stat = raceOnce(() => {
+      fs.renameSync(macos, outside); // same inodes, now reached through a symlink
+      fs.symlinkSync(outside, macos);
+    });
+    expect((await restoreEntry(h, entry, { ...okVerify, stat })).status).toBe("restore-failed");
+    expect(sha(path.join(outside, "fixture-helper"))).toBe(thinSha);
+  });
+
+  it("the mode is set on the staged copy before the rename, never on the file inside the bundle", async () => {
+    await thin("swapping");
+    const log: string[] = [];
+    const { chmod, rename } = fs.promises;
+    vi.spyOn(fs.promises, "chmod").mockImplementation(async (p, m) => {
+      log.push(`chmod ${String(p)}`);
+      return chmod(p, m);
+    });
+    vi.spyOn(fs.promises, "rename").mockImplementation(async (a, b) => {
+      log.push(`rename ${String(b)}`);
+      return rename(a, b);
+    });
+    expect((await restoreEntry(h, entry, okVerify)).status).toBe("restored");
+    const swap = log.indexOf(`rename ${file}`);
+    expect(swap).toBeGreaterThan(-1);
+    expect(log.slice(0, swap).some((l) => l.startsWith("chmod ") && l.endsWith(`${rel}.restore`))).toBe(true);
+    expect(log).not.toContain(`chmod ${file}`);
+    expect(sha(file)).toBe(origSha);
+  });
+
+  it("a bad backup for a later file fails the entry before anything is renamed", async () => {
+    const { mainRel, mainFile } = addMainExe();
+    await thin("swapping");
+    const before = [sha(file), sha(mainFile)];
+    fs.writeFileSync(path.join(entry.backupDir, mainRel), Buffer.alloc(entry.files[1].origSize)); // right size, not fat
+    expect((await restoreEntry(h, entry, okVerify)).status).toBe("restore-failed");
+    expect([sha(file), sha(mainFile)]).toEqual(before); // the helper (first) was not swapped back either
   });
 
   it("recoverJournal removes the crashed run's own staging dir once its restore succeeds", async () => {
