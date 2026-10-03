@@ -8,7 +8,7 @@ import { loadSeal, type Seal } from "../ub/seal";
 import { DEFAULT_MIN_SAVINGS, selectCandidates, thinBundle, type Candidate, type ThinOutcome } from "../ub/thinner";
 import { classifyApp, probeApp, type AppClass } from "../ub/policy";
 import { ensureAgentHome } from "../ub/paths";
-import { acquireLock } from "../ub/lock";
+import { acquireLock, lockPath } from "../ub/lock";
 import { recoverJournal } from "../ub/restore";
 import { pruneExpiredBackups } from "../ub/backups";
 import { matchesProtectedPath } from "./BaseCleaner";
@@ -318,7 +318,7 @@ export class UniversalBinaryCleaner implements CleanerModule {
     } else {
       const home = await ensureAgentHome();
       const lock = await acquireLock(home, { waitMs: LOCK_WAIT_MS });
-      if (!lock) return { ...result, error: "agent busy" };
+      if (!lock) return { ...result, error: `agent busy: another squeaky run holds ${lockPath(home)}` };
       // SIGTERM/SIGINT: let the app in flight reach a terminal state, start no other, release the lock, then exit
       let stopSignal: NodeJS.Signals | undefined;
       const onSignal = (s: NodeJS.Signals) => {

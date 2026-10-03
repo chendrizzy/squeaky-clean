@@ -142,8 +142,9 @@ describe("ub restore / prune commands", () => {
 
   it("a busy lock is an error and touches nothing", async () => {
     h.acquireLock.mockResolvedValue(null);
-    await expect(cmds.ubPruneCommand(undefined, { all: true })).rejects.toThrow(/agent busy/);
-    await expect(cmds.ubRestoreCommand("/Apps/Foo.app")).rejects.toThrow(/agent busy/);
+    const busy = "agent busy: another squeaky run holds /h/agent.lock";
+    await expect(cmds.ubPruneCommand(undefined, { all: true })).rejects.toThrow(busy);
+    await expect(cmds.ubRestoreCommand("/Apps/Foo.app")).rejects.toThrow(busy);
     expect(h.pruneBackups).not.toHaveBeenCalled();
     expect(h.recoverJournal).not.toHaveBeenCalled();
     expect(h.restoreApp).not.toHaveBeenCalled();

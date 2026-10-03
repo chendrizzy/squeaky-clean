@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { run } from "./exec";
+import { RUN_ID_RE } from "./journal";
 import type { AgentHome } from "./paths";
 
 export interface LockHandle {
@@ -20,15 +21,16 @@ export function newRunId(): string {
   return `${Date.now().toString(36)}-${process.pid}-${counter++}`;
 }
 
-const lockPath = (home: AgentHome) => path.join(home.home, "agent.lock");
+/** The run lock. "agent busy" errors name it so a user can see what is held. */
+export const lockPath = (home: AgentHome) => path.join(home.home, "agent.lock");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const safeName = (s: string) => s.replace(/[^A-Za-z0-9_-]/g, "_");
 
 function parse(raw: string): LockInfo | null {
   try {
     const j = JSON.parse(raw) as Partial<LockInfo>;
     if (
       typeof j.runId === "string" &&
+      RUN_ID_RE.test(j.runId) &&
       typeof j.processStart === "string" &&
       Number.isInteger(j.pid) &&
       (j.pid as number) > 0
@@ -41,7 +43,7 @@ function parse(raw: string): LockInfo | null {
   return null;
 }
 
-/** null when missing OR empty/unparseable (callers treat unparseable as held-alive). */
+/** null when missing OR empty/unparseable/invalid. */
 export async function readLock(home: AgentHome): Promise<LockInfo | null> {
   try {
     return parse(await fs.promises.readFile(lockPath(home), "utf8"));
@@ -63,7 +65,7 @@ async function processStartOf(pid: number): Promise<string | null> {
   }
 }
 
-/** Stale ONLY on dead pid or start-time mismatch. Any uncertainty => alive. */
+/** Dead pid or start-time mismatch. Any uncertainty => alive. */
 async function isStale(l: LockInfo): Promise<boolean> {
   try {
     process.kill(l.pid, 0);
@@ -78,22 +80,71 @@ async function rmQuiet(p: string): Promise<void> {
   await fs.promises.unlink(p).catch(() => undefined);
 }
 
-type Attempt = LockHandle | "busy" | "retry";
+/** A lock or claim file as read: its inode, raw text and holder (null when it does not parse). */
+interface Seen {
+  ino: number;
+  raw: string;
+  holder: LockInfo | null;
+}
 
-async function createLock(home: AgentHome, runId: string, start: string): Promise<LockHandle | "exists"> {
-  const p = lockPath(home);
+async function look(p: string): Promise<Seen | null> {
+  let fh: fs.promises.FileHandle;
+  try {
+    fh = await fs.promises.open(p, "r");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw e;
+  }
+  try {
+    const raw = await fh.readFile("utf8");
+    return { ino: (await fh.stat()).ino, raw, holder: parse(raw) };
+  } finally {
+    await fh.close();
+  }
+}
+
+/**
+ * A file that does not parse gets one full poll to become valid: its writer is between O_EXCL create
+ * and write for microseconds, but a crash there (or power loss before the data reached disk) leaves it
+ * empty or torn for good. Returned with `holder: null` when still unparseable after the poll (stale);
+ * null when it is gone or was replaced meanwhile (the caller retries).
+ */
+async function settle(p: string, pollMs: number): Promise<Seen | null> {
+  const first = await look(p);
+  if (!first || first.holder) return first;
+  await sleep(pollMs);
+  const again = await look(p);
+  return again && again.ino === first.ino ? again : null;
+}
+
+const same = (a: Seen, b: Seen) => a.ino === b.ino && a.raw === b.raw;
+const dead = async (s: Seen) => !s.holder || (await isStale(s.holder));
+
+/** O_EXCL create, write, fsync. The inode, or null when the name exists. */
+async function writeExcl(p: string, content: string): Promise<number | null> {
   let fh: fs.promises.FileHandle;
   try {
     fh = await fs.promises.open(p, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY, 0o600);
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "EEXIST") return "exists";
+    if ((e as NodeJS.ErrnoException).code === "EEXIST") return null;
     throw e;
   }
   try {
-    await fh.writeFile(JSON.stringify({ runId, pid: process.pid, processStart: start }));
+    await fh.writeFile(content);
+    await fh.sync(); // without it a crash can persist the create but not the content: an empty lock
+    return (await fh.stat()).ino;
   } finally {
     await fh.close();
   }
+}
+
+type Attempt = LockHandle | "busy" | "retry";
+
+async function createLock(home: AgentHome, runId: string, start: string): Promise<LockHandle | "exists"> {
+  const p = lockPath(home);
+  const ino = await writeExcl(p, JSON.stringify({ runId, pid: process.pid, processStart: start }));
+  // a writer stalled for a full poll before its write may have been judged stale and displaced
+  if (ino === null || (await look(p))?.ino !== ino) return "exists";
   return {
     runId,
     async release() {
@@ -103,32 +154,53 @@ async function createLock(home: AgentHome, runId: string, start: string): Promis
   };
 }
 
-async function attempt(home: AgentHome, runId: string, start: string): Promise<Attempt> {
+/**
+ * Move a dead claimer's claim aside, then confirm it is the claim judged dead. A live racer's fresh
+ * claim moved by mistake is put back. true = cleared (retry), false = a live claimer holds it (busy).
+ */
+async function clearDeadClaim(claim: string, judged: Seen, aside: string): Promise<boolean> {
+  try {
+    await fs.promises.rename(claim, aside);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return true;
+    throw e;
+  }
+  const moved = await look(aside);
+  if (moved && same(moved, judged)) {
+    await rmQuiet(aside);
+    return true;
+  }
+  // ponytail: POSIX has no compare-and-swap rename, so a third racer that creates a claim inside this
+  // put-back window overlaps two takeovers (needs a dead claimer plus 3 racers). flock(2) closes it; needs a native addon.
+  await fs.promises.link(aside, claim).catch(() => undefined);
+  await rmQuiet(aside);
+  return false;
+}
+
+async function attempt(home: AgentHome, runId: string, start: string, pollMs: number): Promise<Attempt> {
   const made = await createLock(home, runId, start);
   if (made !== "exists") return made;
 
   const p = lockPath(home);
-  const seen = await readLock(home);
-  if (!seen) {
-    // Missing (released/taken over: retry now) or empty/unparseable (held-alive: wait).
-    return fs.existsSync(p) ? "busy" : "retry";
-  }
-  if (!(await isStale(seen))) return "busy";
+  const seen = await settle(p, pollMs);
+  if (!seen) return "retry";
+  if (!(await dead(seen))) return "busy";
 
-  // Takeover. Claim exclusivity per observed stale runId with a hard link to the
-  // lock itself, so only one racer may displace that exact holder and nobody can
-  // rename away a live lock that replaced it.
-  const claim = `${p}.claim-${safeName(seen.runId)}`;
-  const stale = `${p}.stale-${safeName(runId)}`;
-  try {
-    await fs.promises.link(p, claim);
-  } catch (e) {
-    const c = (e as NodeJS.ErrnoException).code;
-    return c === "ENOENT" ? "retry" : c === "EEXIST" ? "busy" : Promise.reject(e);
+  // Takeover, one racer at a time. The claim is an O_EXCL file naming its claimer, so a claimer that
+  // died mid-takeover is judged like a lock holder and its claim cleared instead of wedging every later run.
+  const claim = `${p}.claim`;
+  if ((await writeExcl(claim, JSON.stringify({ runId, pid: process.pid, processStart: start }))) === null) {
+    const c = await settle(claim, pollMs);
+    if (!c) return "retry";
+    if (!(await dead(c))) return "busy";
+    return (await clearDeadClaim(claim, c, `${p}.dead-${runId}`)) ? "retry" : "busy";
   }
+  const stale = `${p}.stale-${runId}`;
   try {
-    const linked = parse(await fs.promises.readFile(claim, "utf8").catch(() => ""));
-    if (!linked || linked.runId !== seen.runId) return "busy"; // lock changed under us
+    // the claim does not pin which lock was judged: a racer may have replaced it since
+    const now = await look(p);
+    if (!now) return "retry";
+    if (!same(now, seen)) return "busy";
     try {
       await fs.promises.rename(p, stale);
     } catch (e) {
@@ -153,7 +225,7 @@ export async function acquireLock(
   const deadline = Date.now() + opts.waitMs;
   const poll = opts.pollMs ?? 250;
   for (let retries = 0; ; ) {
-    const r = await attempt(home, runId, start);
+    const r = await attempt(home, runId, start, poll);
     if (typeof r === "object") return r;
     if (r === "retry" && retries++ < 20) continue;
     if (Date.now() >= deadline) return null;

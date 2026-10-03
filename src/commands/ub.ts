@@ -16,7 +16,7 @@ import {
 } from "../cleaners/universalBinary";
 import { DEFAULT_MIN_SAVINGS } from "../ub/thinner";
 import { ensureAgentHome, type AgentHome } from "../ub/paths";
-import { acquireLock } from "../ub/lock";
+import { acquireLock, lockPath } from "../ub/lock";
 import { recoverJournal, restoreAppFromJournal } from "../ub/restore";
 import { pruneBackups } from "../ub/backups";
 import { config } from "../config";
@@ -296,7 +296,7 @@ export async function ubCommand(options: UBOptions): Promise<void> {
 async function withAgentLock<T>(fn: (home: AgentHome, runId: string) => Promise<T>): Promise<T> {
   const home = await ensureAgentHome();
   const lock = await acquireLock(home, { waitMs: LOCK_WAIT_MS });
-  if (!lock) throw new Error("agent busy: another squeaky ub run holds the lock");
+  if (!lock) throw new Error(`agent busy: another squeaky run holds ${lockPath(home)}`);
   try {
     return await fn(home, lock.runId);
   } finally {

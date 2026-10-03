@@ -257,7 +257,7 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     const r = await cleaner.clearByCategory(["universal-busy"]);
     await held!.release();
     expect(r.success).toBe(false);
-    expect(r.error).toBe("agent busy");
+    expect(r.error).toBe(`agent busy: another squeaky run holds ${path.join(home, "agent.lock")}`);
     expect(lockCtl.waits.at(-1)).toBe(150_000);
     expect(cleaner.lastOutcomes).toEqual([]);
     expect(sha(path.join(app, MAIN))).toBe(before);

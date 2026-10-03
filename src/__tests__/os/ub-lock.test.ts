@@ -14,11 +14,16 @@ describe.skipIf(!gate)("ub run lock", () => {
   let lockPath: string;
   const writeLock = (o: object) => fs.writeFileSync(lockPath, JSON.stringify(o), { mode: 0o600 });
   const deadPid = () => spawnSync("/usr/bin/true").pid!;
+  // what a live holder records: lstart under LC_ALL=C TZ=UTC0
+  const ourStart = () =>
+    spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(process.pid)], { encoding: "utf8", env: { ...process.env, LC_ALL: "C", TZ: "UTC0" } }).stdout.trim();
+  let claimPath: string;
 
   beforeEach(() => {
     tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ub-lock-")));
     h = { home: tmp, staging: path.join(tmp, "staging"), backups: path.join(tmp, "backups"), journal: path.join(tmp, "journal") };
     lockPath = path.join(tmp, "agent.lock");
+    claimPath = lockPath + ".claim";
   });
   afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
@@ -51,12 +56,55 @@ describe.skipIf(!gate)("ub run lock", () => {
     await a!.release();
   });
 
-  it("treats an empty/unparseable lock as held-alive", async () => {
+  it("an empty or torn lock still unparseable after one poll is taken over (crash between create and write)", async () => {
+    for (const raw of ["", "{not json"]) {
+      fs.writeFileSync(lockPath, raw);
+      fs.utimesSync(lockPath, 0, 0);
+      const a = await acquireLock(h, { waitMs: 0, pollMs: 20 });
+      expect(a).not.toBeNull();
+      expect((await readLock(h))!.runId).toBe(a!.runId);
+      expect(fs.readdirSync(tmp)).toEqual(["agent.lock"]);
+      await a!.release();
+    }
+  });
+
+  it("a lock that becomes valid within the poll is respected (its writer was between create and write)", async () => {
     fs.writeFileSync(lockPath, "");
-    expect(await acquireLock(h, { waitMs: 100, pollMs: 20 })).toBeNull();
-    fs.writeFileSync(lockPath, "{not json");
-    expect(await acquireLock(h, { waitMs: 100, pollMs: 20 })).toBeNull();
-    expect(fs.existsSync(lockPath)).toBe(true);
+    // the write lands after acquireLock has spawned ps and first seen the empty file, well inside its poll
+    const t = setTimeout(() => fs.writeFileSync(lockPath, JSON.stringify({ runId: "w", pid: process.pid, processStart: ourStart() })), 150);
+    try {
+      expect(await acquireLock(h, { waitMs: 0, pollMs: 1000 })).toBeNull();
+    } finally {
+      clearTimeout(t);
+    }
+    expect((await readLock(h))!.runId).toBe("w");
+  });
+
+  it("a leftover claim from a dead (or never-written) claimer is cleared and the stale lock taken over", async () => {
+    for (const claim of [JSON.stringify({ runId: "c", pid: deadPid(), processStart: "Thu Jan  1 00:00:00 1970" }), ""]) {
+      writeLock({ runId: "x", pid: deadPid(), processStart: "Thu Jan  1 00:00:00 1970" });
+      fs.writeFileSync(claimPath, claim, { mode: 0o600 });
+      const a = await acquireLock(h, { waitMs: 0, pollMs: 20 });
+      expect(a).not.toBeNull();
+      expect(fs.readdirSync(tmp)).toEqual(["agent.lock"]);
+      await a!.release();
+    }
+  });
+
+  it("a live claimer's claim is respected: no takeover, claim untouched", async () => {
+    writeLock({ runId: "x", pid: deadPid(), processStart: "Thu Jan  1 00:00:00 1970" });
+    const live = JSON.stringify({ runId: "c", pid: process.pid, processStart: ourStart() });
+    fs.writeFileSync(claimPath, live, { mode: 0o600 });
+    expect(await acquireLock(h, { waitMs: 0, pollMs: 20 })).toBeNull();
+    expect(fs.readFileSync(claimPath, "utf8")).toBe(live);
+    expect((await readLock(h))!.runId).toBe("x");
+  });
+
+  it("an overlong runId in the lock never becomes a file name (no ENAMETOOLONG)", async () => {
+    writeLock({ runId: "r".repeat(1000), pid: deadPid(), processStart: "Thu Jan  1 00:00:00 1970" });
+    const a = await acquireLock(h, { waitMs: 0, pollMs: 20 });
+    expect(a).not.toBeNull();
+    expect(fs.readdirSync(tmp)).toEqual(["agent.lock"]);
   });
 
   it("exactly one of 8 concurrent acquirers on a stale lock wins", async () => {
