@@ -25,11 +25,16 @@ function sliceOf(cputype: number, rawSub: number): Slice {
 
 /**
  * Read Mach-O slices straight from the header bytes (no spawn). Returns []
- * for non-Mach-O files (including Java class files sharing CAFEBABE).
+ * for non-Mach-O files (including Java class files sharing CAFEBABE), and for
+ * dataless files (iCloud-offloaded: no allocated blocks but a nonzero size),
+ * which are never opened because opening one faults its data back in.
  */
 export async function readMachOSlices(p: string): Promise<Slice[]> {
   let file;
   try {
+    const st = await fs.stat(p);
+    // ponytail: blocks==0 also matches tiny decmpfs-compressed files; skipping them is safe (never thinned)
+    if (st.blocks === 0 && st.size > 0) return [];
     file = await fs.open(p, "r");
     const buf = Buffer.alloc(1024);
     const { bytesRead } = await file.read(buf, 0, 1024, 0);

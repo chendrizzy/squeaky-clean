@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import * as fs from "fs";
 import { vol } from "memfs";
 import {
   readMachOSlices,
@@ -85,6 +86,22 @@ describe("readMachOSlices", () => {
     expect(await readMachOSlices("/s")).toEqual([]);
     expect(await readMachOSlices("/tiny")).toEqual([]);
     expect(await readMachOSlices("/nope")).toEqual([]);
+  });
+
+  it("never opens a dataless (offloaded) file: no blocks but a nonzero size (T11-R6)", async () => {
+    // memfs reports blocks: 1 for every file, so only this mocked stat is dataless
+    vol.fromJSON({ "/b": fat([[0x0100000c, 0], [0x01000007, 3]]) });
+    const open = vi.spyOn(fs.promises, "open");
+    vi.spyOn(fs.promises, "stat").mockResolvedValueOnce({ blocks: 0, size: 4096 } as never);
+    try {
+      expect(await readMachOSlices("/b")).toEqual([]);
+      expect(open).not.toHaveBeenCalled();
+      // positive control: the same file with its data on disk is opened and read
+      expect((await readMachOSlices("/b")).map((s) => s.arch)).toEqual(["arm64", "x86_64"]);
+      expect(open).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });
 
