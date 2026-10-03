@@ -150,6 +150,39 @@ describe.skipIf(!gate)("ub restore / prune on a thinned fixture app", () => {
     expect(journalFiles()).toEqual(journal);
   });
 
+  it("two generations: the newest thin is restored; a second restore is nothing-to-do (exit 0)", async () => {
+    const o1 = await thin();
+    // a vendor update puts fat binaries back (new inodes), then a second thin makes generation 2
+    for (const rel of [MAIN, HELPER]) {
+      const fresh = path.join(base, "t", "fresh");
+      fs.copyFileSync(path.join(o1.backupDir!, rel), fresh);
+      fs.renameSync(fresh, path.join(app, rel));
+    }
+    const o2 = await thin();
+    expect(o2.backupDir).not.toBe(o1.backupDir);
+    expect(await restoreAppFromJournal(home, app)).toEqual({ status: "restored", notes: [] });
+    for (const rel of [MAIN, HELPER]) expect(sha(path.join(app, rel))).toBe(orig[rel]);
+    // generation 1 is still `done` with its backup kept, but it is not the newest entry: never acted on
+    const journal = journalFiles();
+    const ino = fs.statSync(path.join(app, MAIN)).ino;
+    expect(await restoreAppFromJournal(home, app)).toEqual({ status: "nothing-to-do", notes: [] });
+    expect(journalFiles()).toEqual(journal);
+    expect(fs.statSync(path.join(app, MAIN)).ino).toBe(ino);
+  });
+
+  it("only a superseded entry (thin stopped before any swap) and a fat main → nothing-to-do (exit 0)", async () => {
+    const eperm = async () => {
+      throw Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" });
+    };
+    const o = await thinBundle(app, { home, runId: newRunId(), seq: 0, minSavingsBytes: 0, deps: { copyFile: eperm } });
+    expect(`${o.status}:${o.reason}`).toBe("blocked:app-management");
+    const journal = journalFiles();
+    expect(Object.values(journal).map((j) => (JSON.parse(j) as JournalEntry).phase)).toEqual(["superseded"]);
+    expect(await restoreAppFromJournal(home, app, ok)).toEqual({ status: "nothing-to-do", notes: [] });
+    expect(journalFiles()).toEqual(journal);
+    for (const rel of [MAIN, HELPER]) expect(sha(path.join(app, rel))).toBe(orig[rel]);
+  });
+
   it("never thinned → nothing-to-do; no app → unreachable; a missing file → superseded", async () => {
     expect(await restoreAppFromJournal(home, app)).toEqual({ status: "nothing-to-do", notes: [] });
     expect((await restoreAppFromJournal(home, path.join(base, "apps", "Gone.app"))).status).toBe("unreachable");

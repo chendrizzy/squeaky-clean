@@ -206,11 +206,12 @@ async function mainIsFat(bundleReal: string): Promise<boolean> {
 
 /**
  * `squeaky ub restore <app>` (spec §5.2): restores from the thin's own persisted record, never from
- * "the newest backup". The record is the newest valid `done` journal entry for this bundle whose
- * backupDir still exists; it goes to restoreEntry unchanged, so the identity checks compare the app's
+ * "the newest backup". Only the bundle's NEWEST valid journal entry can be the record: it must be `done`
+ * with its backupDir still present (an older `done` is a generation a later thin, restore or update
+ * already replaced). The record goes to restoreEntry unchanged, so the identity checks compare the app's
  * files with the thinIno/thinSize journaled at swap time (a vendor update is `superseded`, nothing written).
  * With no record nothing is written, not even the journal:
- * - `nothing-to-do` when the main executable is universal and the app was restored before or never journaled;
+ * - `nothing-to-do` when the main executable is universal, whatever the entries say;
  * - otherwise `no-record`: squeaky cannot prove what is in the app now is what it left there.
  * Callers run recoverJournal first (ubRestoreCommand does), so an interrupted run is finished by its own entry.
  */
@@ -225,18 +226,13 @@ export async function restoreAppFromJournal(
   } catch {
     return { status: "unreachable", notes: [`bundle not found: ${appPath}`] };
   }
-  const mine = (await listEntries(home)).filter((e) => e.bundle === bundleReal);
-  let record: JournalEntry | undefined;
-  for (const e of mine) {
-    if (e.phase !== "done" || (record && !newer(e, record))) continue;
-    const st = await fs.promises.lstat(e.backupDir).catch(() => null);
-    if (st?.isDirectory()) record = e;
+  let newest: JournalEntry | undefined;
+  for (const e of await listEntries(home)) if (e.bundle === bundleReal && (!newest || newer(e, newest))) newest = e;
+  if (newest?.phase === "done" && (await fs.promises.lstat(newest.backupDir).catch(() => null))?.isDirectory()) {
+    return restoreEntry(home, newest, deps);
   }
-  if (record) return restoreEntry(home, record, deps);
 
-  if ((mine.length === 0 || mine.some((e) => e.phase === "restored")) && (await mainIsFat(bundleReal))) {
-    return { status: "nothing-to-do", notes: [] };
-  }
+  if (await mainIsFat(bundleReal)) return { status: "nothing-to-do", notes: [] };
   return {
     status: "no-record",
     notes: [`squeaky has no completed thin of ${bundleReal} with a kept backup (backups are released after a few days, or by \`squeaky ub prune\`); nothing was changed`],
