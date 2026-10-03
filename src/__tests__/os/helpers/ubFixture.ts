@@ -70,7 +70,9 @@ export async function buildFixtureApp(
   fs.mkdirSync(macos, { recursive: true });
 
   const mainC = path.join(dir, `main-${n}.c`);
-  fs.writeFileSync(mainC, "int main(void){return 0;}\n");
+  // 256 KB of initialized data per slice: thinning saves > 64 KB per file (the thinner's per-file floor)
+  const pad = "char squeaky_fixture_pad[262144] = {1};\n";
+  fs.writeFileSync(mainC, pad + "int main(void){return 0;}\n");
   const archs = ["-arch", "arm64", "-arch", "x86_64"];
   const mainArchs = opts.arm64e ? [...archs, "-arch", "arm64e"] : archs;
 
@@ -86,7 +88,7 @@ export async function buildFixtureApp(
     const fw = path.join(app, "Contents", "Frameworks");
     fs.mkdirSync(fw, { recursive: true });
     const libC = path.join(dir, `lib-${n}.c`);
-    fs.writeFileSync(libC, "int fx_value(void){return 42;}\n");
+    fs.writeFileSync(libC, pad + "int fx_value(void){return 42;}\n");
     res.dylib = path.join(fw, "libfx.dylib");
     await clang([...archs, "-dynamiclib", "-o", res.dylib, libC]);
   }
