@@ -1,3 +1,4 @@
+import * as path from "path";
 import {
   printInfo,
   printSuccess,
@@ -12,6 +13,8 @@ import {
   outcomeLine,
   recoveryLine,
 } from "../cleaners/universalBinary";
+import { DEFAULT_MIN_SAVINGS } from "../ub/thinner";
+import { config } from "../config";
 import type { ClearResult } from "../types";
 import ora from "ora";
 import inquirer from "inquirer";
@@ -104,7 +107,9 @@ export async function ubCommand(options: UBOptions): Promise<void> {
       );
       console.log();
       printInfo("💡 Run `squeaky ub` to interactively select binaries to thin");
-      printInfo("   Run `squeaky ub --all` to thin all Universal Binaries");
+      printInfo(
+        `   Run \`squeaky ub --all\` to thin every app listed above that saves at least ${DEFAULT_MIN_SAVINGS / (1024 * 1024)} MB (never auto-ignored or protected ones)`,
+      );
       return;
     }
 
@@ -138,13 +143,9 @@ export async function ubCommand(options: UBOptions): Promise<void> {
       binariesToThin = thinnable
         .map((cat) => cat.id)
         .filter((id) => !excluded.has(id.toLowerCase()));
-      if (excluded.size > 0) {
-        printInfo(
-          `All Universal Binaries selected for thinning (excluded: ${[...excluded].join(", ")}).`,
-        );
-      } else {
-        printInfo("All Universal Binaries selected for thinning.");
-      }
+      printInfo(
+        `Selected every app that is not auto-ignored${excluded.size > 0 ? ` (excluded: ${[...excluded].join(", ")})` : ""}.`,
+      );
     } else {
       // Interactive selection: an explicit tick may include an auto-ignored app (spec §6.2)
       console.log();
@@ -186,28 +187,47 @@ export async function ubCommand(options: UBOptions): Promise<void> {
       return;
     }
 
-    // Calculate selected savings
-    const selectedSavings = categories
-      .filter((cat) => binariesToThin.includes(cat.id))
-      .reduce((sum, cat) => sum + (cat.size || 0), 0);
+    // the path shown for each id, so clear() refuses an id that now names a different app (T11-R4)
+    const expectedPaths = Object.fromEntries(
+      categories
+        .filter((cat) => binariesToThin.includes(cat.id))
+        .map((cat) => [cat.id, cat.paths[0]]),
+    );
+    const selection = { categories: binariesToThin, tickedIds, expectedPaths };
+    const protectedPaths = config.getProtectedPaths();
+
+    // The cleaner's own decision on the last scan, so totals count only what the run will thin
+    const plan = await cleaner.preview(selection, protectedPaths);
+    const willThin = plan.filter((o) => o.reason === "dry-run");
+    const willSkip = plan.filter((o) => o.reason !== "dry-run");
+    const expectedSavings = willThin.reduce((sum, o) => sum + o.heldBytes, 0);
 
     console.log();
-    printInfo(`Selected ${binariesToThin.length} application(s) for thinning`);
     printInfo(
-      `Expected space savings: ${formatSizeWithColor(selectedSavings)}`,
+      `Will thin ${willThin.length} of ${binariesToThin.length} selected application(s)`,
     );
+    printInfo(`Expected space savings: ${formatSizeWithColor(expectedSavings)}`);
+    if (willSkip.length > 0) {
+      console.log("\nWill skip:\n");
+      for (const o of willSkip) console.log(`  ${outcomeLine(o)}`);
+    }
 
     // Dry run mode
     if (options.dryRun) {
-      console.log("\n[DRY RUN] Would thin the following binaries:\n");
-      for (const catId of binariesToThin) {
-        const cat = categories.find((c) => c.id === catId);
-        if (cat) {
-          console.log(`  • ${cat.name}`);
-        }
+      console.log("\n[DRY RUN] Would thin the following applications:\n");
+      for (const o of willThin) {
+        console.log(
+          `  • ${path.basename(o.app, ".app")} (${formatSizeWithColor(o.heldBytes)})`,
+        );
       }
+      if (willThin.length === 0) console.log("  (none)");
       console.log();
       printInfo("Run without --dry-run to actually thin the binaries.");
+      return;
+    }
+
+    if (willThin.length === 0) {
+      printInfo("Nothing to thin.");
       return;
     }
 
@@ -218,7 +238,7 @@ export async function ubCommand(options: UBOptions): Promise<void> {
         {
           type: "confirm",
           name: "confirmed",
-          message: `Proceed with thinning ${binariesToThin.length} application(s)?`,
+          message: `Proceed with thinning ${willThin.length} application(s)?`,
           default: false,
         },
       ]);
@@ -233,19 +253,10 @@ export async function ubCommand(options: UBOptions): Promise<void> {
     console.log();
     const thinSpinner = ora("Thinning Universal Binaries...").start();
 
-    // the path shown for each id, so clear() refuses an id that now names a different app (T11-R4)
-    const expectedPaths = Object.fromEntries(
-      categories
-        .filter((cat) => binariesToThin.includes(cat.id))
-        .map((cat) => [cat.id, cat.paths[0]]),
-    );
     let result: ClearResult;
     try {
-      result = await cleaner.clear(false, {
-        categories: binariesToThin,
-        tickedIds,
-        expectedPaths,
-      });
+      // the full selection, not just willThin: clear() re-checks it against a fresh scan and reports every skip
+      result = await cleaner.clear(false, selection, undefined, protectedPaths);
       thinSpinner.stop();
     } catch (error) {
       thinSpinner.fail("Thinning failed");

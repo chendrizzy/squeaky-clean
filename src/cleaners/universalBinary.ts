@@ -11,6 +11,7 @@ import { ensureAgentHome } from "../ub/paths";
 import { acquireLock } from "../ub/lock";
 import { recoverJournal } from "../ub/restore";
 import { pruneExpiredBackups } from "../ub/backups";
+import { matchesProtectedPath } from "./BaseCleaner";
 
 /** Until Plan 2 adds `universalBinary.keepBackupsDays` to config. */
 export const DEFAULT_KEEP_BACKUP_DAYS = 3;
@@ -30,6 +31,11 @@ interface ScannedApp {
   candidates: Candidate[];
   savings: number;
 }
+/** A selected app headed for the engine; a tick beats the per-app floor. */
+interface Work {
+  app: ScannedApp;
+  ticked: boolean;
+}
 
 /** Outcomes clear() decides itself, before the engine; their detail is part of the error text. */
 const DETAIL_IN_ERROR = new Set(["not-attempted", "auto-ignored", "stale-id"]);
@@ -38,6 +44,24 @@ const sum = (xs: number[]) => xs.reduce((n, x) => n + x, 0);
 const appName = (p: string) => path.basename(p, ".app");
 const underSystem = (real: string) => real === "/System" || real.startsWith("/System/");
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/**
+ * Protected patterns as given, plus the realpath of every plain (non-glob) one: apps are identified by realpath,
+ * so a protected folder reached through a symlink must still protect what it points to. Spawn-free.
+ */
+async function withRealpaths(patterns: string[]): Promise<string[]> {
+  const plain = patterns.filter((p) => !p.includes("*") && !p.includes("?"));
+  const reals = await Promise.all(plain.map((p) => fs.realpath(p).catch(() => null)));
+  return [...patterns, ...reals.filter((r): r is string => r !== null)];
+}
+
+/** Dry-run estimate for one selected app, under the same floor thinBundle applies (a tick removes it). */
+function estimate({ app: a, ticked }: Work): ThinOutcome {
+  const out: ThinOutcome = { app: a.info.realpath, status: "skipped", heldBytes: 0, candidates: a.candidates, skipped: [] };
+  if (a.candidates.length === 0 || a.savings < (ticked ? 0 : DEFAULT_MIN_SAVINGS)) out.reason = "below-threshold";
+  else Object.assign(out, { reason: "dry-run", heldBytes: a.savings });
+  return out;
+}
 
 /** The binary macOS attributes App Management to: the realpath of the running node. */
 function grantTarget(): string {
@@ -213,23 +237,33 @@ export class UniversalBinaryCleaner implements CleanerModule {
    * - Stale ids (T11-R4): an id whose re-scanned realpath differs from the path the caller showed is `skipped:stale-id`.
    *   The shown path is `criteria.expectedPaths[id]` (an id missing there is stale too), else the caller's own
    *   `cacheInfo.categories` paths[0]; with neither, the rescan is accepted.
+   * - Protected (round 3): an app at or inside a protected path (`protectedPaths`, already widened by
+   *   `withRealpaths`) is `skipped:protected` in every mode, ticked or not.
    */
   private select(
     scanned: ScannedApp[],
-    criteria?: CacheSelectionCriteria,
-    cacheInfo?: CacheInfo,
-  ): { work: Array<{ app: ScannedApp; ticked: boolean }>; skips: ThinOutcome[] } {
+    criteria: CacheSelectionCriteria | undefined,
+    cacheInfo: CacheInfo | undefined,
+    protectedPaths: string[],
+  ): { work: Work[]; skips: ThinOutcome[] } {
     const skips: ThinOutcome[] = [];
-    if (!criteria?.categories) return { work: scanned.filter((a) => !a.cls).map((app) => ({ app, ticked: false })), skips };
-    const work: Array<{ app: ScannedApp; ticked: boolean }> = [];
+    const work: Work[] = [];
+    const skip = (app: string, reason: string, detail?: string) =>
+      skips.push({ app, status: "skipped", reason, detail, heldBytes: 0, candidates: [], skipped: [] });
+    const isProtected = (a: ScannedApp) => matchesProtectedPath(a.info.realpath, protectedPaths);
+    if (!criteria?.categories) {
+      for (const a of scanned.filter((x) => !x.cls)) {
+        if (isProtected(a)) skip(a.info.realpath, "protected");
+        else work.push({ app: a, ticked: false });
+      }
+      return { work, skips };
+    }
     const byId = new Map(scanned.map((a) => [a.id, a]));
     const ticked = new Set(criteria.tickedIds ?? []);
     const strict = criteria.expectedPaths !== undefined;
     const shown = new Map<string, string | undefined>(
       Object.entries(criteria.expectedPaths ?? Object.fromEntries((cacheInfo?.categories ?? []).map((c) => [c.id, c.paths[0]]))),
     );
-    const skip = (app: string, reason: string, detail: string) =>
-      skips.push({ app, status: "skipped", reason, detail, heldBytes: 0, candidates: [], skipped: [] });
     for (const id of new Set(criteria.categories)) {
       const a = byId.get(id);
       const want = shown.get(id);
@@ -237,6 +271,8 @@ export class UniversalBinaryCleaner implements CleanerModule {
         skip(want ?? a?.info.realpath ?? id, "stale-id", want === undefined ? "no path was shown for it" : a ? `now ${a.info.realpath}` : "no longer found");
       } else if (!a) {
         continue; // unknown id and nothing shown for it: nothing to thin
+      } else if (isProtected(a)) {
+        skip(a.info.realpath, "protected");
       } else if (a.cls && !ticked.has(id)) {
         skip(a.info.realpath, "auto-ignored", a.cls);
       } else {
@@ -247,10 +283,25 @@ export class UniversalBinaryCleaner implements CleanerModule {
   }
 
   /**
-   * Selection: see `select`. Nothing is freed yet: originals are held as backups, so sizeAfter === sizeBefore and
-   * heldBytes says what will be freed. `cacheInfo` (what `squeaky clean` passes) supplies the paths the caller saw.
+   * What clear() would decide for this selection, from the last scan: no rescan, no spawn, nothing written.
+   * `skipped:dry-run` outcomes (heldBytes = estimate) are what a real run would thin; every other outcome is a skip.
    */
-  async clear(dryRun = false, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo): Promise<ClearResult> {
+  async preview(criteria?: CacheSelectionCriteria, protectedPaths: string[] = []): Promise<ThinOutcome[]> {
+    const { work, skips } = this.select([...this.scanned.values()], criteria, undefined, await withRealpaths(protectedPaths));
+    return [...skips, ...work.map(estimate)];
+  }
+
+  /**
+   * Selection: see `select`. Nothing is freed yet: originals are held as backups, so sizeAfter === sizeBefore and
+   * heldBytes says what will be freed. `cacheInfo` (what `squeaky clean` passes) supplies the paths the caller saw;
+   * `protectedPaths` is the config list CacheManager passes as the 4th argument.
+   */
+  async clear(
+    dryRun = false,
+    criteria?: CacheSelectionCriteria,
+    cacheInfo?: CacheInfo,
+    protectedPaths: string[] = [],
+  ): Promise<ClearResult> {
     this.lastOutcomes = [];
     this.lastRecovery = [];
     this.lastNotes = [];
@@ -258,19 +309,12 @@ export class UniversalBinaryCleaner implements CleanerModule {
     if (!(await this.isAvailable())) {
       return { ...result, error: "Universal Binary cleaner requires macOS on Apple Silicon (arm64)" };
     }
-    const { work, skips } = this.select(await this.scan(), criteria, cacheInfo);
+    const { work, skips } = this.select(await this.scan(), criteria, cacheInfo, await withRealpaths(protectedPaths));
     let thinThrew = false;
 
     if (dryRun) {
       // estimate only: no lock, no agent home, no spawns (so no baseline or running checks)
-      this.lastOutcomes.push(...skips);
-      for (const { app: a, ticked } of work) {
-        const floor = ticked ? 0 : DEFAULT_MIN_SAVINGS; // same floor thinBundle applies, so a dry run predicts the real decision
-        const out: ThinOutcome = { app: a.info.realpath, status: "skipped", heldBytes: 0, candidates: a.candidates, skipped: [] };
-        if (a.candidates.length === 0 || a.savings < floor) out.reason = "below-threshold";
-        else Object.assign(out, { reason: "dry-run", heldBytes: a.savings });
-        this.lastOutcomes.push(out);
-      }
+      this.lastOutcomes.push(...skips, ...work.map(estimate));
     } else {
       const home = await ensureAgentHome();
       const lock = await acquireLock(home, { waitMs: LOCK_WAIT_MS });
@@ -362,8 +406,13 @@ export class UniversalBinaryCleaner implements CleanerModule {
   }
 
   /** `cacheInfo` is the caller's own scan (squeaky clean passes it); its paths guard against stale ids. */
-  async clearByCategory(categoryIds: string[], dryRun = false, cacheInfo?: CacheInfo): Promise<ClearResult> {
-    return this.clear(dryRun, { categories: categoryIds }, cacheInfo);
+  async clearByCategory(
+    categoryIds: string[],
+    dryRun = false,
+    cacheInfo?: CacheInfo,
+    protectedPaths: string[] = [],
+  ): Promise<ClearResult> {
+    return this.clear(dryRun, { categories: categoryIds }, cacheInfo, protectedPaths);
   }
 
   static create(): UniversalBinaryCleaner {

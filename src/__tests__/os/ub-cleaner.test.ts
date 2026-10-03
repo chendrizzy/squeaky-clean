@@ -482,6 +482,54 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     expect(fs.existsSync(path.join(home, "agent.lock"))).toBe(false);
   });
 
+  it("skips apps at or inside a protected path in every mode, ticked or not (round 3)", async () => {
+    const free = path.join(roots, "Free.app");
+    const glob = path.join(roots, "Glob1.app");
+    const keep = path.join(roots, "Keep.app");
+    const inner = path.join(roots, "sub", "Inner.app");
+    const linked = path.join(roots, "viaLink", "Linked.app");
+    await fixtureAt(free, glob, keep, inner, linked);
+    fs.symlinkSync(path.join(roots, "viaLink"), path.join(tmp, "alias")); // outside the roots: never scanned itself
+    const prot = [
+      path.join(roots, "keep.app"), // exact, case-mismatched (BaseCleaner compares case-insensitively)
+      path.join(roots, "sub"), // a protected folder protects what is inside it
+      `${roots}/Glob*.app`, // glob
+      path.join(tmp, "alias"), // a symlinked folder: apps are matched by realpath
+    ];
+    const guarded = [glob, keep, inner, linked];
+    const before = guarded.map((p) => sha(path.join(p, MAIN)));
+    const cleaner = new UniversalBinaryCleaner();
+    const reasons = () => cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason]);
+
+    // squeaky clean: CacheManager's clear(dryRun, criteria, cacheInfo, protectedPaths)
+    const r = await cleaner.clear(false, undefined, undefined, prot);
+    expect(thinCtl.calls).toEqual([free]);
+    expect(reasons()).toEqual([...guarded.map((p) => [p, "skipped", "protected"]), [free, "skipped", "below-threshold"]]);
+    expect(r.error).toBe(
+      "Glob1: skipped:protected; Keep: skipped:protected; Inner: skipped:protected; Linked: skipped:protected; Free: skipped:below-threshold",
+    );
+    // the dry run and preview (last scan, no readdir) decide the same
+    await cleaner.clear(true, undefined, undefined, prot);
+    expect(cleaner.lastOutcomes.map((o) => o.reason)).toEqual(["protected", "protected", "protected", "protected", "below-threshold"]);
+    const readdir = vi.spyOn(fs.promises, "readdir");
+    expect((await cleaner.preview(undefined, prot)).map((o) => o.reason)).toEqual(["protected", "protected", "protected", "protected", "below-threshold"]);
+    expect(readdir).not.toHaveBeenCalled();
+    readdir.mockRestore();
+
+    // CacheManager's clearByCategory(ids, dryRun, cacheInfo, protectedPaths), and a tick: protection still wins
+    const keepId = (await cleaner.getCacheCategories()).find((c) => c.paths[0] === keep)!.id;
+    await cleaner.clearByCategory([keepId], false, undefined, prot);
+    expect(reasons()).toEqual([[keep, "skipped", "protected"]]);
+    await cleaner.clear(false, { categories: [keepId], tickedIds: [keepId] }, undefined, prot);
+    expect(reasons()).toEqual([[keep, "skipped", "protected"]]);
+    expect(thinCtl.calls).toEqual([free]);
+    expect(guarded.map((p) => sha(path.join(p, MAIN)))).toEqual(before);
+
+    // positive control: unprotected, the same ticked app is thinned
+    await cleaner.clear(false, { categories: [keepId], tickedIds: [keepId] });
+    expect(reasons()).toEqual([[keep, "thinned", undefined]]);
+  });
+
   it("SIGTERM between apps: in-flight app finishes, next app untouched, no incomplete journal, no held lock", async () => {
     const a = path.join(roots, "A.app");
     const b = path.join(roots, "B.app");

@@ -16,6 +16,55 @@ import { getCachedDirectorySize } from "../utils/fs";
 import { computeVolumeBreakdown, VolumeEntry } from "../utils/volumes";
 import { effectiveSafety } from "../safety";
 
+/**
+ * Whether `path` is covered by the protected-paths list: a pattern containing
+ * `*` or `?` is a glob; anything else protects that path and everything inside
+ * it. Shared with cleaners that do not extend BaseCleaner.
+ */
+export function matchesProtectedPath(
+  path: string,
+  protectedPaths: string[] = [],
+): boolean {
+  if (!protectedPaths.length) return false;
+
+  // Normalize separators to forward slashes so matching is consistent on
+  // Windows, where resolve() yields backslash paths.
+  const normalizedPath = resolve(path).replace(/\\/g, "/");
+
+  for (const protectedPattern of protectedPaths) {
+    // Support both exact paths and glob patterns
+    if (protectedPattern.includes("*") || protectedPattern.includes("?")) {
+      // It's a glob pattern
+      if (minimatch(normalizedPath, protectedPattern.replace(/\\/g, "/"))) {
+        printVerbose(
+          `Path ${path} is protected by pattern: ${protectedPattern}`,
+        );
+        return true;
+      }
+    } else {
+      // It's an exact path or directory. Compare case-insensitively: on
+      // case-insensitive filesystems (default macOS/Windows) a case-
+      // mismatched pattern must still protect the path - a missed match
+      // here would let explicitly-protected data be deleted.
+      const normalizedProtected = resolve(protectedPattern).replace(
+        /\\/g,
+        "/",
+      );
+      const candidate = normalizedPath.toLowerCase();
+      const protectedLower = normalizedProtected.toLowerCase();
+      if (
+        candidate === protectedLower ||
+        candidate.startsWith(protectedLower + "/")
+      ) {
+        printVerbose(`Path ${path} is protected: ${protectedPattern}`);
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 export abstract class BaseCleaner implements CleanerModule {
   abstract name: string;
   abstract type: CacheType;
@@ -63,44 +112,7 @@ export abstract class BaseCleaner implements CleanerModule {
     path: string,
     protectedPaths: string[] = [],
   ): boolean {
-    if (!protectedPaths.length) return false;
-
-    // Normalize separators to forward slashes so matching is consistent on
-    // Windows, where resolve() yields backslash paths.
-    const normalizedPath = resolve(path).replace(/\\/g, "/");
-
-    for (const protectedPattern of protectedPaths) {
-      // Support both exact paths and glob patterns
-      if (protectedPattern.includes("*") || protectedPattern.includes("?")) {
-        // It's a glob pattern
-        if (minimatch(normalizedPath, protectedPattern.replace(/\\/g, "/"))) {
-          printVerbose(
-            `Path ${path} is protected by pattern: ${protectedPattern}`,
-          );
-          return true;
-        }
-      } else {
-        // It's an exact path or directory. Compare case-insensitively: on
-        // case-insensitive filesystems (default macOS/Windows) a case-
-        // mismatched pattern must still protect the path - a missed match
-        // here would let explicitly-protected data be deleted.
-        const normalizedProtected = resolve(protectedPattern).replace(
-          /\\/g,
-          "/",
-        );
-        const candidate = normalizedPath.toLowerCase();
-        const protectedLower = normalizedProtected.toLowerCase();
-        if (
-          candidate === protectedLower ||
-          candidate.startsWith(protectedLower + "/")
-        ) {
-          printVerbose(`Path ${path} is protected: ${protectedPattern}`);
-          return true;
-        }
-      }
-    }
-
-    return false;
+    return matchesProtectedPath(path, protectedPaths);
   }
 
   /**
