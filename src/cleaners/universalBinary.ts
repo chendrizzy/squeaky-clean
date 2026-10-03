@@ -20,6 +20,8 @@ export type RecoveryItem = Awaited<ReturnType<typeof recoverJournal>>[number];
 const LIPO = "/usr/bin/lipo";
 const SCAN_DEPTH = 3;
 export const LOCK_WAIT_MS = 150_000;
+/** Plan 1 has no background job: expired backups go only when squeaky runs again, or on `ub prune`. */
+export const BACKUP_RELEASE = `freed by the next squeaky run after ${DEFAULT_KEEP_BACKUP_DAYS} days, or now with \`squeaky ub prune\``;
 /** With no readable seal only the main executable is estimated (classifyFile: main first, everything else unsealed). */
 const NO_SEAL: Seal = { files2: Object.create(null) };
 const SIGNAL_EXIT: Record<string, number> = { SIGINT: 130, SIGTERM: 143 };
@@ -77,7 +79,7 @@ export function outcomeLine(o: ThinOutcome): string {
   const name = appName(o.app);
   const why = `${o.status}${o.reason ? `:${o.reason}` : ""}`;
   if (o.status === "thinned") {
-    return `✓ ${name} — ${formatSizeWithColor(o.heldBytes)} will be freed after ${DEFAULT_KEEP_BACKUP_DAYS} days (backup kept for safe rollback)`;
+    return `✓ ${name} — ${formatSizeWithColor(o.heldBytes)} will be ${BACKUP_RELEASE} (backup kept for safe rollback)`;
   }
   if (why === "rolled-back:verify-failed") return `↩ ${name} rolled back (verify failed) — unchanged`;
   if (why === "skipped:running") return `⏸ ${name} skipped: running — quit it and re-run`;

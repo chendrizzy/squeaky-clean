@@ -8,6 +8,7 @@ import {
   symbols,
 } from "../utils/cli";
 import {
+  BACKUP_RELEASE,
   DEFAULT_KEEP_BACKUP_DAYS,
   LOCK_WAIT_MS,
   UniversalBinaryCleaner,
@@ -280,7 +281,7 @@ export async function ubCommand(options: UBOptions): Promise<void> {
     for (const o of cleaner.lastOutcomes) console.log(`  ${outcomeLine(o)}`);
     console.log();
     printSuccess(
-      `Held in backups: ${formatSizeWithColor(result.heldBytes || 0)} (freed automatically after ${DEFAULT_KEEP_BACKUP_DAYS} days)`,
+      `Held in backups: ${formatSizeWithColor(result.heldBytes || 0)} (${BACKUP_RELEASE})`,
     );
     if (!result.success) {
       printWarning("Some applications need attention (see above).");

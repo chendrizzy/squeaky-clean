@@ -89,6 +89,8 @@ describe("squeaky ub command", () => {
 
   it("--all passes no tick, so class and floor still apply", async () => {
     await ubCommand({ all: true, force: true });
+    // M3: nothing frees backups in the background in Plan 1
+    expect(text()).toMatch(/Held in backups: .* \(freed by the next squeaky run after 3 days, or now with `squeaky ub prune`\)/);
     expect(fake.clear).toHaveBeenCalledWith(
       false,
       {

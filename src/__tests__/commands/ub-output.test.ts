@@ -10,7 +10,7 @@ const o = (status: ThinOutcome["status"], reason?: string, heldBytes = 0): ThinO
 
 describe("ub per-app outcome lines", () => {
   it.each([
-    [o("thinned", undefined, 3 * 1024 * 1024), "✓ Some App — 3.0 MB will be freed after 3 days (backup kept for safe rollback)"],
+    [o("thinned", undefined, 3 * 1024 * 1024), "✓ Some App — 3.0 MB will be freed by the next squeaky run after 3 days, or now with `squeaky ub prune` (backup kept for safe rollback)"],
     [o("rolled-back", "verify-failed"), "↩ Some App rolled back (verify failed) — unchanged"],
     [o("skipped", "running"), "⏸ Some App skipped: running — quit it and re-run"],
     [o("skipped", "below-threshold"), "• Some App skipped:below-threshold"],

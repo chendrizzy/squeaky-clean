@@ -571,7 +571,7 @@ void (async () => {
     });
     expect(r.status, r.stderr).toBe(143);
     // the caller never regains control, so the cleaner itself reports the in-flight app before exiting
-    expect(plain(r.stderr)).toMatch(/ {2}✓ A — .* will be freed after 3 days \(backup kept for safe rollback\)/);
+    expect(plain(r.stderr)).toMatch(/ {2}✓ A — .* will be freed by the next squeaky run after 3 days, or now with `squeaky ub prune` \(backup kept for safe rollback\)/);
     expect(await lipoArchs(path.join(a, MAIN))).toEqual(["arm64"]);
     expect((await codesignVerify(a)).ok).toBe(true);
     expect(sha(path.join(b, MAIN))).toBe(bBefore);

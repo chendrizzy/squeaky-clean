@@ -484,7 +484,7 @@ function rejectUbFlags(cmd: Command, allowed: string[] = []): void {
 }
 
 ub.command("restore <app>")
-  .description("put back an app's original binaries from its newest backup")
+  .description("put back an app's original binaries from the backup its last thin kept (path to the .app)")
   .action(async (app: string, _opts, cmd: Command) => {
     try {
       rejectUbFlags(cmd);
