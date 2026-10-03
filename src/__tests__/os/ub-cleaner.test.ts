@@ -5,39 +5,69 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as crypto from "crypto";
-import { UniversalBinaryCleaner } from "../../cleaners/universalBinary";
+import { UniversalBinaryCleaner, outcomeLine } from "../../cleaners/universalBinary";
 import { acquireLock } from "../../ub/lock";
 import { ensureAgentHome } from "../../ub/paths";
 import { listIncomplete, writeEntry } from "../../ub/journal";
 import { codesignVerify, lipoArchs, run } from "../../ub/exec";
+import type { ThinOutcome } from "../../ub/thinner";
 import { buildFixtureApp, hasToolchain } from "./helpers/ubFixture";
 
 // The cleaner's 150 s lock wait is real; the busy test shortens it here and records what was asked for.
-const lockCtl = vi.hoisted(() => ({ waitOverride: undefined as number | undefined, waits: [] as number[] }));
+// releaseThrows: the handle releases for real, then throws (signal-exit test).
+const lockCtl = vi.hoisted(() => ({ waitOverride: undefined as number | undefined, waits: [] as number[], releaseThrows: false }));
 vi.mock("../../ub/lock", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../ub/lock")>();
   return {
     ...real,
-    acquireLock: (home: Parameters<typeof real.acquireLock>[0], opts: { waitMs: number; pollMs?: number }) => {
+    acquireLock: async (home: Parameters<typeof real.acquireLock>[0], opts: { waitMs: number; pollMs?: number }) => {
       lockCtl.waits.push(opts.waitMs);
-      return real.acquireLock(home, lockCtl.waitOverride === undefined ? opts : { ...opts, waitMs: lockCtl.waitOverride });
+      const h = await real.acquireLock(home, lockCtl.waitOverride === undefined ? opts : { ...opts, waitMs: lockCtl.waitOverride });
+      if (!h || !lockCtl.releaseThrows) return h;
+      return {
+        runId: h.runId,
+        release: async () => {
+          await h.release();
+          throw new Error("release boom");
+        },
+      };
     },
   };
 });
 
 // The EPERM test stands in for an App Management denial without touching any bundle: blocked thinBundle calls never reach the engine.
-const thinCtl = vi.hoisted(() => ({ block: false, calls: [] as string[] }));
+// fake: when set, thinBundle returns it instead of running the engine (no bundle is touched).
+const thinCtl = vi.hoisted(() => ({
+  block: false,
+  calls: [] as string[],
+  fake: undefined as undefined | ((app: string) => Promise<ThinOutcome>),
+}));
 vi.mock("../../ub/thinner", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../ub/thinner")>();
   return {
     ...real,
     thinBundle: (app: string, ctx: Parameters<typeof real.thinBundle>[1]) => {
       thinCtl.calls.push(app);
+      if (thinCtl.fake) return thinCtl.fake(app);
       if (!thinCtl.block) return real.thinBundle(app, ctx);
       return Promise.resolve({ app, status: "blocked" as const, reason: "app-management", heldBytes: 0, candidates: [], skipped: [] });
     },
   };
 });
+
+// Injected housekeeping failure (T11-R2).
+const pruneCtl = vi.hoisted(() => ({ fail: undefined as string | undefined }));
+vi.mock("../../ub/backups", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../ub/backups")>();
+  return {
+    ...real,
+    pruneExpiredBackups: (...args: Parameters<typeof real.pruneExpiredBackups>) =>
+      pruneCtl.fail ? Promise.reject(new Error(pruneCtl.fail)) : real.pruneExpiredBackups(...args),
+  };
+});
+
+// eslint-disable-next-line no-control-regex
+const plain = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
 
 const gate = process.platform === "darwin" && process.arch === "arm64" && hasToolchain();
 const REPO = path.resolve(__dirname, "../../..");
@@ -85,8 +115,11 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     process.env.SQUEAKY_AGENT_HOME = home;
     lockCtl.waitOverride = undefined;
     lockCtl.waits = [];
+    lockCtl.releaseThrows = false;
     thinCtl.block = false;
     thinCtl.calls = [];
+    thinCtl.fake = undefined;
+    pruneCtl.fail = undefined;
     assertTempRoots();
   });
   afterEach(() => {
@@ -193,7 +226,8 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     await fixtureAt(app);
     const cleaner = new UniversalBinaryCleaner();
     const [cat] = await cleaner.getCacheCategories();
-    const r = await cleaner.clearByCategory([cat.id]);
+    // ticked: the ~1 MB fixture is under the 5 MB floor, which only a tick beats
+    const r = await cleaner.clear(false, { categories: [cat.id], tickedIds: [cat.id] });
     const [o] = cleaner.lastOutcomes;
     expect(o.status).toBe("thinned");
     expect(r.success).toBe(true);
@@ -274,9 +308,13 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     const auto = await cleaner.clear(true);
     expect([cleaner.lastOutcomes[0].status, cleaner.lastOutcomes[0].reason]).toEqual(["skipped", "below-threshold"]);
     expect(auto.clearedPaths).toEqual([]);
-    // explicit choice: no floor
+    // categories alone (squeaky clean --categories, ub --all): the floor still applies
     const [cat] = await cleaner.getCacheCategories();
-    const r = await cleaner.clearByCategory([cat.id], true);
+    const narrowed = await cleaner.clearByCategory([cat.id], true);
+    expect([cleaner.lastOutcomes[0].status, cleaner.lastOutcomes[0].reason]).toEqual(["skipped", "below-threshold"]);
+    expect(narrowed.clearedPaths).toEqual([]);
+    // interactive tick: no floor
+    const r = await cleaner.clear(true, { categories: [cat.id], tickedIds: [cat.id] });
     expect(spy).not.toHaveBeenCalled();
     expect(r.success).toBe(true);
     expect(r.clearedPaths).toEqual([app]);
@@ -296,6 +334,152 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     expect(info.isInstalled).toBe(true);
     expect(info.categories).toHaveLength(1);
     expect(info.size).toBe(info.categories![0].size);
+  });
+
+  it("categories alone keep the auto-ignore class and the floor; only an interactive tick beats them (T11-R5)", async () => {
+    const plainApp = path.join(roots, "Plain.app");
+    const mas = path.join(roots, "Store.app");
+    await fixtureAt(plainApp, mas);
+    fs.mkdirSync(path.join(mas, "Contents", "_MASReceipt"));
+    fs.writeFileSync(path.join(mas, "Contents", "_MASReceipt", "receipt"), "r");
+    expect((await run("/usr/bin/codesign", ["-s", "-", "--force", "--deep", mas], 120_000)).code).toBe(0);
+    const masBefore = sha(path.join(mas, MAIN));
+    const plainBefore = sha(path.join(plainApp, MAIN));
+    const cleaner = new UniversalBinaryCleaner();
+    const cats = await cleaner.getCacheCategories();
+    const id = (p: string) => cats.find((c) => c.paths[0] === p)!.id;
+
+    // no tick: the MAS app is skipped by class and never reaches the engine
+    const r1 = await cleaner.clear(false, { categories: [id(mas)] });
+    expect(thinCtl.calls).toEqual([]);
+    expect(cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason, o.detail])).toEqual([[mas, "skipped", "auto-ignored", "mac-app-store"]]);
+    expect(r1.error).toBe("Store: skipped:auto-ignored (mac-app-store)");
+    expect(sha(path.join(mas, MAIN))).toBe(masBefore);
+
+    // no tick: the per-app floor still applies to an unclassified app
+    const r2 = await cleaner.clear(false, { categories: [id(plainApp)] });
+    expect(thinCtl.calls).toEqual([plainApp]);
+    expect(r2.error).toBe("Plain: skipped:below-threshold");
+    expect(sha(path.join(plainApp, MAIN))).toBe(plainBefore);
+
+    // ticked: class and floor are both beaten
+    thinCtl.calls = [];
+    const r3 = await cleaner.clear(false, { categories: [id(mas)], tickedIds: [id(mas)] });
+    expect(thinCtl.calls).toEqual([mas]);
+    expect(cleaner.lastOutcomes.map((o) => o.status)).toEqual(["thinned"]);
+    expect(r3.success).toBe(true);
+    expect(await lipoArchs(path.join(mas, MAIN))).toEqual(["arm64"]);
+  });
+
+  it("skips an id whose path changed since the caller saw it, and thins only on a match (T11-R4)", async () => {
+    const a = path.join(roots, "a", "Fx.app");
+    const b = path.join(roots, "b", "Fx.app");
+    await fixtureAt(a, b);
+    const cleaner = new UniversalBinaryCleaner();
+    const seen = await cleaner.getCacheInfo(); // the caller's view
+    expect(seen.categories!.map((c) => [c.id, c.paths[0]])).toEqual([["universal-fx", a], ["universal-fx-2", b]]);
+    fs.rmSync(a, { recursive: true, force: true }); // the rescan now gives universal-fx to b
+    const bBefore = sha(path.join(b, MAIN));
+    const tick = { categories: ["universal-fx"], tickedIds: ["universal-fx"] };
+    const outcomes = () => cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason, o.detail]);
+
+    // ub.ts: the path it displayed
+    const r1 = await cleaner.clear(false, { ...tick, expectedPaths: { "universal-fx": a } });
+    expect(outcomes()).toEqual([[a, "skipped", "stale-id", `now ${b}`]]);
+    expect(r1.error).toBe(`Fx: skipped:stale-id (now ${b})`);
+    // an id the caller showed no path for
+    await cleaner.clear(false, { ...tick, expectedPaths: {} });
+    expect(outcomes()).toEqual([[b, "skipped", "stale-id", "no path was shown for it"]]);
+    // squeaky clean: the caller's own getCacheInfo categories
+    await cleaner.clearByCategory(["universal-fx"], false, seen);
+    expect(outcomes()).toEqual([[a, "skipped", "stale-id", `now ${b}`]]);
+    expect(thinCtl.calls).toEqual([]);
+    expect(sha(path.join(b, MAIN))).toBe(bBefore);
+
+    // positive control: the shown path matches the rescan, so the app is thinned
+    await cleaner.clear(false, { ...tick, expectedPaths: { "universal-fx": b } });
+    expect(thinCtl.calls).toEqual([b]);
+    expect(cleaner.lastOutcomes.map((o) => o.status)).toEqual(["thinned"]);
+  });
+
+  it("a prune failure or a throwing thin step is reported with the recovery results instead of aborting (T11-R2)", async () => {
+    const h = await ensureAgentHome();
+    const gone = path.join(roots, "Gone.app"); // never created: recovery cannot reach it
+    await writeEntry(h, {
+      runId: "earlier-run", seq: 0, bundle: gone, bundleId: null, version: "1", build: "1",
+      backupDir: path.join(h.backups, "0123456789abcdef", "1-earlier-run-0"), stagingDir: path.join(h.staging, "earlier-run-0"),
+      files: [{ rel: MAIN, origIno: 1, origSize: 1, origMtimeMs: 1, thinIno: 2, thinSize: 1 }], phase: "swapping",
+    });
+    const app = path.join(roots, "A.app");
+    await fixtureAt(app);
+    pruneCtl.fail = "prune boom";
+    const cleaner = new UniversalBinaryCleaner();
+
+    // prune fails: recovery still reported, and a housekeeping note alone is not a failed run
+    const r1 = await cleaner.clearByCategory([]);
+    expect(cleaner.lastRecovery.map((x) => [x.entry.bundle, x.result])).toEqual([[gone, "unreachable"]]);
+    expect(cleaner.lastNotes).toEqual(["prune: prune boom"]);
+    expect(r1.error).toMatch(/^recovery Gone: unreachable.*; prune: prune boom$/);
+    expect(r1.success).toBe(true);
+
+    // a later step throws: still a result, carrying recovery, prune and the throw
+    thinCtl.fake = () => Promise.reject(new Error("thin boom"));
+    const r2 = await cleaner.clear(false, { categories: ["universal-a"], tickedIds: ["universal-a"] });
+    expect(thinCtl.calls).toEqual([app]);
+    expect(cleaner.lastRecovery.map((x) => x.result)).toEqual(["unreachable"]);
+    expect(cleaner.lastNotes).toEqual(["prune: prune boom", "thin: thin boom"]);
+    expect(r2.error).toMatch(/^recovery Gone: unreachable.*; prune: prune boom; thin: thin boom$/);
+    expect(r2.success).toBe(false);
+    expect(fs.existsSync(path.join(home, "agent.lock"))).toBe(false);
+  });
+
+  it("finds an app under a folder first met deep through a symlink, in either readdir order (T11-R3)", async () => {
+    const p = path.join(roots, "P");
+    const app = path.join(p, "q", "App.app");
+    await fixtureAt(app);
+    fs.mkdirSync(path.join(roots, "a", "b"), { recursive: true });
+    fs.symlinkSync(p, path.join(roots, "a", "b", "L")); // L is at depth 3, so P's subfolders are out of reach through it
+    const orig = fs.promises.readdir.bind(fs.promises);
+    for (const order of ["asc", "desc"] as const) {
+      const spy = vi.spyOn(fs.promises, "readdir").mockImplementation((async (d: fs.PathLike, o?: unknown) => {
+        const names = await orig(d, o as never);
+        if (o !== undefined) return names;
+        const s = [...(names as string[])].sort();
+        return order === "asc" ? s : s.reverse();
+      }) as typeof fs.promises.readdir);
+      const cats = await new UniversalBinaryCleaner().getCacheCategories();
+      expect(cats.map((c) => c.paths[0]), order).toEqual([app]);
+      // desc lists "a" before "P": P is read first at depth 3 through L, then again at depth 1
+      expect(spy.mock.calls.filter((c) => c[0] === p).length, order).toBe(order === "desc" ? 2 : 1);
+      spy.mockRestore();
+    }
+  });
+
+  it("a signal mid-pass prints the in-flight outcome and exits 143 even when releasing the lock throws (T11-R7)", async () => {
+    const a = path.join(roots, "A.app");
+    const b = path.join(roots, "B.app");
+    await fixtureAt(a, b);
+    const cleaner = new UniversalBinaryCleaner();
+    const ids = (await cleaner.getCacheCategories()).map((c) => c.id);
+    const on = vi.spyOn(process, "on");
+    const exits: unknown[] = [];
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      exits.push(code);
+    }) as typeof process.exit);
+    const errs = vi.spyOn(console, "error").mockImplementation(() => {});
+    lockCtl.releaseThrows = true;
+    // no engine: the first app is "in flight" when clear()'s own SIGTERM handler fires (called directly, no real signal)
+    thinCtl.fake = async (app) => {
+      const handler = on.mock.calls.find((c) => c[0] === "SIGTERM")![1] as (s: NodeJS.Signals) => void;
+      handler("SIGTERM");
+      return { app, status: "skipped", reason: "running", heldBytes: 0, candidates: [], skipped: [] };
+    };
+    await expect(cleaner.clear(false, { categories: ids, tickedIds: ids })).rejects.toThrow("release boom");
+    expect(thinCtl.calls).toEqual([a]);
+    expect(exits).toEqual([143]);
+    expect(cleaner.lastOutcomes.map((o) => o.app)).toEqual([a]);
+    expect(errs.mock.calls.map((c) => c.join(" "))).toContain(`  ${outcomeLine(cleaner.lastOutcomes[0])}`);
+    expect(fs.existsSync(path.join(home, "agent.lock"))).toBe(false);
   });
 
   it("SIGTERM between apps: in-flight app finishes, next app untouched, no incomplete journal, no held lock", async () => {
@@ -323,7 +507,8 @@ void (async () => {
   if (scan.length !== 1 || scan[0] !== roots) process.exit(97);
   const cats = await c.getCacheCategories();
   if (cats.length !== 2 || cats.some((x) => !x.paths.every((p) => p.startsWith(roots + "/")))) process.exit(97);
-  await c.clear(false, { categories: cats.map((x) => x.id) });
+  const ids = cats.map((x) => x.id);
+  await c.clear(false, { categories: ids, tickedIds: ids });
   process.exit(0);
 })();
 `,
@@ -335,6 +520,8 @@ void (async () => {
       env: { ...process.env, VITEST: "true", SQUEAKY_AGENT_ROOTS: roots, SQUEAKY_AGENT_HOME: home },
     });
     expect(r.status, r.stderr).toBe(143);
+    // the caller never regains control, so the cleaner itself reports the in-flight app before exiting
+    expect(plain(r.stderr)).toMatch(/ {2}✓ A — .* will be freed after 3 days \(backup kept for safe rollback\)/);
     expect(await lipoArchs(path.join(a, MAIN))).toEqual(["arm64"]);
     expect((await codesignVerify(a)).ok).toBe(true);
     expect(sha(path.join(b, MAIN))).toBe(bBefore);

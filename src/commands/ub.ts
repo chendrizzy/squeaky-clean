@@ -1,5 +1,3 @@
-import * as fs from "fs";
-import * as path from "path";
 import {
   printInfo,
   printSuccess,
@@ -8,10 +6,18 @@ import {
   formatSizeWithColor,
   symbols,
 } from "../utils/cli";
-import { DEFAULT_KEEP_BACKUP_DAYS, UniversalBinaryCleaner } from "../cleaners/universalBinary";
-import type { ThinOutcome } from "../ub/thinner";
+import {
+  DEFAULT_KEEP_BACKUP_DAYS,
+  UniversalBinaryCleaner,
+  outcomeLine,
+  recoveryLine,
+} from "../cleaners/universalBinary";
+import type { ClearResult } from "../types";
 import ora from "ora";
 import inquirer from "inquirer";
+
+// the formatter lives with the cleaner so its signal-exit report prints the same lines
+export { outcomeLine };
 
 interface UBOptions {
   all?: boolean;
@@ -22,29 +28,15 @@ interface UBOptions {
   force?: boolean;
 }
 
-/** The binary macOS attributes App Management to: the realpath of the running node. */
-function grantTarget(): string {
-  try {
-    return fs.realpathSync(process.execPath);
-  } catch {
-    return process.execPath;
+/** Recovery of interrupted earlier runs and housekeeping notes (e.g. a failed prune), under their own heading. */
+function printHousekeeping(cleaner: UniversalBinaryCleaner): void {
+  if (cleaner.lastRecovery.length === 0 && cleaner.lastNotes.length === 0) return;
+  console.log("\nRecovery and housekeeping:");
+  for (const r of cleaner.lastRecovery) {
+    if (r.result === "restore-failed" || r.result === "unreachable") printError(recoveryLine(r));
+    else printInfo(recoveryLine(r));
   }
-}
-
-/** One line per app the engine handled. */
-export function outcomeLine(o: ThinOutcome): string {
-  const name = path.basename(o.app, ".app");
-  const why = `${o.status}${o.reason ? `:${o.reason}` : ""}`;
-  if (o.status === "thinned") {
-    return `✓ ${name} — ${formatSizeWithColor(o.heldBytes)} will be freed after ${DEFAULT_KEEP_BACKUP_DAYS} days (backup kept for safe rollback)`;
-  }
-  if (why === "rolled-back:verify-failed") return `↩ ${name} rolled back (verify failed) — unchanged`;
-  if (why === "skipped:running") return `⏸ ${name} skipped: running — quit it and re-run`;
-  if (why === "blocked:app-management") {
-    return `⛔ ${name} blocked: app-management — grant App Management to ${grantTarget()} in System Settings → Privacy & Security`;
-  }
-  const mark = o.status === "skipped" ? "•" : "✗";
-  return `${mark} ${name} ${why}${o.detail ? ` — ${o.detail}` : ""}`;
+  for (const n of cleaner.lastNotes) printWarning(n);
 }
 
 export async function ubCommand(options: UBOptions): Promise<void> {
@@ -132,6 +124,8 @@ export async function ubCommand(options: UBOptions): Promise<void> {
 
     // Determine which binaries to thin
     let binariesToThin: string[] = [];
+    // only an interactive tick beats the auto-ignore class and the per-app floor (spec §6.2); --all does not
+    let tickedIds: string[] | undefined;
 
     if (options.all) {
       // Thin all apps that are not auto-ignored, minus any --exclude'd category ids
@@ -179,6 +173,7 @@ export async function ubCommand(options: UBOptions): Promise<void> {
           },
         ]);
         binariesToThin = answers.binaries;
+        tickedIds = answers.binaries;
       } catch {
         // User cancelled
         printInfo("Operation cancelled.");
@@ -238,34 +233,41 @@ export async function ubCommand(options: UBOptions): Promise<void> {
     console.log();
     const thinSpinner = ora("Thinning Universal Binaries...").start();
 
+    // the path shown for each id, so clear() refuses an id that now names a different app (T11-R4)
+    const expectedPaths = Object.fromEntries(
+      categories
+        .filter((cat) => binariesToThin.includes(cat.id))
+        .map((cat) => [cat.id, cat.paths[0]]),
+    );
+    let result: ClearResult;
     try {
-      const result = await cleaner.clearByCategory(binariesToThin, false);
+      result = await cleaner.clear(false, {
+        categories: binariesToThin,
+        tickedIds,
+        expectedPaths,
+      });
       thinSpinner.stop();
-
-      // interrupted earlier runs, recovered under the lock before this one started
-      for (const r of cleaner.lastRecovery) {
-        const line = `↻ Recovered interrupted run for ${path.basename(r.entry.bundle, ".app")}: ${r.result}${r.notes.length ? ` (${r.notes.join("; ")})` : ""}`;
-        if (r.result === "restore-failed" || r.result === "unreachable") printError(line);
-        else printInfo(line);
-      }
-
-      if (cleaner.lastOutcomes.length === 0 && result.error) {
-        printError(`Thinning failed: ${result.error}`);
-        return;
-      }
-
-      console.log();
-      for (const o of cleaner.lastOutcomes) console.log(`  ${outcomeLine(o)}`);
-      console.log();
-      printSuccess(
-        `Held in backups: ${formatSizeWithColor(result.heldBytes || 0)} (freed automatically after ${DEFAULT_KEEP_BACKUP_DAYS} days)`,
-      );
-      if (!result.success) {
-        printWarning("Some applications need attention (see above).");
-      }
     } catch (error) {
       thinSpinner.fail("Thinning failed");
       throw error;
+    } finally {
+      // interrupted earlier runs, recovered under the lock before this one started: shown even if thinning threw
+      printHousekeeping(cleaner);
+    }
+
+    if (!result.success && cleaner.lastOutcomes.length === 0) {
+      printError(`Thinning failed: ${result.error ?? "unknown error"}`);
+      return;
+    }
+
+    console.log();
+    for (const o of cleaner.lastOutcomes) console.log(`  ${outcomeLine(o)}`);
+    console.log();
+    printSuccess(
+      `Held in backups: ${formatSizeWithColor(result.heldBytes || 0)} (freed automatically after ${DEFAULT_KEEP_BACKUP_DAYS} days)`,
+    );
+    if (!result.success) {
+      printWarning("Some applications need attention (see above).");
     }
   } catch (error) {
     spinner.stop();

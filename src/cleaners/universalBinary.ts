@@ -1,8 +1,8 @@
-import { promises as fs } from "fs";
+import { promises as fs, realpathSync } from "fs";
 import * as os from "os";
 import * as path from "path";
 import { CacheInfo, ClearResult, CleanerModule, CacheSelectionCriteria, CacheCategory } from "../types";
-import { printVerbose } from "../utils/cli";
+import { formatSizeWithColor, printVerbose } from "../utils/cli";
 import { classifySlices, readBundleInfo, readMachOSlices, type BundleInfo } from "../ub/bundle";
 import { loadSeal, type Seal } from "../ub/seal";
 import { DEFAULT_MIN_SAVINGS, selectCandidates, thinBundle, type Candidate, type ThinOutcome } from "../ub/thinner";
@@ -31,9 +31,43 @@ interface ScannedApp {
   savings: number;
 }
 
+/** Outcomes clear() decides itself, before the engine; their detail is part of the error text. */
+const DETAIL_IN_ERROR = new Set(["not-attempted", "auto-ignored", "stale-id"]);
+
 const sum = (xs: number[]) => xs.reduce((n, x) => n + x, 0);
 const appName = (p: string) => path.basename(p, ".app");
 const underSystem = (real: string) => real === "/System" || real.startsWith("/System/");
+const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** The binary macOS attributes App Management to: the realpath of the running node. */
+function grantTarget(): string {
+  try {
+    return realpathSync(process.execPath);
+  } catch {
+    return process.execPath;
+  }
+}
+
+/** One line per app outcome; `squeaky ub` and the signal-exit report both print these. */
+export function outcomeLine(o: ThinOutcome): string {
+  const name = appName(o.app);
+  const why = `${o.status}${o.reason ? `:${o.reason}` : ""}`;
+  if (o.status === "thinned") {
+    return `✓ ${name} — ${formatSizeWithColor(o.heldBytes)} will be freed after ${DEFAULT_KEEP_BACKUP_DAYS} days (backup kept for safe rollback)`;
+  }
+  if (why === "rolled-back:verify-failed") return `↩ ${name} rolled back (verify failed) — unchanged`;
+  if (why === "skipped:running") return `⏸ ${name} skipped: running — quit it and re-run`;
+  if (why === "blocked:app-management") {
+    return `⛔ ${name} blocked: app-management — grant App Management to ${grantTarget()} in System Settings → Privacy & Security`;
+  }
+  const mark = o.status === "skipped" ? "•" : "✗";
+  return `${mark} ${name} ${why}${o.detail ? ` — ${o.detail}` : ""}`;
+}
+
+/** One line per interrupted earlier run that this run recovered under the lock. */
+export function recoveryLine(r: RecoveryItem): string {
+  return `↻ Recovered interrupted run for ${appName(r.entry.bundle)}: ${r.result}${r.notes.length ? ` (${r.notes.join("; ")})` : ""}`;
+}
 
 export class UniversalBinaryCleaner implements CleanerModule {
   name = "universal-binary";
@@ -44,6 +78,8 @@ export class UniversalBinaryCleaner implements CleanerModule {
   lastOutcomes: ThinOutcome[] = [];
   /** Journal recovery results of the last non-dry clear(), unfiltered. */
   lastRecovery: RecoveryItem[] = [];
+  /** Housekeeping failures of the last non-dry clear() that did not stop it (`prune: <msg>`, `thin: <msg>`). */
+  lastNotes: string[] = [];
   private scanned = new Map<string, ScannedApp>();
 
   async isAvailable(): Promise<boolean> {
@@ -71,14 +107,18 @@ export class UniversalBinaryCleaner implements CleanerModule {
     return this.scanned.get(categoryId)?.cls ?? null;
   }
 
-  /** `.app` realpaths under the roots: depth 3 through non-.app folders, symlinks followed, cycles cut by realpath. */
+  /**
+   * `.app` realpaths under the roots: depth 3 through non-.app folders, symlinks followed. A folder is read again
+   * only when reached at a strictly shallower depth than before, so entry order never decides what is found
+   * (a folder first met deep through a symlink is re-read when met shallow); that also cuts cycles.
+   */
   private async findApps(): Promise<string[]> {
-    const seenDirs = new Set<string>();
+    const depthOf = new Map<string, number>(); // folder realpath -> shallowest depth it was read at
     const apps = new Set<string>();
     const visit = async (dir: string, depth: number): Promise<void> => {
       const real = await fs.realpath(dir).catch(() => null);
-      if (!real || underSystem(real) || seenDirs.has(real)) return;
-      seenDirs.add(real);
+      if (!real || underSystem(real) || (depthOf.get(real) ?? Infinity) <= depth) return;
+      depthOf.set(real, depth);
       const names = await fs.readdir(real).catch(() => [] as string[]);
       for (const n of names) {
         const p = path.join(real, n);
@@ -166,24 +206,66 @@ export class UniversalBinaryCleaner implements CleanerModule {
   }
 
   /**
-   * No `criteria.categories`: every scanned app minus auto-ignored classes, under the 5 MB per-app floor.
-   * With categories: exactly those (an explicit choice beats class and floor, spec §6.2); an empty list selects nothing.
-   * Nothing is freed yet: originals are held as backups, so sizeAfter === sizeBefore and heldBytes says what will be freed.
+   * Splits a selection into apps for the engine and outcomes decided here (spec §6.2).
+   * - No `criteria.categories`: every scanned app minus auto-ignored ones (not selected at all), under the engine floor.
+   * - `categories` only narrows: an auto-ignored app is skipped (`skipped:auto-ignored`) and the 5 MB floor applies.
+   *   An id in `criteria.tickedIds` (interactive tick) beats both.
+   * - Stale ids (T11-R4): an id whose re-scanned realpath differs from the path the caller showed is `skipped:stale-id`.
+   *   The shown path is `criteria.expectedPaths[id]` (an id missing there is stale too), else the caller's own
+   *   `cacheInfo.categories` paths[0]; with neither, the rescan is accepted.
    */
-  async clear(dryRun = false, criteria?: CacheSelectionCriteria): Promise<ClearResult> {
+  private select(
+    scanned: ScannedApp[],
+    criteria?: CacheSelectionCriteria,
+    cacheInfo?: CacheInfo,
+  ): { work: Array<{ app: ScannedApp; ticked: boolean }>; skips: ThinOutcome[] } {
+    const skips: ThinOutcome[] = [];
+    if (!criteria?.categories) return { work: scanned.filter((a) => !a.cls).map((app) => ({ app, ticked: false })), skips };
+    const work: Array<{ app: ScannedApp; ticked: boolean }> = [];
+    const byId = new Map(scanned.map((a) => [a.id, a]));
+    const ticked = new Set(criteria.tickedIds ?? []);
+    const strict = criteria.expectedPaths !== undefined;
+    const shown = new Map<string, string | undefined>(
+      Object.entries(criteria.expectedPaths ?? Object.fromEntries((cacheInfo?.categories ?? []).map((c) => [c.id, c.paths[0]]))),
+    );
+    const skip = (app: string, reason: string, detail: string) =>
+      skips.push({ app, status: "skipped", reason, detail, heldBytes: 0, candidates: [], skipped: [] });
+    for (const id of new Set(criteria.categories)) {
+      const a = byId.get(id);
+      const want = shown.get(id);
+      if (want === undefined ? strict : a?.info.realpath !== want) {
+        skip(want ?? a?.info.realpath ?? id, "stale-id", want === undefined ? "no path was shown for it" : a ? `now ${a.info.realpath}` : "no longer found");
+      } else if (!a) {
+        continue; // unknown id and nothing shown for it: nothing to thin
+      } else if (a.cls && !ticked.has(id)) {
+        skip(a.info.realpath, "auto-ignored", a.cls);
+      } else {
+        work.push({ app: a, ticked: ticked.has(id) });
+      }
+    }
+    return { work, skips };
+  }
+
+  /**
+   * Selection: see `select`. Nothing is freed yet: originals are held as backups, so sizeAfter === sizeBefore and
+   * heldBytes says what will be freed. `cacheInfo` (what `squeaky clean` passes) supplies the paths the caller saw.
+   */
+  async clear(dryRun = false, criteria?: CacheSelectionCriteria, cacheInfo?: CacheInfo): Promise<ClearResult> {
     this.lastOutcomes = [];
     this.lastRecovery = [];
+    this.lastNotes = [];
     const result: ClearResult = { name: this.name, success: false, clearedPaths: [], sizeBefore: 0, sizeAfter: 0, heldBytes: 0 };
     if (!(await this.isAvailable())) {
       return { ...result, error: "Universal Binary cleaner requires macOS on Apple Silicon (arm64)" };
     }
-    const explicit = criteria?.categories ? new Set(criteria.categories) : null;
-    const apps = (await this.scan()).filter((a) => (explicit ? explicit.has(a.id) : !a.cls));
+    const { work, skips } = this.select(await this.scan(), criteria, cacheInfo);
+    let thinThrew = false;
 
     if (dryRun) {
       // estimate only: no lock, no agent home, no spawns (so no baseline or running checks)
-      for (const a of apps) {
-        const floor = explicit ? 0 : DEFAULT_MIN_SAVINGS; // same floor thinBundle applies, so a dry run predicts the real decision
+      this.lastOutcomes.push(...skips);
+      for (const { app: a, ticked } of work) {
+        const floor = ticked ? 0 : DEFAULT_MIN_SAVINGS; // same floor thinBundle applies, so a dry run predicts the real decision
         const out: ThinOutcome = { app: a.info.realpath, status: "skipped", heldBytes: 0, candidates: a.candidates, skipped: [] };
         if (a.candidates.length === 0 || a.savings < floor) out.reason = "below-threshold";
         else Object.assign(out, { reason: "dry-run", heldBytes: a.savings });
@@ -201,33 +283,53 @@ export class UniversalBinaryCleaner implements CleanerModule {
       process.on("SIGTERM", onSignal);
       process.on("SIGINT", onSignal);
       try {
+        this.lastOutcomes.push(...skips);
         this.lastRecovery = await recoverJournal(home, lock.runId);
-        await pruneExpiredBackups(home, DEFAULT_KEEP_BACKUP_DAYS, Date.now());
-        for (const [seq, a] of apps.entries()) {
-          if (stopSignal) break;
-          const o = await thinBundle(a.info.realpath, { home, runId: lock.runId, seq, minSavingsBytes: explicit ? 0 : undefined });
-          this.lastOutcomes.push(o);
-          // spec §10 EPERM: stop attempting other bundles this pass; each attempt is an App Management write probe
-          if (o.status === "blocked" && o.reason === "app-management") {
-            for (const rest of apps.slice(seq + 1)) {
-              this.lastOutcomes.push({
-                app: rest.info.realpath,
-                status: "skipped",
-                reason: "not-attempted",
-                detail: "app-management",
-                heldBytes: 0,
-                candidates: [],
-                skipped: [],
-              });
+        // housekeeping: a prune failure is reported, never fatal, so the recovery results above still reach the caller
+        await pruneExpiredBackups(home, DEFAULT_KEEP_BACKUP_DAYS, Date.now()).catch((e: unknown) => {
+          this.lastNotes.push(`prune: ${errText(e)}`);
+        });
+        try {
+          for (const [seq, { app: a, ticked }] of work.entries()) {
+            if (stopSignal) break;
+            const o = await thinBundle(a.info.realpath, { home, runId: lock.runId, seq, minSavingsBytes: ticked ? 0 : undefined });
+            this.lastOutcomes.push(o);
+            // spec §10 EPERM: stop attempting other bundles this pass; each attempt is an App Management write probe
+            if (o.status === "blocked" && o.reason === "app-management") {
+              for (const { app: rest } of work.slice(seq + 1)) {
+                this.lastOutcomes.push({
+                  app: rest.info.realpath,
+                  status: "skipped",
+                  reason: "not-attempted",
+                  detail: "app-management",
+                  heldBytes: 0,
+                  candidates: [],
+                  skipped: [],
+                });
+              }
+              break;
             }
-            break;
           }
+        } catch (e) {
+          // thinBundle never throws by contract; if it does, still report recovery and the outcomes so far
+          this.lastNotes.push(`thin: ${errText(e)}`);
+          thinThrew = true;
         }
       } finally {
         process.off("SIGTERM", onSignal);
         process.off("SIGINT", onSignal);
-        await lock.release();
-        if (stopSignal) process.exit(SIGNAL_EXIT[stopSignal] ?? 1);
+        try {
+          await lock.release();
+        } finally {
+          if (stopSignal) {
+            // the caller never regains control: report this pass here (stderr keeps --json stdout clean), then exit
+            // even if releasing the lock threw
+            for (const line of [...this.lastRecovery.map(recoveryLine), ...this.lastNotes, ...this.lastOutcomes.map(outcomeLine)]) {
+              console.error(`  ${line}`);
+            }
+            process.exit(SIGNAL_EXIT[stopSignal] ?? 1);
+          }
+        }
       }
     }
 
@@ -236,17 +338,19 @@ export class UniversalBinaryCleaner implements CleanerModule {
       ...this.lastRecovery
         .filter((r) => r.result === "restore-failed" || r.result === "unreachable" || r.notes.length > 0)
         .map((r) => `recovery ${appName(r.entry.bundle)}: ${r.result}${r.notes.length ? ` (${r.notes.join("; ")})` : ""}`),
+      ...this.lastNotes,
       ...this.lastOutcomes
         .filter((o) => !done.includes(o))
         .map(
           (o) =>
-            `${appName(o.app)}: ${o.status}${o.reason ? `:${o.reason}` : ""}${o.reason === "not-attempted" ? ` (${o.detail})` : ""}`,
+            `${appName(o.app)}: ${o.status}${o.reason ? `:${o.reason}` : ""}${DETAIL_IN_ERROR.has(o.reason ?? "") && o.detail ? ` (${o.detail})` : ""}`,
         ),
     ];
     const sizeBefore = sum(done.flatMap((o) => o.candidates.map((c) => c.size)));
     return {
       ...result,
       success:
+        !thinThrew &&
         !this.lastOutcomes.some((o) => o.status === "aborted" || o.status === "blocked" || o.status === "restore-failed") &&
         !this.lastRecovery.some((r) => r.result === "restore-failed"),
       sizeBefore,
@@ -257,8 +361,9 @@ export class UniversalBinaryCleaner implements CleanerModule {
     };
   }
 
-  async clearByCategory(categoryIds: string[], dryRun = false): Promise<ClearResult> {
-    return this.clear(dryRun, { categories: categoryIds });
+  /** `cacheInfo` is the caller's own scan (squeaky clean passes it); its paths guard against stale ids. */
+  async clearByCategory(categoryIds: string[], dryRun = false, cacheInfo?: CacheInfo): Promise<ClearResult> {
+    return this.clear(dryRun, { categories: categoryIds }, cacheInfo);
   }
 
   static create(): UniversalBinaryCleaner {

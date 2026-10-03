@@ -86,6 +86,14 @@ export interface CacheSelectionCriteria {
   // category is only cleaned when its id appears here - force flags do not
   // bypass this.
   allowManualIds?: string[];
+  // Ids the user ticked in an interactive picker (`squeaky ub`). For the
+  // universal-binary cleaner only such a tick beats the auto-ignore class and
+  // the per-app savings floor (spec §6.2); `categories` alone just narrows.
+  tickedIds?: string[];
+  // Category id -> the path the caller displayed for it (its paths[0]). The
+  // universal-binary cleaner re-scans and skips an id whose path changed, or
+  // that has no entry here.
+  expectedPaths?: Record<string, string>;
 }
 
 // One row of a multi-category cleaner's per-category breakdown, captured while
