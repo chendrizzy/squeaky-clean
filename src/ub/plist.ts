@@ -150,7 +150,7 @@ export function parseXmlPlist(xml: string): PlistValue {
     } else if (name === "dict" || name === "array") {
       const c: Container =
         name === "dict"
-          ? { kind: "dict", value: {}, key: null }
+          ? { kind: "dict", value: Object.create(null), key: null }
           : { kind: "array", value: [] };
       if (selfClose) place(c.value);
       else stack.push(c);
@@ -181,7 +181,7 @@ export function parseXmlPlist(xml: string): PlistValue {
  * Read and parse a plist file. XML plists parse in-process. A binary plist
  * (`bplist00`) is converted through `plutil` only when `allowSpawn`; otherwise
  * returns null (scan paths must never spawn). Throws PlistParseError on
- * malformed XML; fs errors propagate.
+ * malformed XML or a plutil failure; fs errors propagate.
  */
 export async function readPlistFile(
   p: string,
@@ -197,6 +197,8 @@ export async function readPlistFile(
         { timeout: 10_000, maxBuffer: 16 * 1024 * 1024 },
         (err, stdout) => (err ? reject(err) : resolve(String(stdout))),
       );
+    }).catch((e: unknown) => {
+      throw new PlistParseError(`plutil failed: ${(e as Error).message}`);
     });
     try {
       return JSON.parse(out) as PlistValue;

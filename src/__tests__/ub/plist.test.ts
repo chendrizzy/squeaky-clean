@@ -1,4 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import cp from "child_process";
+import { syncBuiltinESMExports } from "module";
 import { vol } from "memfs";
 import { parseXmlPlist, readPlistFile, PlistParseError } from "../../ub/plist";
 
@@ -56,7 +58,47 @@ describe("parseXmlPlist", () => {
   });
 });
 
+describe("parseXmlPlist prototype safety", () => {
+  it("treats a __proto__ key as an ordinary own key", () => {
+    const v = parseXmlPlist(
+      `<plist><dict><key>__proto__</key><dict><key>x</key><string>y</string></dict></dict></plist>`,
+    ) as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(v, "__proto__")).toBe(true);
+    expect(Object.getPrototypeOf(v)).toBeNull();
+    expect(Object.getPrototypeOf(v["__proto__"])).toBeNull();
+    expect(({} as Record<string, unknown>).x).toBeUndefined();
+  });
+});
+
 describe("readPlistFile", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    syncBuiltinESMExports();
+  });
+
+  it("wraps plutil spawn failures in PlistParseError", async () => {
+    vol.fromJSON({ "/x/Info.plist": "bplist00garbage" });
+    const spy = vi
+      .spyOn(cp, "execFile")
+      .mockImplementation(((...a: unknown[]) => {
+        (a[a.length - 1] as (e: Error) => void)(new Error("boom"));
+        return {} as cp.ChildProcess;
+      }) as unknown as typeof cp.execFile);
+    syncBuiltinESMExports();
+    await expect(
+      readPlistFile("/x/Info.plist", { allowSpawn: true }),
+    ).rejects.toBeInstanceOf(PlistParseError);
+    expect(spy.mock.calls[0][0]).toBe("plutil");
+    expect(spy.mock.calls[0][1]).toEqual([
+      "-convert",
+      "json",
+      "-o",
+      "-",
+      "/x/Info.plist",
+    ]);
+    expect(spy.mock.calls[0][2]).toMatchObject({ timeout: 10000 });
+  });
+
   it("returns null for bplist when spawning is not allowed", async () => {
     vol.fromJSON({ "/x/Info.plist": "bplist00garbage" });
     expect(
