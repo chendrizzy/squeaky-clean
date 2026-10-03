@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { vol } from "memfs";
 import { parseXmlPlist } from "../../ub/plist";
 import { sealFromPlist, loadSeal, classifyFile } from "../../ub/seal";
@@ -48,10 +48,19 @@ describe("classifyFile", () => {
     expect(classifyFile(seal, "MacOS/nope", "MacOS/nope")).toBe("main");
   });
 
-  it("skips non-compiling rule keys and non-nested/boolean rules", () => {
-    expect(seal.nestedRules).toHaveLength(1);
-    const s = sealFrom({ files2: {}, rules2: { "^a/": true, "^b/": { nested: "yes" } } });
-    expect(s.nestedRules).toHaveLength(0);
+  it("never compiles a rules2 key (bundle-supplied regex, R9); classification does not depend on rules2", () => {
+    const EVIL = "(a+)+$";
+    const spy = vi.spyOn(globalThis, "RegExp");
+    try {
+      const s = sealFrom({ files2: { "MacOS/h": { cdhash: "AA" } }, rules2: { [EVIL]: { nested: true }, "^(": { nested: true } } });
+      expect(classifyFile(s, "MacOS/h", "MacOS/App")).toBe("cdhash-nested");
+      expect(spy.mock.calls.filter((c) => c[0] === EVIL || c[0] === "^(")).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
+    const bare = sealFromPlist({ files2: { "MacOS/h": { cdhash: "AA" }, "PlugIns/p": { cdhash: "BB" } } } as never)!;
+    expect(classifyFile(bare, "MacOS/h", "MacOS/App")).toBe("cdhash-nested");
+    expect(classifyFile(bare, "PlugIns/p", "MacOS/App")).toBe("unsealed");
   });
 
   it("a __proto__ key in files2 never makes an unlisted path cdhash-nested", () => {
@@ -63,7 +72,7 @@ describe("classifyFile", () => {
     expect(classifyFile(s, "MacOS/unlisted", "MacOS/App")).toBe("unsealed");
     expect(classifyFile(s, "__proto__", "MacOS/App")).toBe("unsealed");
     // hand-built seal with a normal prototype chain is also safe
-    const polluted = { files2: Object.create({ "MacOS/x": { cdhash: "A" } }), nestedRules: [/^MacOS\//] };
+    const polluted = { files2: Object.create({ "MacOS/x": { cdhash: "A" } }) };
     expect(classifyFile(polluted, "MacOS/x", "MacOS/App")).toBe("unsealed");
   });
 });

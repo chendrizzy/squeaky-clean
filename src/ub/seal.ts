@@ -3,7 +3,6 @@ import { readPlistFile, type PlistValue } from "./plist";
 
 export interface Seal {
   files2: Record<string, { cdhash?: string; hash2?: string; hash?: string } | string>;
-  nestedRules: RegExp[];
 }
 
 export type SealClass = "main" | "cdhash-nested" | "data-sealed" | "unsealed" | "excluded";
@@ -13,23 +12,14 @@ const own = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k)
 const isDict = (v: unknown): v is { [k: string]: PlistValue } =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** Build a Seal from a parsed CodeResources plist; null if it has no files2 dict. */
+/**
+ * Build a Seal from a parsed CodeResources plist; null if it has no files2 dict. `rules2` is never read:
+ * its keys are regexes the bundle's author chose, and evaluating them in the scan path could hang it (R9).
+ * codesign itself only gives a files2 entry a `cdhash` when a nested rule matched it.
+ */
 export function sealFromPlist(plist: PlistValue | null): Seal | null {
   if (!isDict(plist) || !own(plist, "files2") || !isDict(plist.files2)) return null;
-  const nestedRules: RegExp[] = [];
-  const rules = own(plist, "rules2") ? plist.rules2 : undefined;
-  if (isDict(rules)) {
-    for (const key of Object.keys(rules)) {
-      const v = rules[key];
-      if (!isDict(v) || !own(v, "nested") || v.nested !== true) continue;
-      try {
-        nestedRules.push(new RegExp(key));
-      } catch {
-        /* skip uncompilable rule */
-      }
-    }
-  }
-  return { files2: plist.files2 as Seal["files2"], nestedRules };
+  return { files2: plist.files2 as Seal["files2"] };
 }
 
 /** null when CodeResources is missing, binary, malformed or lacks files2 (never throws). */
@@ -52,12 +42,8 @@ export function classifyFile(
   const entry = own(seal.files2, relFromContents) ? seal.files2[relFromContents] : undefined;
   if (typeof entry === "string") return "data-sealed";
   if (!isDict(entry)) return "unsealed";
-  if (
-    own(entry, "cdhash") &&
-    typeof entry.cdhash === "string" &&
-    NESTED_DIRS.has(relFromContents.split("/")[0]) &&
-    seal.nestedRules.some((r) => r.test(relFromContents))
-  )
+  // cdhash = codesign matched a nested rule; the fixed first-segment gate replaces evaluating rules2
+  if (own(entry, "cdhash") && typeof entry.cdhash === "string" && NESTED_DIRS.has(relFromContents.split("/")[0]))
     return "cdhash-nested";
   if (
     (own(entry, "hash2") && typeof entry.hash2 === "string") ||
