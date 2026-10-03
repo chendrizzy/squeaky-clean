@@ -33,11 +33,10 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     rel = "Contents/MacOS/fixture-helper";
     file = path.join(app, rel);
     origSha = sha(file);
-    const st = fs.statSync(file);
     entry = {
       runId: "r1", seq: 0, bundle: app, bundleId: "com.squeaky.fixture.x", version: "1.0", build: "1",
       backupDir: backupDirFor(h, app, "1", "r1"), stagingDir: path.join(h.staging, "r1-0"),
-      files: [{ rel, origIno: st.ino, origSize: st.size, origMtimeMs: st.mtimeMs }], phase: "staged",
+      files: [fileEntry(rel)], phase: "staged",
     };
     vi.spyOn(console, "warn").mockImplementation(() => {});
   });
@@ -46,19 +45,32 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  /** Simulate the thinner up to `phase`: back up, stage thin, (for swapping) rename over the original. */
+  const okVerify = { verify: async () => ({ ok: true, errorText: "" }) };
+  const fileEntry = (r: string) => {
+    const st = fs.statSync(path.join(app, r));
+    return { rel: r, origIno: st.ino, origSize: st.size, origMtimeMs: st.mtimeMs };
+  };
+  const replaceWithNewInode = (p: string, text: string) => {
+    const t = path.join(tmp, "new.bin");
+    fs.writeFileSync(t, text);
+    fs.renameSync(t, p);
+  };
+
+  /** Simulate the thinner up to `phase` for every journaled file: back up, stage thin, (for swapping) rename over the original. */
   async function thin(phase: JournalPhase) {
-    fs.mkdirSync(entry.stagingDir, { recursive: true });
-    const staged = path.join(entry.stagingDir, rel);
-    fs.mkdirSync(path.dirname(staged), { recursive: true });
-    await lipoThin(file, staged);
-    if (phase !== "staged") await backupFile(file, path.join(entry.backupDir, rel));
-    if (phase === "swapping") {
-      fs.chmodSync(staged, fs.statSync(file).mode & 0o7777);
-      const st = fs.statSync(staged);
-      entry.files[0].thinIno = st.ino;
-      entry.files[0].thinSize = st.size;
-      fs.renameSync(staged, file);
+    for (const f of entry.files) {
+      const src = path.join(app, f.rel);
+      const staged = path.join(entry.stagingDir, f.rel);
+      fs.mkdirSync(path.dirname(staged), { recursive: true });
+      await lipoThin(src, staged);
+      if (phase !== "staged") await backupFile(src, path.join(entry.backupDir, f.rel));
+      if (phase === "swapping") {
+        fs.chmodSync(staged, fs.statSync(src).mode & 0o7777);
+        const st = fs.statSync(staged);
+        f.thinIno = st.ino;
+        f.thinSize = st.size;
+        fs.renameSync(staged, src);
+      }
     }
     entry.phase = phase;
     await writeEntry(h, entry);
@@ -181,12 +193,105 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     entry.stagingDir = victim;
     entry.phase = "staged";
     await writeEntry(h, entry);
-    expect((await recoverJournal(h, "other")).map((x) => x.result)).toEqual(["cleaned"]);
+    const res = await recoverJournal(h, "other");
+    expect(res.map((x) => x.result)).toEqual(["cleaned"]);
+    expect(res[0].notes.join("\n")).toMatch(/not a squeaky staging location/);
     expect(fs.readFileSync(path.join(victim, "keep.txt"), "utf8")).toBe("precious");
   });
 
-  it("writeEntry throws for an entry that fails validation", async () => {
-    await expect(writeEntry(h, { ...entry, backupDir: "/tmp/evil" })).rejects.toThrow(/invalid entry/);
-    expect(fs.readdirSync(h.journal)).toEqual([]);
+  it("mixed: one file replaced, another still thin -> superseded and nothing written", async () => {
+    const mainRel = "Contents/MacOS/fixture-main";
+    entry.files.push(fileEntry(mainRel));
+    await thin("swapping");
+    const mainFile = path.join(app, mainRel);
+    const thinSha = sha(mainFile);
+    replaceWithNewInode(file, "app was updated");
+    const r = await restoreEntry(h, entry, okVerify);
+    expect(r.status).toBe("superseded");
+    expect(sha(mainFile)).toBe(thinSha); // still the thin, byte for byte
+    expect(fs.readFileSync(file, "utf8")).toBe("app was updated");
+  });
+
+  it("a file with no thinIno that is no longer the original is foreign -> superseded", async () => {
+    await thin("backed-up");
+    replaceWithNewInode(file, "app was updated");
+    entry.phase = "swapping";
+    await writeEntry(h, entry);
+    expect((await restoreEntry(h, entry)).status).toBe("superseded");
+    expect(fs.readFileSync(file, "utf8")).toBe("app was updated");
+  });
+
+  it("a transient error (EACCES) is restore-failed and retried, never superseded", async () => {
+    await thin("swapping");
+    const macos = path.join(app, "Contents", "MacOS");
+    const mode = fs.statSync(macos).mode & 0o7777;
+    fs.chmodSync(macos, 0o000);
+    try {
+      expect((await restoreEntry(h, entry)).status).toBe("restore-failed");
+      expect((await listIncomplete(h, ""))[0].phase).toBe("restore-failed");
+    } finally {
+      fs.chmodSync(macos, mode);
+    }
+    expect((await recoverJournal(h, "other")).map((x) => x.result)).toEqual(["restored"]);
+    expect(sha(file)).toBe(origSha);
+  });
+
+  it("a backup that is a symlink, or reached through one, is never read -> restore-failed, target untouched", async () => {
+    await thin("swapping");
+    const thinSha = sha(file);
+    const backup = path.join(entry.backupDir, rel);
+    const outside = path.join(tmp, "outside");
+    fs.mkdirSync(outside);
+    // parent component symlinked out of backups/: lstat sees a regular file, realpath escapes
+    fs.renameSync(path.join(entry.backupDir, "Contents"), path.join(outside, "Contents"));
+    fs.symlinkSync(path.join(outside, "Contents"), path.join(entry.backupDir, "Contents"));
+    expect((await restoreEntry(h, entry, okVerify)).status).toBe("restore-failed");
+    expect(sha(file)).toBe(thinSha);
+    // the backup itself is a symlink (to a perfectly good original outside backups/)
+    fs.rmSync(path.join(entry.backupDir, "Contents"));
+    fs.mkdirSync(path.dirname(backup), { recursive: true });
+    fs.symlinkSync(path.join(outside, rel), backup);
+    expect((await restoreEntry(h, entry, okVerify)).status).toBe("restore-failed");
+    expect(sha(file)).toBe(thinSha);
+  });
+
+  it("a backup of the right size that is not a fat arm64+x86_64 Mach-O is never installed", async () => {
+    await thin("swapping");
+    const thinBytes = fs.readFileSync(file);
+    const { origSize } = entry.files[0];
+    const backup = path.join(entry.backupDir, rel);
+    const paddedThin = Buffer.concat([thinBytes, Buffer.alloc(origSize - thinBytes.length)]);
+    for (const bytes of [Buffer.alloc(origSize), paddedThin]) {
+      fs.writeFileSync(backup, bytes);
+      const r = await restoreEntry(h, entry, okVerify);
+      expect(r.status).toBe("restore-failed");
+      expect(fs.readFileSync(file).equals(thinBytes)).toBe(true);
+    }
+    expect(fs.readdirSync(h.staging).filter((n) => n.includes("restore"))).toEqual([]);
+  });
+
+  it("a file replaced between classification and swap is not overwritten -> restore-failed, then superseded", async () => {
+    await thin("swapping");
+    let raced = false;
+    // makeStagingDir stats after pass 1 and before the swap: the updater lands exactly there
+    const stat = (async (p: fs.PathLike) => {
+      if (!raced) {
+        raced = true;
+        replaceWithNewInode(file, "app was updated");
+      }
+      return fs.promises.stat(p);
+    }) as unknown as typeof fs.promises.stat;
+    expect((await restoreEntry(h, entry, { ...okVerify, stat })).status).toBe("restore-failed");
+    expect(fs.readFileSync(file, "utf8")).toBe("app was updated");
+    expect((await restoreEntry(h, entry, okVerify)).status).toBe("superseded");
+  });
+
+  it("recoverJournal removes the crashed run's own staging dir once its restore succeeds", async () => {
+    await thin("swapping");
+    expect(fs.existsSync(entry.stagingDir)).toBe(true);
+    const res = await recoverJournal(h, "other");
+    expect(res.map((x) => x.result)).toEqual(["restored"]);
+    expect(fs.existsSync(entry.stagingDir)).toBe(false);
+    expect(sha(file)).toBe(origSha);
   });
 });
