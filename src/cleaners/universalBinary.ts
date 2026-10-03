@@ -205,9 +205,23 @@ export class UniversalBinaryCleaner implements CleanerModule {
         await pruneExpiredBackups(home, DEFAULT_KEEP_BACKUP_DAYS, Date.now());
         for (const [seq, a] of apps.entries()) {
           if (stopSignal) break;
-          this.lastOutcomes.push(
-            await thinBundle(a.info.realpath, { home, runId: lock.runId, seq, minSavingsBytes: explicit ? 0 : undefined }),
-          );
+          const o = await thinBundle(a.info.realpath, { home, runId: lock.runId, seq, minSavingsBytes: explicit ? 0 : undefined });
+          this.lastOutcomes.push(o);
+          // spec §10 EPERM: stop attempting other bundles this pass; each attempt is an App Management write probe
+          if (o.status === "blocked" && o.reason === "app-management") {
+            for (const rest of apps.slice(seq + 1)) {
+              this.lastOutcomes.push({
+                app: rest.info.realpath,
+                status: "skipped",
+                reason: "not-attempted",
+                detail: "app-management",
+                heldBytes: 0,
+                candidates: [],
+                skipped: [],
+              });
+            }
+            break;
+          }
         }
       } finally {
         process.off("SIGTERM", onSignal);
@@ -224,7 +238,10 @@ export class UniversalBinaryCleaner implements CleanerModule {
         .map((r) => `recovery ${appName(r.entry.bundle)}: ${r.result}${r.notes.length ? ` (${r.notes.join("; ")})` : ""}`),
       ...this.lastOutcomes
         .filter((o) => !done.includes(o))
-        .map((o) => `${appName(o.app)}: ${o.status}${o.reason ? `:${o.reason}` : ""}`),
+        .map(
+          (o) =>
+            `${appName(o.app)}: ${o.status}${o.reason ? `:${o.reason}` : ""}${o.reason === "not-attempted" ? ` (${o.detail})` : ""}`,
+        ),
     ];
     const sizeBefore = sum(done.flatMap((o) => o.candidates.map((c) => c.size)));
     return {

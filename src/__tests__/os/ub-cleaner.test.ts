@@ -25,6 +25,20 @@ vi.mock("../../ub/lock", async (importOriginal) => {
   };
 });
 
+// The EPERM test stands in for an App Management denial without touching any bundle: blocked thinBundle calls never reach the engine.
+const thinCtl = vi.hoisted(() => ({ block: false, calls: [] as string[] }));
+vi.mock("../../ub/thinner", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../ub/thinner")>();
+  return {
+    ...real,
+    thinBundle: (app: string, ctx: Parameters<typeof real.thinBundle>[1]) => {
+      thinCtl.calls.push(app);
+      if (!thinCtl.block) return real.thinBundle(app, ctx);
+      return Promise.resolve({ app, status: "blocked" as const, reason: "app-management", heldBytes: 0, candidates: [], skipped: [] });
+    },
+  };
+});
+
 const gate = process.platform === "darwin" && process.arch === "arm64" && hasToolchain();
 const REPO = path.resolve(__dirname, "../../..");
 const sha = (p: string) => crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex");
@@ -71,6 +85,8 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     process.env.SQUEAKY_AGENT_HOME = home;
     lockCtl.waitOverride = undefined;
     lockCtl.waits = [];
+    thinCtl.block = false;
+    thinCtl.calls = [];
     assertTempRoots();
   });
   afterEach(() => {
@@ -211,6 +227,24 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     expect(lockCtl.waits.at(-1)).toBe(150_000);
     expect(cleaner.lastOutcomes).toEqual([]);
     expect(sha(path.join(app, MAIN))).toBe(before);
+  });
+
+  it("stops after the first blocked:app-management and lists the rest as not attempted", async () => {
+    const a = path.join(roots, "A.app");
+    const b = path.join(roots, "B.app");
+    await fixtureAt(a, b);
+    const cleaner = new UniversalBinaryCleaner();
+    const cats = await cleaner.getCacheCategories();
+    thinCtl.block = true;
+    const r = await cleaner.clearByCategory(cats.map((c) => c.id));
+    expect(thinCtl.calls).toEqual([a]);
+    expect(cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason])).toEqual([
+      [a, "blocked", "app-management"],
+      [b, "skipped", "not-attempted"],
+    ]);
+    expect(r.success).toBe(false);
+    expect(r.error).toBe("A: blocked:app-management; B: skipped:not-attempted (app-management)");
+    expect(fs.existsSync(path.join(home, "agent.lock"))).toBe(false);
   });
 
   it("surfaces journal recovery results in error and lastRecovery", async () => {
