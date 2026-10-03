@@ -471,10 +471,23 @@ const ub = program
     }
   });
 
+// `ub` consumes its own flags wherever they appear, so `ub prune --all --dry-run` hands the
+// subcommand {} while `ub` holds {dryRun:true}. Restore/prune have no preview, so refuse rather
+// than silently run for real.
+function rejectUbFlags(cmd: Command, allowed: string[] = []): void {
+  const set = Object.entries(cmd.parent!.opts())
+    .filter(([k, v]) => v !== undefined && !allowed.includes(k))
+    .map(([k]) => k);
+  if (set.length) {
+    throw new Error(`ub ${cmd.name()} does not take ${set.map((k) => `--${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`).join(", ")}`);
+  }
+}
+
 ub.command("restore <app>")
   .description("put back an app's original binaries from its newest backup")
-  .action(async (app: string) => {
+  .action(async (app: string, _opts, cmd: Command) => {
     try {
+      rejectUbFlags(cmd);
       const { ubRestoreCommand } = await import("./commands/ub");
       await ubRestoreCommand(app);
     } catch (error) {
@@ -493,6 +506,7 @@ ub.command("prune [app]")
       // `ub` owns -a/--all too and consumes it first; read it through the parent chain.
       // (program.enablePositionalOptions() would route it here, but breaks global flags after
       // any subcommand, e.g. the documented `squeaky clean --json`.)
+      rejectUbFlags(cmd, ["all"]);
       const { all } = cmd.optsWithGlobals<{ all?: boolean }>();
       const { ubPruneCommand } = await import("./commands/ub");
       await ubPruneCommand(app, { all });

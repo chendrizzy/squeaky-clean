@@ -88,6 +88,20 @@ describe("squeaky ub subcommand parsing", () => {
     expect(firstUb).toBeGreaterThan(exit.mock.invocationCallOrder[0]);
   });
 
+  it.each([
+    [["ub", "prune", "--all", "--dry-run"]],
+    [["ub", "prune", "/Apps/Foo.app", "-l"]],
+    [["ub", "prune", "--all", "-f"]],
+    [["ub", "prune", "--all", "--exclude", "x"]],
+    [["ub", "restore", "X", "-d"]],
+    [["ub", "restore", "X", "--all"]],
+    [["ub", "-d", "restore", "X"]],
+  ])("%j: a ub flag the subcommand cannot honour exits 1 and runs nothing", async (argv) => {
+    await runCli([...argv]);
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1));
+    for (const fn of [h.ubCommand, h.ubRestoreCommand, h.ubPruneCommand]) expect(fn).not.toHaveBeenCalled();
+  });
+
   it("a failing subcommand exits non-zero", async () => {
     h.ubRestoreCommand.mockRejectedValue(new Error("Foo was not restored: superseded"));
     await runCli(["ub", "restore", "Foo"]);
