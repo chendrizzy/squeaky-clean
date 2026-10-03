@@ -7,7 +7,7 @@ import * as path from "path";
 import * as crypto from "crypto";
 import { UniversalBinaryCleaner, outcomeLine } from "../../cleaners/universalBinary";
 import { acquireLock } from "../../ub/lock";
-import { ensureAgentHome } from "../../ub/paths";
+import { agentHomeDir, ensureAgentHome, isInside } from "../../ub/paths";
 import { listIncomplete, writeEntry } from "../../ub/journal";
 import { codesignVerify, lipoArchs, run } from "../../ub/exec";
 import type { ThinOutcome } from "../../ub/thinner";
@@ -86,6 +86,8 @@ function assertTempRoots(): void {
   if (got.length !== 1 || got[0] !== roots) {
     throw new Error(`SAFETY: scanRoots() is ${JSON.stringify(got)}, not the temp roots ${JSON.stringify([roots])}; refusing to run`);
   }
+  // clear() also runs recoverJournal and prune in the agent home: never the real one
+  if (!isInside(agentHomeDir(), base)) throw new Error(`SAFETY: agent home ${agentHomeDir()} is not under ${base}; refusing to run`);
 }
 
 beforeAll(() => {
