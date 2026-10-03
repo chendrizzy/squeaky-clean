@@ -88,7 +88,7 @@ describe("readPlistFile", () => {
     await expect(
       readPlistFile("/x/Info.plist", { allowSpawn: true }),
     ).rejects.toBeInstanceOf(PlistParseError);
-    expect(spy.mock.calls[0][0]).toBe("plutil");
+    expect(spy.mock.calls[0][0]).toBe("/usr/bin/plutil"); // absolute, like lipo/codesign/ps: PATH is never consulted (R7)
     expect(spy.mock.calls[0][1]).toEqual([
       "-convert",
       "json",

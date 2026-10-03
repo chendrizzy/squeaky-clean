@@ -192,7 +192,7 @@ export async function readPlistFile(
     if (!opts.allowSpawn) return null;
     const out = await new Promise<string>((resolve, reject) => {
       cp.execFile(
-        "plutil",
+        "/usr/bin/plutil",
         ["-convert", "json", "-o", "-", p],
         { timeout: 10_000, maxBuffer: 16 * 1024 * 1024 },
         (err, stdout) => (err ? reject(err) : resolve(String(stdout))),
