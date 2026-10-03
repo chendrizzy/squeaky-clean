@@ -11,6 +11,8 @@ export interface JournalFile {
   origMtimeMs: number;
   thinIno?: number;
   thinSize?: number;
+  /** inode of the staged restore copy, journaled before its rename so a retry recognises its own result */
+  restoredIno?: number;
 }
 
 export interface JournalEntry {
@@ -45,6 +47,7 @@ function validFile(f: unknown): boolean {
   if (typeof f.origMtimeMs !== "number" || !Number.isFinite(f.origMtimeMs)) return false;
   if (f.thinIno !== undefined && !isNat(f.thinIno)) return false;
   if (f.thinSize !== undefined && !isNat(f.thinSize)) return false;
+  if (f.restoredIno !== undefined && !isNat(f.restoredIno)) return false;
   return true;
 }
 

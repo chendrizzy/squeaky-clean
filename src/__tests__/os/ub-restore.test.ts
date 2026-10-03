@@ -125,6 +125,38 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     expect((await listIncomplete(h, ""))[0].phase).toBe("restore-failed");
   });
 
+  it("retry after restore-failed re-verifies its own restored file instead of calling it superseded", async () => {
+    await thin("swapping");
+    const stray = path.join(app, "Contents", "stray.txt");
+    fs.writeFileSync(stray, "x");
+    expect((await restoreEntry(h, entry)).status).toBe("restore-failed");
+    const [first] = await listIncomplete(h, "");
+    expect(first.files[0].restoredIno).toBeDefined();
+    expect((await recoverJournal(h, "other")).map((x) => x.result)).toEqual(["restore-failed"]);
+    fs.rmSync(stray);
+    expect((await recoverJournal(h, "other")).map((x) => x.result)).toEqual(["restored"]);
+    expect(sha(file)).toBe(origSha);
+    expect(await listIncomplete(h, "")).toEqual([]);
+  });
+
+  it("a thinned file deleted after the swap is skipped, not restore-failed", async () => {
+    await thin("swapping");
+    fs.rmSync(file);
+    const r = await restoreEntry(h, entry);
+    expect(r.status).toBe("superseded");
+    expect(r.notes).toHaveLength(1);
+    expect(await listIncomplete(h, "")).toEqual([]);
+  });
+
+  it("staging creation failure maps to restore-failed instead of throwing", async () => {
+    await thin("swapping");
+    fs.rmSync(h.staging, { recursive: true, force: true });
+    const r = await restoreEntry(h, entry);
+    expect(r.status).toBe("restore-failed");
+    expect(r.notes.length).toBeGreaterThan(0);
+    expect((await listIncomplete(h, ""))[0].phase).toBe("restore-failed");
+  });
+
   it("rollback with deps.verify stub reports restored", async () => {
     await thin("swapping");
     fs.writeFileSync(path.join(app, "Contents", "stray.txt"), "x");
