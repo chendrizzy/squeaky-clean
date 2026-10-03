@@ -20,6 +20,7 @@ export function run(
   cmd: string,
   args: string[],
   timeoutMs: number,
+  opts?: { env?: NodeJS.ProcessEnv },
 ): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve, reject) => {
     cp.execFile(
@@ -30,6 +31,7 @@ export function run(
         killSignal: "SIGKILL",
         maxBuffer: 64 * 1024 * 1024,
         encoding: "utf8",
+        ...(opts?.env ? { env: { ...process.env, ...opts.env } } : {}),
       },
       (err, stdout, stderr) => {
         const out = String(stdout ?? "");

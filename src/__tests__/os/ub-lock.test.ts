@@ -69,6 +69,24 @@ describe.skipIf(!gate)("ub run lock", () => {
     }
   });
 
+  it("a live holder is not stolen when the checker runs under another TZ/locale", async () => {
+    const start = (env: NodeJS.ProcessEnv) =>
+      spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(process.pid)], { encoding: "utf8", env }).stdout.trim();
+    // Canonical form is what the holder records (LC_ALL=C, TZ=UTC0).
+    writeLock({ runId: "other", pid: process.pid, processStart: start({ ...process.env, LC_ALL: "C", TZ: "UTC0" }) });
+    const saved = { TZ: process.env.TZ, LC_ALL: process.env.LC_ALL };
+    process.env.TZ = "Asia/Tokyo";
+    process.env.LC_ALL = "de_DE.UTF-8";
+    try {
+      expect(await acquireLock(h, { waitMs: 0 })).toBeNull();
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+
   it("release does not delete someone else's lock", async () => {
     const a = await acquireLock(h, { waitMs: 0 });
     writeLock({ runId: "other", pid: process.pid, processStart: "whatever" });

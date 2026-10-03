@@ -50,9 +50,12 @@ export async function readLock(home: AgentHome): Promise<LockInfo | null> {
   }
 }
 
+// Fixed locale/zone: lstart is %c in local time, so writer and checker must agree.
+const PS_ENV = { LC_ALL: "C", TZ: "UTC0" };
+
 async function processStartOf(pid: number): Promise<string | null> {
   try {
-    const r = await run("/bin/ps", ["-o", "lstart=", "-p", String(pid)], 10_000);
+    const r = await run("/bin/ps", ["-o", "lstart=", "-p", String(pid)], 10_000, { env: PS_ENV });
     const s = r.stdout.trim();
     return r.code === 0 && s ? s : null;
   } catch {
