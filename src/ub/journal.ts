@@ -68,6 +68,8 @@ export function validateEntry(home: AgentHome, e: unknown): e is JournalEntry {
 const entryPath = (home: AgentHome, e: Pick<JournalEntry, "runId" | "seq">) => path.join(home.journal, `${e.runId}-${e.seq}.json`);
 
 export async function writeEntry(home: AgentHome, e: JournalEntry): Promise<void> {
+  const id = `${e.runId}-${e.seq}`;
+  if (!validateEntry(home, e as unknown)) throw new Error(`refusing to journal an invalid entry ${id}`);
   const dest = entryPath(home, e);
   const tmp = dest + ".tmp";
   try {
