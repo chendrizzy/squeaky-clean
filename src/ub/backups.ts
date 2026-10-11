@@ -69,7 +69,9 @@ async function pruneWhere(
     .catch((e: NodeJS.ErrnoException) => {
       if (e.code === "ENOENT") return [];
       throw e;
-    });
+    })
+    // quarantined records are named <base36 ts>-<name>; a dotfile (Finder's .DS_Store) is not one (F6)
+    .then((names) => names.filter((n) => !n.startsWith(".")));
   if (rejected.length > 0) {
     throw new Error(
       `${rejected.length} quarantined journal record(s) in ${dir}; inspect them, then remove them to re-enable pruning`,

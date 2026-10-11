@@ -287,6 +287,8 @@ describe.skipIf(!gate)("ub journal and backups", () => {
     await expect(pruneBackups(h)).rejects.toThrow(msg);
     expect(fs.existsSync(d)).toBe(true);
     fs.rmSync(path.join(h.journal, "rejected"), { recursive: true });
+    fs.mkdirSync(path.join(h.journal, "rejected"));
+    fs.writeFileSync(path.join(h.journal, "rejected", ".DS_Store"), "finder"); // not a record (F6)
     expect((await pruneExpiredBackups(h, 3, now)).removedDirs).toEqual([d]);
   });
 
