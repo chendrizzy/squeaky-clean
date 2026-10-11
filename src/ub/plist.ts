@@ -43,6 +43,32 @@ type Container =
 const LEAVES = new Set(["key", "string", "integer", "real", "data", "date"]);
 
 /**
+ * Comments, CDATA, tags and text, in one left-to-right pass: each token's end is a single indexOf, so input from an
+ * untrusted bundle is scanned in linear time (a backtracking regex was quadratic on unterminated comments, c5).
+ */
+function* tokenize(xml: string): Generator<string> {
+  let i = 0;
+  while (i < xml.length) {
+    if (xml[i] !== "<") {
+      const j = xml.indexOf("<", i);
+      const end = j === -1 ? xml.length : j;
+      yield xml.slice(i, end);
+      i = end;
+      continue;
+    }
+    const [what, open, close] = xml.startsWith("<!--", i)
+      ? ["comment", "<!--", "-->"]
+      : xml.startsWith("<![CDATA[", i)
+        ? ["CDATA", "<![CDATA[", "]]>"]
+        : ["tag", "<", ">"];
+    const j = xml.indexOf(close, i + open.length);
+    if (j === -1) throw new PlistParseError(`unterminated ${what}`);
+    yield xml.slice(i, j + close.length);
+    i = j + close.length;
+  }
+}
+
+/**
  * Parse an XML property list into plain JS values. `<data>` yields its base64
  * text (whitespace stripped), `<date>` its ISO string, `<real>`/`<integer>`
  * numbers. Throws PlistParseError on malformed input.
@@ -97,8 +123,7 @@ export function parseXmlPlist(xml: string): PlistValue {
     }
   };
 
-  const tokens = xml.match(/<!--[\s\S]*?-->|<[^>]+>|[^<]+/g) ?? [];
-  for (const tok of tokens) {
+  for (const tok of tokenize(xml)) {
     if (tok[0] !== "<") {
       if (leaf) leaf.text += tok;
       else if (tok.trim() !== "") throw new PlistParseError("unexpected text");
