@@ -34,7 +34,8 @@ function sliceOf(cputype: number, rawSub: number): Slice {
 export async function readMachOSlices(p: string): Promise<Slice[]> {
   let file;
   // ponytail: blocks==0 also matches tiny decmpfs-compressed files; skipping them is safe (never thinned)
-  const dataless = (st: { blocks: number; size: number }) => st.blocks === 0 && st.size > 0;
+  const dataless = (st: { blocks: number; size: number }) =>
+    st.blocks === 0 && st.size > 0;
   try {
     if (dataless(await fs.stat(p))) return []; // checked before the open: the open itself would fault it in
     const opened = await openRegularFile(p);
@@ -75,9 +76,7 @@ export async function readMachOSlices(p: string): Promise<Slice[]> {
   }
 }
 
-export function classifySlices(
-  s: Slice[],
-):
+export function classifySlices(s: Slice[]):
   | { thinnable: true }
   | {
       thinnable: false;
@@ -131,7 +130,10 @@ export async function readBundleInfo(
   const name = path.basename(appPath, ".app");
   let plist;
   try {
-    plist = await readPlistFile(path.join(appPath, "Contents", "Info.plist"), opts);
+    plist = await readPlistFile(
+      path.join(appPath, "Contents", "Info.plist"),
+      opts,
+    );
   } catch {
     return null;
   }
@@ -154,5 +156,13 @@ export async function readBundleInfo(
   } catch {
     // keep appPath
   }
-  return { appPath, realpath: real, bundleId, version, build, executable, name };
+  return {
+    appPath,
+    realpath: real,
+    bundleId,
+    version,
+    build,
+    executable,
+    name,
+  };
 }

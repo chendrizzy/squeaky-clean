@@ -46,10 +46,7 @@ export function matchesProtectedPath(
       // case-insensitive filesystems (default macOS/Windows) a case-
       // mismatched pattern must still protect the path - a missed match
       // here would let explicitly-protected data be deleted.
-      const normalizedProtected = resolve(protectedPattern).replace(
-        /\\/g,
-        "/",
-      );
+      const normalizedProtected = resolve(protectedPattern).replace(/\\/g, "/");
       const candidate = normalizedPath.toLowerCase();
       const protectedLower = normalizedProtected.toLowerCase();
       if (

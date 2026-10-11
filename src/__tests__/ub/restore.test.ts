@@ -2,26 +2,49 @@ import { describe, it, expect, vi } from "vitest";
 import { vol } from "memfs";
 import * as fs from "fs";
 import { recoverJournal } from "../../ub/restore";
-import { listIncomplete, writeEntry, type JournalEntry } from "../../ub/journal";
+import {
+  listIncomplete,
+  writeEntry,
+  type JournalEntry,
+} from "../../ub/journal";
 import { backupDirFor, type AgentHome } from "../../ub/paths";
 
-const h: AgentHome = { home: "/agent", staging: "/agent/staging", backups: "/agent/backups", journal: "/agent/journal" };
+const h: AgentHome = {
+  home: "/agent",
+  staging: "/agent/staging",
+  backups: "/agent/backups",
+  journal: "/agent/journal",
+};
 const bundle = "/Volumes/Ext/Apps/X.app";
 // memfs reports dev 0 everywhere; fake a second volume mounted at /Volumes/Ext
-const stat = (async (p: fs.PathLike) => ({ dev: String(p).startsWith("/Volumes/Ext") ? 2 : 1 })) as unknown as typeof fs.promises.stat;
+const stat = (async (p: fs.PathLike) => ({
+  dev: String(p).startsWith("/Volumes/Ext") ? 2 : 1,
+})) as unknown as typeof fs.promises.stat;
 const prefix = `.squeaky-ub-staging-${process.getuid!()}-`;
 
 const entry = (seq: number, stagingDir: string): JournalEntry => ({
-  runId: "r1", seq, bundle, bundleId: null, version: "1.0", build: "1",
-  backupDir: backupDirFor(h, bundle, "1", `r1s${seq}`), stagingDir,
-  files: [{ rel: "Contents/MacOS/x", origIno: 1, origSize: 2, origMtimeMs: 3 }], phase: "staged",
+  runId: "r1",
+  seq,
+  bundle,
+  bundleId: null,
+  version: "1.0",
+  build: "1",
+  backupDir: backupDirFor(h, bundle, "1", `r1s${seq}`),
+  stagingDir,
+  files: [{ rel: "Contents/MacOS/x", origIno: 1, origSize: 2, origMtimeMs: 3 }],
+  phase: "staged",
 });
 
 describe("recoverJournal cross-volume staging removal", () => {
   it("removes a staging dir directly under the bundle's mount point and reports one anywhere else", async () => {
     const good = `/Volumes/Ext/${prefix}abc`;
     const forged = `/Volumes/Ext/victim/${prefix}forged`;
-    vol.fromJSON({ "/agent/journal/.keep": "", "/agent/staging/.keep": "", [`${good}/t`]: "", [`${forged}/keep.txt`]: "precious" });
+    vol.fromJSON({
+      "/agent/journal/.keep": "",
+      "/agent/staging/.keep": "",
+      [`${good}/t`]: "",
+      [`${forged}/keep.txt`]: "precious",
+    });
     await writeEntry(h, entry(0, good));
     await writeEntry(h, entry(1, forged));
 
@@ -41,11 +64,17 @@ describe("recoverJournal removal errors", () => {
     const s1 = "/agent/staging/r1-1";
     const e0 = entry(0, s0);
     const e1 = entry(1, s1);
-    vol.fromJSON({ "/agent/journal/.keep": "", [`${s0}/t`]: "", [`${s1}/t`]: "", [`${e1.backupDir}/b`]: "" });
+    vol.fromJSON({
+      "/agent/journal/.keep": "",
+      [`${s0}/t`]: "",
+      [`${s1}/t`]: "",
+      [`${e1.backupDir}/b`]: "",
+    });
     await writeEntry(h, e0);
     await writeEntry(h, e1);
     const rm = fs.promises.rm;
-    const fail = (code: string) => Object.assign(new Error(`${code}: simulated`), { code });
+    const fail = (code: string) =>
+      Object.assign(new Error(`${code}: simulated`), { code });
     vi.spyOn(fs.promises, "rm").mockImplementation(async (p, o) => {
       if (p === s0) throw fail("EBUSY");
       if (p === e1.backupDir) throw fail("EACCES");

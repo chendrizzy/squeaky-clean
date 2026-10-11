@@ -4,14 +4,21 @@ import * as os from "os";
 import * as path from "path";
 import * as crypto from "crypto";
 import { restoreEntry, recoverJournal } from "../../ub/restore";
-import { writeEntry, listIncomplete, type JournalEntry, type JournalPhase } from "../../ub/journal";
+import {
+  writeEntry,
+  listIncomplete,
+  type JournalEntry,
+  type JournalPhase,
+} from "../../ub/journal";
 import { backupFile } from "../../ub/backups";
 import { backupDirFor, type AgentHome } from "../../ub/paths";
 import { lipoThin, lipoArchs } from "../../ub/exec";
 import { buildFixtureApp, hasToolchain } from "./helpers/ubFixture";
 
-const gate = process.platform === "darwin" && process.arch === "arm64" && hasToolchain();
-const sha = (p: string) => crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex");
+const gate =
+  process.platform === "darwin" && process.arch === "arm64" && hasToolchain();
+const sha = (p: string) =>
+  crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex");
 
 describe.skipIf(!gate)("ub restore and journal recovery", () => {
   let tmp: string;
@@ -23,9 +30,17 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
   let entry: JournalEntry;
 
   beforeEach(async () => {
-    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ub-restore-")));
-    h = { home: tmp, staging: path.join(tmp, "agent", "staging"), backups: path.join(tmp, "agent", "backups"), journal: path.join(tmp, "agent", "journal") };
-    for (const d of [h.staging, h.backups, h.journal]) fs.mkdirSync(d, { recursive: true, mode: 0o700 });
+    tmp = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "ub-restore-")),
+    );
+    h = {
+      home: tmp,
+      staging: path.join(tmp, "agent", "staging"),
+      backups: path.join(tmp, "agent", "backups"),
+      journal: path.join(tmp, "agent", "journal"),
+    };
+    for (const d of [h.staging, h.backups, h.journal])
+      fs.mkdirSync(d, { recursive: true, mode: 0o700 });
     const dir = path.join(tmp, "apps");
     fs.mkdirSync(dir);
     const f = await buildFixtureApp(dir, { helper: true });
@@ -34,9 +49,16 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     file = path.join(app, rel);
     origSha = sha(file);
     entry = {
-      runId: "r1", seq: 0, bundle: app, bundleId: "com.squeaky.fixture.x", version: "1.0", build: "1",
-      backupDir: backupDirFor(h, app, "1", "r1"), stagingDir: path.join(h.staging, "r1-0"),
-      files: [fileEntry(rel)], phase: "staged",
+      runId: "r1",
+      seq: 0,
+      bundle: app,
+      bundleId: "com.squeaky.fixture.x",
+      version: "1.0",
+      build: "1",
+      backupDir: backupDirFor(h, app, "1", "r1"),
+      stagingDir: path.join(h.staging, "r1-0"),
+      files: [fileEntry(rel)],
+      phase: "staged",
     };
     vi.spyOn(console, "warn").mockImplementation(() => {});
   });
@@ -48,7 +70,12 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
   const okVerify = { verify: async () => ({ ok: true, errorText: "" }) };
   const fileEntry = (r: string) => {
     const st = fs.statSync(path.join(app, r));
-    return { rel: r, origIno: st.ino, origSize: st.size, origMtimeMs: st.mtimeMs };
+    return {
+      rel: r,
+      origIno: st.ino,
+      origSize: st.size,
+      origMtimeMs: st.mtimeMs,
+    };
   };
   const replaceWithNewInode = (p: string, text: string) => {
     const t = path.join(tmp, "new.bin");
@@ -79,7 +106,8 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
       const staged = path.join(entry.stagingDir, f.rel);
       fs.mkdirSync(path.dirname(staged), { recursive: true });
       await lipoThin(src, staged);
-      if (phase !== "staged") await backupFile(src, path.join(entry.backupDir, f.rel));
+      if (phase !== "staged")
+        await backupFile(src, path.join(entry.backupDir, f.rel));
       if (phase === "swapping") {
         fs.chmodSync(staged, fs.statSync(src).mode & 0o7777);
         const st = fs.statSync(staged);
@@ -98,7 +126,9 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     const r = await restoreEntry(h, entry);
     expect(r).toEqual({ status: "restored", notes: [] });
     expect(sha(file)).toBe(origSha);
-    expect(fs.readdirSync(h.staging).filter((n) => n.includes("restore"))).toEqual([]);
+    expect(
+      fs.readdirSync(h.staging).filter((n) => n.includes("restore")),
+    ).toEqual([]);
     expect(await listIncomplete(h, "")).toEqual([]); // journal phase is now restored
   });
 
@@ -114,11 +144,15 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
 
   it("never restores a truncated backup: phase backed-up with truncated .tmp -> cleaned, original intact", async () => {
     await thin("staged");
-    fs.mkdirSync(path.dirname(path.join(entry.backupDir, rel)), { recursive: true });
+    fs.mkdirSync(path.dirname(path.join(entry.backupDir, rel)), {
+      recursive: true,
+    });
     fs.writeFileSync(path.join(entry.backupDir, rel) + ".tmp", "trunc");
     entry.phase = "backed-up";
     await writeEntry(h, entry);
-    expect((await recoverJournal(h, "other")).map((x) => x.result)).toEqual(["cleaned"]);
+    expect((await recoverJournal(h, "other")).map((x) => x.result)).toEqual([
+      "cleaned",
+    ]);
     expect(sha(file)).toBe(origSha);
     expect(fs.existsSync(entry.backupDir)).toBe(false);
   });
@@ -160,9 +194,13 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     expect((await restoreEntry(h, entry)).status).toBe("restore-failed");
     const [first] = await listIncomplete(h, "");
     expect(first.files[0].restoredIno).toBeDefined();
-    expect((await recoverJournal(h, "other")).map((x) => x.result)).toEqual(["restore-failed"]);
+    expect((await recoverJournal(h, "other")).map((x) => x.result)).toEqual([
+      "restore-failed",
+    ]);
     fs.rmSync(stray);
-    expect((await recoverJournal(h, "other")).map((x) => x.result)).toEqual(["restored"]);
+    expect((await recoverJournal(h, "other")).map((x) => x.result)).toEqual([
+      "restored",
+    ]);
     expect(sha(file)).toBe(origSha);
     expect(await listIncomplete(h, "")).toEqual([]);
   });
@@ -188,7 +226,9 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
   it("rollback with deps.verify stub reports restored", async () => {
     await thin("swapping");
     fs.writeFileSync(path.join(app, "Contents", "stray.txt"), "x");
-    const r = await restoreEntry(h, entry, { verify: async () => ({ ok: true, errorText: "" }) });
+    const r = await restoreEntry(h, entry, {
+      verify: async () => ({ ok: true, errorText: "" }),
+    });
     expect(r.status).toBe("restored");
   });
 
@@ -203,7 +243,11 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
   });
 
   it("recoverJournal does not remove a forged stagingDir outside staging/mount point", async () => {
-    const victim = path.join(tmp, "victim", `.squeaky-ub-staging-${process.getuid!()}-forged`);
+    const victim = path.join(
+      tmp,
+      "victim",
+      `.squeaky-ub-staging-${process.getuid!()}-forged`,
+    );
     fs.mkdirSync(victim, { recursive: true });
     fs.writeFileSync(path.join(victim, "keep.txt"), "precious");
     entry.stagingDir = victim;
@@ -212,7 +256,9 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     const res = await recoverJournal(h, "other");
     expect(res.map((x) => x.result)).toEqual(["cleaned"]);
     expect(res[0].notes.join("\n")).toMatch(/not a squeaky staging location/);
-    expect(fs.readFileSync(path.join(victim, "keep.txt"), "utf8")).toBe("precious");
+    expect(fs.readFileSync(path.join(victim, "keep.txt"), "utf8")).toBe(
+      "precious",
+    );
   });
 
   it("mixed: the LAST file replaced, an earlier one still thin -> restore-failed naming it, nothing written, entry still held", async () => {
@@ -228,9 +274,13 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     expect(sha(file)).toBe(thinSha); // still the thin, byte for byte
     expect(fs.readFileSync(mainFile, "utf8")).toBe("app was updated");
     // not terminal: retried by recovery, and its backup stays held against prune
-    expect((await listIncomplete(h, "")).map((e) => e.phase)).toEqual(["restore-failed"]);
+    expect((await listIncomplete(h, "")).map((e) => e.phase)).toEqual([
+      "restore-failed",
+    ]);
     expect(fs.existsSync(path.join(entry.backupDir, rel))).toBe(true);
-    expect((await recoverJournal(h, "other", okVerify)).map((x) => x.result)).toEqual(["restore-failed"]);
+    expect(
+      (await recoverJournal(h, "other", okVerify)).map((x) => x.result),
+    ).toEqual(["restore-failed"]);
   });
 
   it("a file with no thinIno that is no longer the original is foreign -> superseded", async () => {
@@ -253,7 +303,9 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     } finally {
       fs.chmodSync(macos, mode);
     }
-    expect((await recoverJournal(h, "other")).map((x) => x.result)).toEqual(["restored"]);
+    expect((await recoverJournal(h, "other")).map((x) => x.result)).toEqual([
+      "restored",
+    ]);
     expect(sha(file)).toBe(origSha);
   });
 
@@ -264,15 +316,25 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     const outside = path.join(tmp, "outside");
     fs.mkdirSync(outside);
     // parent component symlinked out of backups/: lstat sees a regular file, realpath escapes
-    fs.renameSync(path.join(entry.backupDir, "Contents"), path.join(outside, "Contents"));
-    fs.symlinkSync(path.join(outside, "Contents"), path.join(entry.backupDir, "Contents"));
-    expect((await restoreEntry(h, entry, okVerify)).status).toBe("restore-failed");
+    fs.renameSync(
+      path.join(entry.backupDir, "Contents"),
+      path.join(outside, "Contents"),
+    );
+    fs.symlinkSync(
+      path.join(outside, "Contents"),
+      path.join(entry.backupDir, "Contents"),
+    );
+    expect((await restoreEntry(h, entry, okVerify)).status).toBe(
+      "restore-failed",
+    );
     expect(sha(file)).toBe(thinSha);
     // the backup itself is a symlink (to a perfectly good original outside backups/)
     fs.rmSync(path.join(entry.backupDir, "Contents"));
     fs.mkdirSync(path.dirname(backup), { recursive: true });
     fs.symlinkSync(path.join(outside, rel), backup);
-    expect((await restoreEntry(h, entry, okVerify)).status).toBe("restore-failed");
+    expect((await restoreEntry(h, entry, okVerify)).status).toBe(
+      "restore-failed",
+    );
     expect(sha(file)).toBe(thinSha);
   });
 
@@ -281,20 +343,27 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     const thinBytes = fs.readFileSync(file);
     const { origSize } = entry.files[0];
     const backup = path.join(entry.backupDir, rel);
-    const paddedThin = Buffer.concat([thinBytes, Buffer.alloc(origSize - thinBytes.length)]);
+    const paddedThin = Buffer.concat([
+      thinBytes,
+      Buffer.alloc(origSize - thinBytes.length),
+    ]);
     for (const bytes of [Buffer.alloc(origSize), paddedThin]) {
       fs.writeFileSync(backup, bytes);
       const r = await restoreEntry(h, entry, okVerify);
       expect(r.status).toBe("restore-failed");
       expect(fs.readFileSync(file).equals(thinBytes)).toBe(true);
     }
-    expect(fs.readdirSync(h.staging).filter((n) => n.includes("restore"))).toEqual([]);
+    expect(
+      fs.readdirSync(h.staging).filter((n) => n.includes("restore")),
+    ).toEqual([]);
   });
 
   it("a file replaced between classification and swap is not overwritten -> restore-failed, then superseded", async () => {
     await thin("swapping");
     const stat = raceOnce(() => replaceWithNewInode(file, "app was updated"));
-    expect((await restoreEntry(h, entry, { ...okVerify, stat })).status).toBe("restore-failed");
+    expect((await restoreEntry(h, entry, { ...okVerify, stat })).status).toBe(
+      "restore-failed",
+    );
     expect(fs.readFileSync(file, "utf8")).toBe("app was updated");
     expect((await restoreEntry(h, entry, okVerify)).status).toBe("superseded");
   });
@@ -308,7 +377,9 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
       fs.renameSync(macos, outside); // same inodes, now reached through a symlink
       fs.symlinkSync(outside, macos);
     });
-    expect((await restoreEntry(h, entry, { ...okVerify, stat })).status).toBe("restore-failed");
+    expect((await restoreEntry(h, entry, { ...okVerify, stat })).status).toBe(
+      "restore-failed",
+    );
     expect(sha(path.join(outside, "fixture-helper"))).toBe(thinSha);
   });
 
@@ -327,7 +398,11 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     expect((await restoreEntry(h, entry, okVerify)).status).toBe("restored");
     const swap = log.indexOf(`rename ${file}`);
     expect(swap).toBeGreaterThan(-1);
-    expect(log.slice(0, swap).some((l) => l.startsWith("chmod ") && l.endsWith(`${rel}.restore`))).toBe(true);
+    expect(
+      log
+        .slice(0, swap)
+        .some((l) => l.startsWith("chmod ") && l.endsWith(`${rel}.restore`)),
+    ).toBe(true);
     expect(log).not.toContain(`chmod ${file}`);
     expect(sha(file)).toBe(origSha);
   });
@@ -336,8 +411,13 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     const { mainRel, mainFile } = addMainExe();
     await thin("swapping");
     const before = [sha(file), sha(mainFile)];
-    fs.writeFileSync(path.join(entry.backupDir, mainRel), Buffer.alloc(entry.files[1].origSize)); // right size, not fat
-    expect((await restoreEntry(h, entry, okVerify)).status).toBe("restore-failed");
+    fs.writeFileSync(
+      path.join(entry.backupDir, mainRel),
+      Buffer.alloc(entry.files[1].origSize),
+    ); // right size, not fat
+    expect((await restoreEntry(h, entry, okVerify)).status).toBe(
+      "restore-failed",
+    );
     expect([sha(file), sha(mainFile)]).toEqual(before); // the helper (first) was not swapped back either
   });
 

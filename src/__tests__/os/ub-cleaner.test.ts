@@ -1,11 +1,23 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  afterEach,
+  vi,
+} from "vitest";
 import cp from "child_process";
 import { syncBuiltinESMExports } from "module";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as crypto from "crypto";
-import { UniversalBinaryCleaner, outcomeLine } from "../../cleaners/universalBinary";
+import {
+  UniversalBinaryCleaner,
+  outcomeLine,
+} from "../../cleaners/universalBinary";
 import { acquireLock } from "../../ub/lock";
 import { agentHomeDir, ensureAgentHome, isInside } from "../../ub/paths";
 import { listIncomplete, writeEntry } from "../../ub/journal";
@@ -15,14 +27,26 @@ import { buildFixtureApp, hasToolchain } from "./helpers/ubFixture";
 
 // The cleaner's 150 s lock wait is real; the busy test shortens it here and records what was asked for.
 // releaseThrows: the handle releases for real, then throws (signal-exit test).
-const lockCtl = vi.hoisted(() => ({ waitOverride: undefined as number | undefined, waits: [] as number[], releaseThrows: false }));
+const lockCtl = vi.hoisted(() => ({
+  waitOverride: undefined as number | undefined,
+  waits: [] as number[],
+  releaseThrows: false,
+}));
 vi.mock("../../ub/lock", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../ub/lock")>();
   return {
     ...real,
-    acquireLock: async (home: Parameters<typeof real.acquireLock>[0], opts: { waitMs: number; pollMs?: number }) => {
+    acquireLock: async (
+      home: Parameters<typeof real.acquireLock>[0],
+      opts: { waitMs: number; pollMs?: number },
+    ) => {
       lockCtl.waits.push(opts.waitMs);
-      const h = await real.acquireLock(home, lockCtl.waitOverride === undefined ? opts : { ...opts, waitMs: lockCtl.waitOverride });
+      const h = await real.acquireLock(
+        home,
+        lockCtl.waitOverride === undefined
+          ? opts
+          : { ...opts, waitMs: lockCtl.waitOverride },
+      );
       if (!h || !lockCtl.releaseThrows) return h;
       return {
         runId: h.runId,
@@ -50,7 +74,14 @@ vi.mock("../../ub/thinner", async (importOriginal) => {
       thinCtl.calls.push(app);
       if (thinCtl.fake) return thinCtl.fake(app);
       if (!thinCtl.block) return real.thinBundle(app, ctx);
-      return Promise.resolve({ app, status: "blocked" as const, reason: "app-management", heldBytes: 0, candidates: [], skipped: [] });
+      return Promise.resolve({
+        app,
+        status: "blocked" as const,
+        reason: "app-management",
+        heldBytes: 0,
+        candidates: [],
+        skipped: [],
+      });
     },
   };
 });
@@ -61,33 +92,47 @@ vi.mock("../../ub/backups", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../ub/backups")>();
   return {
     ...real,
-    pruneExpiredBackups: (...args: Parameters<typeof real.pruneExpiredBackups>) =>
-      pruneCtl.fail ? Promise.reject(new Error(pruneCtl.fail)) : real.pruneExpiredBackups(...args),
+    pruneExpiredBackups: (
+      ...args: Parameters<typeof real.pruneExpiredBackups>
+    ) =>
+      pruneCtl.fail
+        ? Promise.reject(new Error(pruneCtl.fail))
+        : real.pruneExpiredBackups(...args),
   };
 });
 
 // eslint-disable-next-line no-control-regex
 const plain = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
 
-const gate = process.platform === "darwin" && process.arch === "arm64" && hasToolchain();
+const gate =
+  process.platform === "darwin" && process.arch === "arm64" && hasToolchain();
 const REPO = path.resolve(__dirname, "../../..");
-const sha = (p: string) => crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex");
+const sha = (p: string) =>
+  crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex");
 const MAIN = "Contents/MacOS/fixture-main";
 
 let base: string; // whole-file temp dir
 let roots: string; // the only scan root, fixed for the whole file
 let home: string; // the test agent home
 let tmp: string; // per-test scratch outside the roots
-const savedEnv = { roots: process.env.SQUEAKY_AGENT_ROOTS, home: process.env.SQUEAKY_AGENT_HOME };
+const savedEnv = {
+  roots: process.env.SQUEAKY_AGENT_ROOTS,
+  home: process.env.SQUEAKY_AGENT_HOME,
+};
 
 /** SAFETY (R13): clear() thins whatever scanRoots() finds. Unless it is exactly the temp roots, nothing may run. */
 function assertTempRoots(): void {
   const got = new UniversalBinaryCleaner().scanRoots();
   if (got.length !== 1 || got[0] !== roots) {
-    throw new Error(`SAFETY: scanRoots() is ${JSON.stringify(got)}, not the temp roots ${JSON.stringify([roots])}; refusing to run`);
+    throw new Error(
+      `SAFETY: scanRoots() is ${JSON.stringify(got)}, not the temp roots ${JSON.stringify([roots])}; refusing to run`,
+    );
   }
   // clear() also runs recoverJournal and prune in the agent home: never the real one
-  if (!isInside(agentHomeDir(), base)) throw new Error(`SAFETY: agent home ${agentHomeDir()} is not under ${base}; refusing to run`);
+  if (!isInside(agentHomeDir(), base))
+    throw new Error(
+      `SAFETY: agent home ${agentHomeDir()} is not under ${base}; refusing to run`,
+    );
 }
 
 beforeAll(() => {
@@ -101,7 +146,10 @@ beforeAll(() => {
   assertTempRoots();
 });
 afterAll(() => {
-  for (const [k, v] of [["SQUEAKY_AGENT_ROOTS", savedEnv.roots], ["SQUEAKY_AGENT_HOME", savedEnv.home]] as const) {
+  for (const [k, v] of [
+    ["SQUEAKY_AGENT_ROOTS", savedEnv.roots],
+    ["SQUEAKY_AGENT_HOME", savedEnv.home],
+  ] as const) {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
@@ -110,7 +158,8 @@ afterAll(() => {
 
 describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
   beforeEach(() => {
-    for (const d of [roots, home, tmp]) fs.rmSync(d, { recursive: true, force: true });
+    for (const d of [roots, home, tmp])
+      fs.rmSync(d, { recursive: true, force: true });
     fs.mkdirSync(roots);
     fs.mkdirSync(tmp);
     process.env.SQUEAKY_AGENT_ROOTS = roots;
@@ -144,7 +193,10 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
 
   it("scanRoots honours the test-only SQUEAKY_AGENT_ROOTS override", () => {
     process.env.SQUEAKY_AGENT_ROOTS = `${roots}:${tmp}/other`;
-    expect(new UniversalBinaryCleaner().scanRoots()).toEqual([roots, `${tmp}/other`]);
+    expect(new UniversalBinaryCleaner().scanRoots()).toEqual([
+      roots,
+      `${tmp}/other`,
+    ]);
   });
 
   it("scans nested folders to depth 3 and dedupes symlinked app by realpath", async () => {
@@ -156,10 +208,14 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     fs.symlinkSync(x, path.join(roots, "link.app"));
     fs.symlinkSync(path.dirname(elsewhere), path.join(roots, "linked-folder"));
     const cats = await new UniversalBinaryCleaner().getCacheCategories();
-    expect(cats.map((c) => c.paths[0]).sort()).toEqual([x, deep, elsewhere].sort());
+    expect(cats.map((c) => c.paths[0]).sort()).toEqual(
+      [x, deep, elsewhere].sort(),
+    );
     expect(cats.map((c) => c.name).sort()).toEqual(["Deep", "X", "Y"]);
     for (const c of cats) expect(c.size).toBeGreaterThan(65536);
-    expect(cats.find((c) => c.name === "X")!.appKey).toMatch(/^com\.squeaky\.fixture\./);
+    expect(cats.find((c) => c.name === "X")!.appKey).toMatch(
+      /^com\.squeaky\.fixture\./,
+    );
   });
 
   it("terminates on symlink loops and reads each real folder once", async () => {
@@ -170,7 +226,8 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     const readdir = vi.spyOn(fs.promises, "readdir");
     const cats = await new UniversalBinaryCleaner().getCacheCategories();
     expect(cats.map((c) => c.paths[0])).toEqual([x]);
-    const reads = (d: string) => readdir.mock.calls.filter((c) => c[0] === d).length;
+    const reads = (d: string) =>
+      readdir.mock.calls.filter((c) => c[0] === d).length;
     expect(reads(roots)).toBe(1);
     expect(reads(path.join(roots, "a"))).toBe(1);
   });
@@ -180,19 +237,48 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     await fixtureAt(app);
     // without a spawn a bplist yields executable = bundle name, so give the fixture that layout (the common real one)
     const plist = path.join(app, "Contents", "Info.plist");
-    expect((await run("/usr/bin/plutil", ["-replace", "CFBundleExecutable", "-string", "Bin", plist], 10_000)).code).toBe(0);
-    fs.renameSync(path.join(app, MAIN), path.join(app, "Contents", "MacOS", "Bin"));
-    expect((await run("/usr/bin/plutil", ["-convert", "binary1", plist], 10_000)).code).toBe(0);
-    expect((await run("/usr/bin/codesign", ["-s", "-", "--force", "--deep", app], 120_000)).code).toBe(0);
+    expect(
+      (
+        await run(
+          "/usr/bin/plutil",
+          ["-replace", "CFBundleExecutable", "-string", "Bin", plist],
+          10_000,
+        )
+      ).code,
+    ).toBe(0);
+    fs.renameSync(
+      path.join(app, MAIN),
+      path.join(app, "Contents", "MacOS", "Bin"),
+    );
+    expect(
+      (await run("/usr/bin/plutil", ["-convert", "binary1", plist], 10_000))
+        .code,
+    ).toBe(0);
+    expect(
+      (
+        await run(
+          "/usr/bin/codesign",
+          ["-s", "-", "--force", "--deep", app],
+          120_000,
+        )
+      ).code,
+    ).toBe(0);
     expect(fs.readFileSync(plist).subarray(0, 8).toString()).toBe("bplist00");
     const cats = await new UniversalBinaryCleaner().getCacheCategories();
     expect(cats).toHaveLength(1);
-    expect(cats[0]).toMatchObject({ id: "universal-bin", name: "Bin", paths: [app] });
+    expect(cats[0]).toMatchObject({
+      id: "universal-bin",
+      name: "Bin",
+      paths: [app],
+    });
     expect(cats[0].appKey).toBeUndefined();
   });
 
   it("distinct ids for same-named copies", async () => {
-    await fixtureAt(path.join(roots, "a", "Fx.app"), path.join(roots, "b", "Fx.app"));
+    await fixtureAt(
+      path.join(roots, "a", "Fx.app"),
+      path.join(roots, "b", "Fx.app"),
+    );
     const cats = await new UniversalBinaryCleaner().getCacheCategories();
     expect(cats.map((c) => [c.id, c.paths[0]])).toEqual([
       ["universal-fx", path.join(roots, "a", "Fx.app")],
@@ -206,18 +292,35 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     await fixtureAt(plain, mas);
     fs.mkdirSync(path.join(mas, "Contents", "_MASReceipt"));
     fs.writeFileSync(path.join(mas, "Contents", "_MASReceipt", "receipt"), "r");
-    expect((await run("/usr/bin/codesign", ["-s", "-", "--force", "--deep", mas], 120_000)).code).toBe(0);
+    expect(
+      (
+        await run(
+          "/usr/bin/codesign",
+          ["-s", "-", "--force", "--deep", mas],
+          120_000,
+        )
+      ).code,
+    ).toBe(0);
     const masBefore = sha(path.join(mas, MAIN));
     const cleaner = new UniversalBinaryCleaner();
     const cats = await cleaner.getCacheCategories();
-    expect(cats.find((c) => c.paths[0] === mas)!.description).toContain("auto-ignored: mac-app-store");
-    expect(cats.find((c) => c.paths[0] === plain)!.description).not.toContain("auto-ignored");
-    expect(cleaner.autoIgnoredClass(cats.find((c) => c.paths[0] === mas)!.id)).toBe("mac-app-store");
+    expect(cats.find((c) => c.paths[0] === mas)!.description).toContain(
+      "auto-ignored: mac-app-store",
+    );
+    expect(cats.find((c) => c.paths[0] === plain)!.description).not.toContain(
+      "auto-ignored",
+    );
+    expect(
+      cleaner.autoIgnoredClass(cats.find((c) => c.paths[0] === mas)!.id),
+    ).toBe("mac-app-store");
 
     const r = await cleaner.clear(false);
     // the class-excluded app is never handed to the engine; the plain one is, under the default per-app floor
     expect(cleaner.lastOutcomes.map((o) => o.app)).toEqual([plain]);
-    expect([cleaner.lastOutcomes[0].status, cleaner.lastOutcomes[0].reason]).toEqual(["skipped", "below-threshold"]);
+    expect([
+      cleaner.lastOutcomes[0].status,
+      cleaner.lastOutcomes[0].reason,
+    ]).toEqual(["skipped", "below-threshold"]);
     expect(r.error).toBe("Plain: skipped:below-threshold");
     expect(sha(path.join(mas, MAIN))).toBe(masBefore);
     expect(fs.existsSync(path.join(home, "agent.lock"))).toBe(false);
@@ -229,7 +332,10 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     const cleaner = new UniversalBinaryCleaner();
     const [cat] = await cleaner.getCacheCategories();
     // ticked: the ~1 MB fixture is under the 5 MB floor, which only a tick beats
-    const r = await cleaner.clear(false, { categories: [cat.id], tickedIds: [cat.id] });
+    const r = await cleaner.clear(false, {
+      categories: [cat.id],
+      tickedIds: [cat.id],
+    });
     const [o] = cleaner.lastOutcomes;
     expect(o.status).toBe("thinned");
     expect(r.success).toBe(true);
@@ -245,7 +351,9 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     expect(fs.existsSync(path.join(home, "agent.lock"))).toBe(false);
     expect(await listIncomplete(await ensureAgentHome(), "")).toEqual([]);
     expect(fs.existsSync(path.join(o.backupDir!, MAIN))).toBe(true);
-    expect(o.backupDir!.startsWith(path.join(home, "backups") + path.sep)).toBe(true);
+    expect(o.backupDir!.startsWith(path.join(home, "backups") + path.sep)).toBe(
+      true,
+    );
   });
 
   it("clear() returns agent busy when lock is held", async () => {
@@ -259,7 +367,9 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     const r = await cleaner.clearByCategory(["universal-busy"]);
     await held!.release();
     expect(r.success).toBe(false);
-    expect(r.error).toBe(`agent busy: another squeaky run holds ${path.join(home, "agent.lock")}`);
+    expect(r.error).toBe(
+      `agent busy: another squeaky run holds ${path.join(home, "agent.lock")}`,
+    );
     expect(lockCtl.waits.at(-1)).toBe(150_000);
     expect(cleaner.lastOutcomes).toEqual([]);
     expect(sha(path.join(app, MAIN))).toBe(before);
@@ -274,12 +384,16 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     thinCtl.block = true;
     const r = await cleaner.clearByCategory(cats.map((c) => c.id));
     expect(thinCtl.calls).toEqual([a]);
-    expect(cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason])).toEqual([
+    expect(
+      cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason]),
+    ).toEqual([
       [a, "blocked", "app-management"],
       [b, "skipped", "not-attempted"],
     ]);
     expect(r.success).toBe(false);
-    expect(r.error).toBe("A: blocked:app-management; B: skipped:not-attempted (app-management)");
+    expect(r.error).toBe(
+      "A: blocked:app-management; B: skipped:not-attempted (app-management)",
+    );
     expect(fs.existsSync(path.join(home, "agent.lock"))).toBe(false);
   });
 
@@ -287,14 +401,32 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     const h = await ensureAgentHome();
     const gone = path.join(roots, "Gone.app"); // never created: recovery cannot reach it
     await writeEntry(h, {
-      runId: "earlier-run", seq: 0, bundle: gone, bundleId: null, version: "1", build: "1",
-      backupDir: path.join(h.backups, "0123456789abcdef", "1-earlier-run-0"), stagingDir: path.join(h.staging, "earlier-run-0"),
-      files: [{ rel: MAIN, origIno: 1, origSize: 1, origMtimeMs: 1, thinIno: 2, thinSize: 1 }], phase: "swapping",
+      runId: "earlier-run",
+      seq: 0,
+      bundle: gone,
+      bundleId: null,
+      version: "1",
+      build: "1",
+      backupDir: path.join(h.backups, "0123456789abcdef", "1-earlier-run-0"),
+      stagingDir: path.join(h.staging, "earlier-run-0"),
+      files: [
+        {
+          rel: MAIN,
+          origIno: 1,
+          origSize: 1,
+          origMtimeMs: 1,
+          thinIno: 2,
+          thinSize: 1,
+        },
+      ],
+      phase: "swapping",
     });
     const cleaner = new UniversalBinaryCleaner();
     const r = await cleaner.clearByCategory([]); // explicit empty choice: recovery only, no app
     expect(cleaner.lastOutcomes).toEqual([]);
-    expect(cleaner.lastRecovery.map((x) => [x.entry.bundle, x.result])).toEqual([[gone, "unreachable"]]);
+    expect(cleaner.lastRecovery.map((x) => [x.entry.bundle, x.result])).toEqual(
+      [[gone, "unreachable"]],
+    );
     expect(r.error).toMatch(/^recovery Gone: unreachable/);
     expect(fs.existsSync(path.join(home, "agent.lock"))).toBe(false);
   });
@@ -308,15 +440,24 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     const cleaner = new UniversalBinaryCleaner();
     // auto: the same 5 MB per-app floor the real run applies
     const auto = await cleaner.clear(true);
-    expect([cleaner.lastOutcomes[0].status, cleaner.lastOutcomes[0].reason]).toEqual(["skipped", "below-threshold"]);
+    expect([
+      cleaner.lastOutcomes[0].status,
+      cleaner.lastOutcomes[0].reason,
+    ]).toEqual(["skipped", "below-threshold"]);
     expect(auto.clearedPaths).toEqual([]);
     // categories alone (squeaky clean --categories, ub --all): the floor still applies
     const [cat] = await cleaner.getCacheCategories();
     const narrowed = await cleaner.clearByCategory([cat.id], true);
-    expect([cleaner.lastOutcomes[0].status, cleaner.lastOutcomes[0].reason]).toEqual(["skipped", "below-threshold"]);
+    expect([
+      cleaner.lastOutcomes[0].status,
+      cleaner.lastOutcomes[0].reason,
+    ]).toEqual(["skipped", "below-threshold"]);
     expect(narrowed.clearedPaths).toEqual([]);
     // interactive tick: no floor
-    const r = await cleaner.clear(true, { categories: [cat.id], tickedIds: [cat.id] });
+    const r = await cleaner.clear(true, {
+      categories: [cat.id],
+      tickedIds: [cat.id],
+    });
     expect(spy).not.toHaveBeenCalled();
     expect(r.success).toBe(true);
     expect(r.clearedPaths).toEqual([app]);
@@ -344,7 +485,15 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     await fixtureAt(plainApp, mas);
     fs.mkdirSync(path.join(mas, "Contents", "_MASReceipt"));
     fs.writeFileSync(path.join(mas, "Contents", "_MASReceipt", "receipt"), "r");
-    expect((await run("/usr/bin/codesign", ["-s", "-", "--force", "--deep", mas], 120_000)).code).toBe(0);
+    expect(
+      (
+        await run(
+          "/usr/bin/codesign",
+          ["-s", "-", "--force", "--deep", mas],
+          120_000,
+        )
+      ).code,
+    ).toBe(0);
     const masBefore = sha(path.join(mas, MAIN));
     const plainBefore = sha(path.join(plainApp, MAIN));
     const cleaner = new UniversalBinaryCleaner();
@@ -354,7 +503,9 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     // no tick: the MAS app is skipped by class and never reaches the engine
     const r1 = await cleaner.clear(false, { categories: [id(mas)] });
     expect(thinCtl.calls).toEqual([]);
-    expect(cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason, o.detail])).toEqual([[mas, "skipped", "auto-ignored", "mac-app-store"]]);
+    expect(
+      cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason, o.detail]),
+    ).toEqual([[mas, "skipped", "auto-ignored", "mac-app-store"]]);
     expect(r1.error).toBe("Store: skipped:auto-ignored (mac-app-store)");
     expect(sha(path.join(mas, MAIN))).toBe(masBefore);
 
@@ -366,7 +517,10 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
 
     // ticked: class and floor are both beaten
     thinCtl.calls = [];
-    const r3 = await cleaner.clear(false, { categories: [id(mas)], tickedIds: [id(mas)] });
+    const r3 = await cleaner.clear(false, {
+      categories: [id(mas)],
+      tickedIds: [id(mas)],
+    });
     expect(thinCtl.calls).toEqual([mas]);
     expect(cleaner.lastOutcomes.map((o) => o.status)).toEqual(["thinned"]);
     expect(r3.success).toBe(true);
@@ -379,19 +533,28 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     await fixtureAt(a, b);
     const cleaner = new UniversalBinaryCleaner();
     const seen = await cleaner.getCacheInfo(); // the caller's view
-    expect(seen.categories!.map((c) => [c.id, c.paths[0]])).toEqual([["universal-fx", a], ["universal-fx-2", b]]);
+    expect(seen.categories!.map((c) => [c.id, c.paths[0]])).toEqual([
+      ["universal-fx", a],
+      ["universal-fx-2", b],
+    ]);
     fs.rmSync(a, { recursive: true, force: true }); // the rescan now gives universal-fx to b
     const bBefore = sha(path.join(b, MAIN));
     const tick = { categories: ["universal-fx"], tickedIds: ["universal-fx"] };
-    const outcomes = () => cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason, o.detail]);
+    const outcomes = () =>
+      cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason, o.detail]);
 
     // ub.ts: the path it displayed
-    const r1 = await cleaner.clear(false, { ...tick, expectedPaths: { "universal-fx": a } });
+    const r1 = await cleaner.clear(false, {
+      ...tick,
+      expectedPaths: { "universal-fx": a },
+    });
     expect(outcomes()).toEqual([[a, "skipped", "stale-id", `now ${b}`]]);
     expect(r1.error).toBe(`Fx: skipped:stale-id (now ${b})`);
     // an id the caller showed no path for
     await cleaner.clear(false, { ...tick, expectedPaths: {} });
-    expect(outcomes()).toEqual([[b, "skipped", "stale-id", "no path was shown for it"]]);
+    expect(outcomes()).toEqual([
+      [b, "skipped", "stale-id", "no path was shown for it"],
+    ]);
     // squeaky clean: the caller's own getCacheInfo categories
     await cleaner.clearByCategory(["universal-fx"], false, seen);
     expect(outcomes()).toEqual([[a, "skipped", "stale-id", `now ${b}`]]);
@@ -399,7 +562,10 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     expect(sha(path.join(b, MAIN))).toBe(bBefore);
 
     // positive control: the shown path matches the rescan, so the app is thinned
-    await cleaner.clear(false, { ...tick, expectedPaths: { "universal-fx": b } });
+    await cleaner.clear(false, {
+      ...tick,
+      expectedPaths: { "universal-fx": b },
+    });
     expect(thinCtl.calls).toEqual([b]);
     expect(cleaner.lastOutcomes.map((o) => o.status)).toEqual(["thinned"]);
   });
@@ -408,9 +574,25 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     const h = await ensureAgentHome();
     const gone = path.join(roots, "Gone.app"); // never created: recovery cannot reach it
     await writeEntry(h, {
-      runId: "earlier-run", seq: 0, bundle: gone, bundleId: null, version: "1", build: "1",
-      backupDir: path.join(h.backups, "0123456789abcdef", "1-earlier-run-0"), stagingDir: path.join(h.staging, "earlier-run-0"),
-      files: [{ rel: MAIN, origIno: 1, origSize: 1, origMtimeMs: 1, thinIno: 2, thinSize: 1 }], phase: "swapping",
+      runId: "earlier-run",
+      seq: 0,
+      bundle: gone,
+      bundleId: null,
+      version: "1",
+      build: "1",
+      backupDir: path.join(h.backups, "0123456789abcdef", "1-earlier-run-0"),
+      stagingDir: path.join(h.staging, "earlier-run-0"),
+      files: [
+        {
+          rel: MAIN,
+          origIno: 1,
+          origSize: 1,
+          origMtimeMs: 1,
+          thinIno: 2,
+          thinSize: 1,
+        },
+      ],
+      phase: "swapping",
     });
     const app = path.join(roots, "A.app");
     await fixtureAt(app);
@@ -419,18 +601,27 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
 
     // prune fails: recovery still reported, and a housekeeping note alone is not a failed run
     const r1 = await cleaner.clearByCategory([]);
-    expect(cleaner.lastRecovery.map((x) => [x.entry.bundle, x.result])).toEqual([[gone, "unreachable"]]);
+    expect(cleaner.lastRecovery.map((x) => [x.entry.bundle, x.result])).toEqual(
+      [[gone, "unreachable"]],
+    );
     expect(cleaner.lastNotes).toEqual(["prune: prune boom"]);
-    expect(r1.error).toMatch(/^recovery Gone: unreachable.*; prune: prune boom$/);
+    expect(r1.error).toMatch(
+      /^recovery Gone: unreachable.*; prune: prune boom$/,
+    );
     expect(r1.success).toBe(true);
 
     // a later step throws: still a result, carrying recovery, prune and the throw
     thinCtl.fake = () => Promise.reject(new Error("thin boom"));
-    const r2 = await cleaner.clear(false, { categories: ["universal-a"], tickedIds: ["universal-a"] });
+    const r2 = await cleaner.clear(false, {
+      categories: ["universal-a"],
+      tickedIds: ["universal-a"],
+    });
     expect(thinCtl.calls).toEqual([app]);
     expect(cleaner.lastRecovery.map((x) => x.result)).toEqual(["unreachable"]);
     expect(cleaner.lastNotes).toEqual(["prune: prune boom", "thin: thin boom"]);
-    expect(r2.error).toMatch(/^recovery Gone: unreachable.*; prune: prune boom; thin: thin boom$/);
+    expect(r2.error).toMatch(
+      /^recovery Gone: unreachable.*; prune: prune boom; thin: thin boom$/,
+    );
     expect(r2.success).toBe(false);
     expect(fs.existsSync(path.join(home, "agent.lock"))).toBe(false);
   });
@@ -443,16 +634,24 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     fs.symlinkSync(p, path.join(roots, "a", "b", "L")); // L is at depth 3, so P's subfolders are out of reach through it
     const orig = fs.promises.readdir.bind(fs.promises);
     for (const order of ["asc", "desc"] as const) {
-      const spy = vi.spyOn(fs.promises, "readdir").mockImplementation((async (d: fs.PathLike, o?: unknown) => {
+      const spy = vi.spyOn(fs.promises, "readdir").mockImplementation((async (
+        d: fs.PathLike,
+        o?: unknown,
+      ) => {
         const names = await orig(d, o as never);
         if (o !== undefined) return names;
         const s = [...(names as string[])].sort();
         return order === "asc" ? s : s.reverse();
       }) as typeof fs.promises.readdir);
       const cats = await new UniversalBinaryCleaner().getCacheCategories();
-      expect(cats.map((c) => c.paths[0]), order).toEqual([app]);
+      expect(
+        cats.map((c) => c.paths[0]),
+        order,
+      ).toEqual([app]);
       // desc lists "a" before "P": P is read first at depth 3 through L, then again at depth 1
-      expect(spy.mock.calls.filter((c) => c[0] === p).length, order).toBe(order === "desc" ? 2 : 1);
+      expect(spy.mock.calls.filter((c) => c[0] === p).length, order).toBe(
+        order === "desc" ? 2 : 1,
+      );
       spy.mockRestore();
     }
   });
@@ -470,24 +669,47 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     }) as typeof process.exit);
     const errs = vi.spyOn(console, "error").mockImplementation(() => {});
     lockCtl.releaseThrows = true;
-    for (const [signal, code] of [["SIGTERM", 143], ["SIGHUP", 129]] as const) {
+    for (const [signal, code] of [
+      ["SIGTERM", 143],
+      ["SIGHUP", 129],
+    ] as const) {
       on.mockClear();
       errs.mockClear();
       exits.length = 0;
       thinCtl.calls = [];
       // no engine: the first app is "in flight" when clear()'s own handler fires (called directly, no real signal)
       thinCtl.fake = async (app) => {
-        const handler = on.mock.calls.find((c) => c[0] === signal)![1] as (s: NodeJS.Signals) => void;
+        const handler = on.mock.calls.find((c) => c[0] === signal)![1] as (
+          s: NodeJS.Signals,
+        ) => void;
         handler(signal);
-        return { app, status: "skipped", reason: "running", heldBytes: 0, candidates: [], skipped: [] };
+        return {
+          app,
+          status: "skipped",
+          reason: "running",
+          heldBytes: 0,
+          candidates: [],
+          skipped: [],
+        };
       };
-      await expect(cleaner.clear(false, { categories: ids, tickedIds: ids }), signal).rejects.toThrow("release boom");
+      await expect(
+        cleaner.clear(false, { categories: ids, tickedIds: ids }),
+        signal,
+      ).rejects.toThrow("release boom");
       expect(thinCtl.calls, signal).toEqual([a]);
       expect(exits, signal).toEqual([code]);
-      expect(cleaner.lastOutcomes.map((o) => o.app), signal).toEqual([a]);
-      expect(errs.mock.calls.map((c) => c.join(" ")), signal).toContain(`  ${outcomeLine(cleaner.lastOutcomes[0])}`);
+      expect(
+        cleaner.lastOutcomes.map((o) => o.app),
+        signal,
+      ).toEqual([a]);
+      expect(
+        errs.mock.calls.map((c) => c.join(" ")),
+        signal,
+      ).toContain(`  ${outcomeLine(cleaner.lastOutcomes[0])}`);
       expect(fs.existsSync(path.join(home, "agent.lock")), signal).toBe(false);
-      expect(process.listeners(signal), signal).not.toContain(on.mock.calls.find((c) => c[0] === signal)![1]);
+      expect(process.listeners(signal), signal).not.toContain(
+        on.mock.calls.find((c) => c[0] === signal)![1],
+      );
     }
   });
 
@@ -497,19 +719,37 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     const plist = path.join(app, "Contents", "Info.plist");
     for (const args of [
       ["-replace", "CFBundleExecutable", "-string", "Bin", plist],
-      ["-replace", "CFBundleIdentifier", "-string", "com.microsoft.fixture", plist],
+      [
+        "-replace",
+        "CFBundleIdentifier",
+        "-string",
+        "com.microsoft.fixture",
+        plist,
+      ],
     ]) {
       expect((await run("/usr/bin/plutil", args, 10_000)).code).toBe(0);
     }
     const exe = path.join(app, "Contents", "MacOS", "Bin");
     fs.renameSync(path.join(app, MAIN), exe);
-    expect((await run("/usr/bin/plutil", ["-convert", "binary1", plist], 10_000)).code).toBe(0);
-    expect((await run("/usr/bin/codesign", ["-s", "-", "--force", "--deep", app], 120_000)).code).toBe(0);
+    expect(
+      (await run("/usr/bin/plutil", ["-convert", "binary1", plist], 10_000))
+        .code,
+    ).toBe(0);
+    expect(
+      (
+        await run(
+          "/usr/bin/codesign",
+          ["-s", "-", "--force", "--deep", app],
+          120_000,
+        )
+      ).code,
+    ).toBe(0);
     const before = sha(exe);
     const cleaner = new UniversalBinaryCleaner();
     const [cat] = await cleaner.getCacheCategories();
     expect(cleaner.autoIgnoredClass(cat.id)).toBeNull(); // the spawn-free scan cannot read a bplist's bundle id
-    const outcomes = () => cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason, o.detail]);
+    const outcomes = () =>
+      cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason, o.detail]);
 
     // ub --all / squeaky clean --categories (categories, no tick), then squeaky clean (auto)
     const r = await cleaner.clear(false, { categories: [cat.id] });
@@ -538,8 +778,12 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     const prot = [`${roots}/alias/Pro*`];
     const tick = { categories: [cat.id], tickedIds: [cat.id] };
     await cleaner.clear(false, tick, undefined, prot);
-    expect(cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason])).toEqual([[real, "skipped", "protected"]]);
-    expect((await cleaner.preview(tick, prot)).map((o) => o.reason)).toEqual(["protected"]);
+    expect(
+      cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason]),
+    ).toEqual([[real, "skipped", "protected"]]);
+    expect((await cleaner.preview(tick, prot)).map((o) => o.reason)).toEqual([
+      "protected",
+    ]);
     expect(thinCtl.calls).toEqual([]);
     expect(sha(path.join(real, MAIN))).toBe(before);
   });
@@ -555,7 +799,9 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     fs.chmodSync(macos, 0o555);
     try {
       const r = await cleaner.clear(false, { categories: ids, tickedIds: ids });
-      expect(cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason])).toEqual([
+      expect(
+        cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason]),
+      ).toEqual([
         [a, "skipped", "not-writable"],
         [b, "thinned", undefined],
       ]);
@@ -585,28 +831,53 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     const guarded = [glob, keep, inner, linked];
     const before = guarded.map((p) => sha(path.join(p, MAIN)));
     const cleaner = new UniversalBinaryCleaner();
-    const reasons = () => cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason]);
+    const reasons = () =>
+      cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason]);
 
     // squeaky clean: CacheManager's clear(dryRun, criteria, cacheInfo, protectedPaths)
     const r = await cleaner.clear(false, undefined, undefined, prot);
     expect(thinCtl.calls).toEqual([free]);
-    expect(reasons()).toEqual([...guarded.map((p) => [p, "skipped", "protected"]), [free, "skipped", "below-threshold"]]);
+    expect(reasons()).toEqual([
+      ...guarded.map((p) => [p, "skipped", "protected"]),
+      [free, "skipped", "below-threshold"],
+    ]);
     expect(r.error).toBe(
       "Glob1: skipped:protected; Keep: skipped:protected; Inner: skipped:protected; Linked: skipped:protected; Free: skipped:below-threshold",
     );
     // the dry run and preview (last scan, no readdir) decide the same
     await cleaner.clear(true, undefined, undefined, prot);
-    expect(cleaner.lastOutcomes.map((o) => o.reason)).toEqual(["protected", "protected", "protected", "protected", "below-threshold"]);
+    expect(cleaner.lastOutcomes.map((o) => o.reason)).toEqual([
+      "protected",
+      "protected",
+      "protected",
+      "protected",
+      "below-threshold",
+    ]);
     const readdir = vi.spyOn(fs.promises, "readdir");
-    expect((await cleaner.preview(undefined, prot)).map((o) => o.reason)).toEqual(["protected", "protected", "protected", "protected", "below-threshold"]);
+    expect(
+      (await cleaner.preview(undefined, prot)).map((o) => o.reason),
+    ).toEqual([
+      "protected",
+      "protected",
+      "protected",
+      "protected",
+      "below-threshold",
+    ]);
     expect(readdir).not.toHaveBeenCalled();
     readdir.mockRestore();
 
     // CacheManager's clearByCategory(ids, dryRun, cacheInfo, protectedPaths), and a tick: protection still wins
-    const keepId = (await cleaner.getCacheCategories()).find((c) => c.paths[0] === keep)!.id;
+    const keepId = (await cleaner.getCacheCategories()).find(
+      (c) => c.paths[0] === keep,
+    )!.id;
     await cleaner.clearByCategory([keepId], false, undefined, prot);
     expect(reasons()).toEqual([[keep, "skipped", "protected"]]);
-    await cleaner.clear(false, { categories: [keepId], tickedIds: [keepId] }, undefined, prot);
+    await cleaner.clear(
+      false,
+      { categories: [keepId], tickedIds: [keepId] },
+      undefined,
+      prot,
+    );
     expect(reasons()).toEqual([[keep, "skipped", "protected"]]);
     expect(thinCtl.calls).toEqual([free]);
     expect(guarded.map((p) => sha(path.join(p, MAIN)))).toEqual(before);
@@ -651,11 +922,18 @@ void (async () => {
       cwd: REPO,
       timeout: 120_000,
       encoding: "utf8",
-      env: { ...process.env, VITEST: "true", SQUEAKY_AGENT_ROOTS: roots, SQUEAKY_AGENT_HOME: home },
+      env: {
+        ...process.env,
+        VITEST: "true",
+        SQUEAKY_AGENT_ROOTS: roots,
+        SQUEAKY_AGENT_HOME: home,
+      },
     });
     expect(r.status, r.stderr).toBe(143);
     // the caller never regains control, so the cleaner itself reports the in-flight app before exiting
-    expect(plain(r.stderr)).toMatch(/ {2}✓ A — .* will be freed by the next squeaky run after 3 days, or now with `squeaky ub prune` \(backup kept for safe rollback\)/);
+    expect(plain(r.stderr)).toMatch(
+      / {2}✓ A — .* will be freed by the next squeaky run after 3 days, or now with `squeaky ub prune` \(backup kept for safe rollback\)/,
+    );
     expect(await lipoArchs(path.join(a, MAIN))).toEqual(["arm64"]);
     expect((await codesignVerify(a)).ok).toBe(true);
     expect(sha(path.join(b, MAIN))).toBe(bBefore);

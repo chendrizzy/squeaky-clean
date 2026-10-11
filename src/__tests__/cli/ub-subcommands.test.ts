@@ -20,11 +20,22 @@ vi.mock("../../commands/ub", () => ({
   ubRestoreCommand: h.ubRestoreCommand,
   ubPruneCommand: h.ubPruneCommand,
 }));
-vi.mock("../../commands/update", () => ({ backgroundUpdateCheck: () => Promise.resolve() }));
+vi.mock("../../commands/update", () => ({
+  backgroundUpdateCheck: () => Promise.resolve(),
+}));
 // the engine under the real ubPruneCommand / ubRestoreCommand (loaded via importActual below)
-vi.mock("../../ub/paths", async (orig) => ({ ...(await orig<object>()), ensureAgentHome: h.ensureAgentHome }));
-vi.mock("../../ub/lock", async (orig) => ({ ...(await orig<object>()), acquireLock: h.acquireLock }));
-vi.mock("../../ub/backups", async (orig) => ({ ...(await orig<object>()), pruneBackups: h.pruneBackups }));
+vi.mock("../../ub/paths", async (orig) => ({
+  ...(await orig<object>()),
+  ensureAgentHome: h.ensureAgentHome,
+}));
+vi.mock("../../ub/lock", async (orig) => ({
+  ...(await orig<object>()),
+  acquireLock: h.acquireLock,
+}));
+vi.mock("../../ub/backups", async (orig) => ({
+  ...(await orig<object>()),
+  pruneBackups: h.pruneBackups,
+}));
 vi.mock("../../ub/restore", async (orig) => ({
   ...(await orig<object>()),
   recoverJournal: h.recoverJournal,
@@ -32,7 +43,12 @@ vi.mock("../../ub/restore", async (orig) => ({
 }));
 
 const PKG = path.resolve(__dirname, "../../../package.json");
-const HOME = { home: "/h", staging: "/h/staging", backups: "/h/backups", journal: "/h/journal" };
+const HOME = {
+  home: "/h",
+  staging: "/h/staging",
+  backups: "/h/backups",
+  journal: "/h/journal",
+};
 let exit: ReturnType<typeof vi.spyOn>;
 
 /** Loads a fresh cli.ts with this argv; its top-level IIFE parses process.argv on import. */
@@ -45,9 +61,18 @@ async function runCli(argv: string[]): Promise<void> {
 describe("squeaky ub subcommand parsing", () => {
   const argv0 = process.argv;
   beforeEach(() => {
-    vol.fromJSON({ [PKG]: JSON.stringify({ name: "squeaky-clean", version: "0.0.0-test", description: "t" }) });
-    for (const fn of [h.ubCommand, h.ubRestoreCommand, h.ubPruneCommand]) fn.mockResolvedValue(undefined);
-    exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    vol.fromJSON({
+      [PKG]: JSON.stringify({
+        name: "squeaky-clean",
+        version: "0.0.0-test",
+        description: "t",
+      }),
+    });
+    for (const fn of [h.ubCommand, h.ubRestoreCommand, h.ubPruneCommand])
+      fn.mockResolvedValue(undefined);
+    exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
   });
   afterEach(() => {
     process.argv = argv0;
@@ -59,14 +84,22 @@ describe("squeaky ub subcommand parsing", () => {
     [["ub", "-l"], "ubCommand", [{ list: true }]],
     [["ub", "prune", "--all"], "ubPruneCommand", [undefined, { all: true }]],
     [["ub", "prune", "-a"], "ubPruneCommand", [undefined, { all: true }]],
-    [["ub", "prune", "/Apps/Foo.app"], "ubPruneCommand", ["/Apps/Foo.app", { all: undefined }]],
+    [
+      ["ub", "prune", "/Apps/Foo.app"],
+      "ubPruneCommand",
+      ["/Apps/Foo.app", { all: undefined }],
+    ],
     [["ub", "restore", "Foo"], "ubRestoreCommand", ["Foo"]],
   ] as const)("parses %j", async (argv, fn, args) => {
     await runCli([...argv]);
     const target = h[fn];
     await vi.waitFor(() => expect(target).toHaveBeenCalledTimes(1));
     expect(target).toHaveBeenCalledWith(...args);
-    for (const other of ["ubCommand", "ubRestoreCommand", "ubPruneCommand"] as const) {
+    for (const other of [
+      "ubCommand",
+      "ubRestoreCommand",
+      "ubPruneCommand",
+    ] as const) {
       if (other !== fn) expect(h[other]).not.toHaveBeenCalled();
     }
     expect(exit).not.toHaveBeenCalled();
@@ -74,7 +107,11 @@ describe("squeaky ub subcommand parsing", () => {
 
   it("ub prune with no app and no --all reaches the prune command, never thinning", async () => {
     await runCli(["ub", "prune"]);
-    await vi.waitFor(() => expect(h.ubPruneCommand).toHaveBeenCalledWith(undefined, { all: undefined }));
+    await vi.waitFor(() =>
+      expect(h.ubPruneCommand).toHaveBeenCalledWith(undefined, {
+        all: undefined,
+      }),
+    );
     expect(h.ubCommand).not.toHaveBeenCalled();
   });
 
@@ -96,14 +133,20 @@ describe("squeaky ub subcommand parsing", () => {
     [["ub", "restore", "X", "-d"]],
     [["ub", "restore", "X", "--all"]],
     [["ub", "-d", "restore", "X"]],
-  ])("%j: a ub flag the subcommand cannot honour exits 1 and runs nothing", async (argv) => {
-    await runCli([...argv]);
-    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1));
-    for (const fn of [h.ubCommand, h.ubRestoreCommand, h.ubPruneCommand]) expect(fn).not.toHaveBeenCalled();
-  });
+  ])(
+    "%j: a ub flag the subcommand cannot honour exits 1 and runs nothing",
+    async (argv) => {
+      await runCli([...argv]);
+      await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1));
+      for (const fn of [h.ubCommand, h.ubRestoreCommand, h.ubPruneCommand])
+        expect(fn).not.toHaveBeenCalled();
+    },
+  );
 
   it("a failing subcommand exits non-zero", async () => {
-    h.ubRestoreCommand.mockRejectedValue(new Error("Foo was not restored: superseded"));
+    h.ubRestoreCommand.mockRejectedValue(
+      new Error("Foo was not restored: superseded"),
+    );
     await runCli(["ub", "restore", "Foo"]);
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1));
   });
@@ -117,7 +160,11 @@ describe("ub restore / prune commands", () => {
     h.ensureAgentHome.mockResolvedValue(HOME);
     h.release.mockResolvedValue(undefined);
     h.acquireLock.mockResolvedValue({ runId: "lock-run", release: h.release });
-    h.pruneBackups.mockResolvedValue({ removedDirs: ["/h/backups/x/1-r"], freedBytes: 10, heldDirs: [] });
+    h.pruneBackups.mockResolvedValue({
+      removedDirs: ["/h/backups/x/1-r"],
+      freedBytes: 10,
+      heldDirs: [],
+    });
     h.recoverJournal.mockResolvedValue([]);
     h.restoreApp.mockResolvedValue({ status: "restored", notes: [] });
   });
@@ -125,7 +172,9 @@ describe("ub restore / prune commands", () => {
 
   it("ub prune with no app and no --all is an error and prunes nothing", async () => {
     await expect(cmds.ubPruneCommand(undefined, {})).rejects.toThrow(/--all/);
-    await expect(cmds.ubPruneCommand("/Apps/Foo.app", { all: true })).rejects.toThrow(/not both/);
+    await expect(
+      cmds.ubPruneCommand("/Apps/Foo.app", { all: true }),
+    ).rejects.toThrow(/not both/);
     expect(h.ensureAgentHome).not.toHaveBeenCalled();
     expect(h.acquireLock).not.toHaveBeenCalled();
     expect(h.pruneBackups).not.toHaveBeenCalled();
@@ -143,7 +192,9 @@ describe("ub restore / prune commands", () => {
   it("a busy lock is an error and touches nothing", async () => {
     h.acquireLock.mockResolvedValue(null);
     const busy = "agent busy: another squeaky run holds /h/agent.lock";
-    await expect(cmds.ubPruneCommand(undefined, { all: true })).rejects.toThrow(busy);
+    await expect(cmds.ubPruneCommand(undefined, { all: true })).rejects.toThrow(
+      busy,
+    );
     await expect(cmds.ubRestoreCommand("/Apps/Foo.app")).rejects.toThrow(busy);
     expect(h.pruneBackups).not.toHaveBeenCalled();
     expect(h.recoverJournal).not.toHaveBeenCalled();
@@ -152,27 +203,48 @@ describe("ub restore / prune commands", () => {
 
   it("releases the lock when the work throws", async () => {
     h.pruneBackups.mockRejectedValue(new Error("EACCES"));
-    await expect(cmds.ubPruneCommand(undefined, { all: true })).rejects.toThrow("EACCES");
+    await expect(cmds.ubPruneCommand(undefined, { all: true })).rejects.toThrow(
+      "EACCES",
+    );
     h.restoreApp.mockRejectedValue(new Error("boom"));
-    await expect(cmds.ubRestoreCommand("/Apps/Foo.app")).rejects.toThrow("boom");
+    await expect(cmds.ubRestoreCommand("/Apps/Foo.app")).rejects.toThrow(
+      "boom",
+    );
     expect(h.release).toHaveBeenCalledTimes(2);
   });
 
   it("prune that had to keep a referenced backup fails", async () => {
-    h.pruneBackups.mockResolvedValue({ removedDirs: [], freedBytes: 0, heldDirs: ["/h/backups/x/1-r"] });
-    await expect(cmds.ubPruneCommand("/Apps/Foo.app", {})).rejects.toThrow(/1 backup\(s\) kept/);
+    h.pruneBackups.mockResolvedValue({
+      removedDirs: [],
+      freedBytes: 0,
+      heldDirs: ["/h/backups/x/1-r"],
+    });
+    await expect(cmds.ubPruneCommand("/Apps/Foo.app", {})).rejects.toThrow(
+      /1 backup\(s\) kept/,
+    );
   });
 
   it("restore recovers interrupted runs first, then restores; only restored / nothing-to-do succeed", async () => {
     await cmds.ubRestoreCommand("/Apps/Foo.app");
     expect(h.recoverJournal).toHaveBeenCalledWith(HOME, "lock-run");
     expect(h.restoreApp).toHaveBeenCalledWith(HOME, "/Apps/Foo.app");
-    expect(h.recoverJournal.mock.invocationCallOrder[0]).toBeLessThan(h.restoreApp.mock.invocationCallOrder[0]);
+    expect(h.recoverJournal.mock.invocationCallOrder[0]).toBeLessThan(
+      h.restoreApp.mock.invocationCallOrder[0],
+    );
     h.restoreApp.mockResolvedValue({ status: "nothing-to-do", notes: [] });
-    await expect(cmds.ubRestoreCommand("/Apps/Foo.app")).resolves.toBeUndefined();
-    for (const status of ["superseded", "restore-failed", "unreachable", "no-record"]) {
+    await expect(
+      cmds.ubRestoreCommand("/Apps/Foo.app"),
+    ).resolves.toBeUndefined();
+    for (const status of [
+      "superseded",
+      "restore-failed",
+      "unreachable",
+      "no-record",
+    ]) {
       h.restoreApp.mockResolvedValue({ status, notes: ["why"] });
-      await expect(cmds.ubRestoreCommand("/Apps/Foo.app")).rejects.toThrow(`Foo was not restored: ${status}`);
+      await expect(cmds.ubRestoreCommand("/Apps/Foo.app")).rejects.toThrow(
+        `Foo was not restored: ${status}`,
+      );
     }
     expect(h.release).toHaveBeenCalledTimes(6);
   });

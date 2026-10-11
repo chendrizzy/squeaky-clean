@@ -62,15 +62,19 @@ describe("parseXmlPlist on hostile input (c5)", () => {
   it("1 MB of unterminated comments throws in under 1 s", () => {
     const xml = "<!-- a\n".repeat(Math.ceil((1024 * 1024) / 7));
     const t = performance.now();
-    expect(() => parseXmlPlist(xml)).toThrow(new PlistParseError("unterminated comment"));
+    expect(() => parseXmlPlist(xml)).toThrow(
+      new PlistParseError("unterminated comment"),
+    );
     expect(performance.now() - t).toBeLessThan(1000);
   });
 
   it("an unterminated tag or CDATA section throws", () => {
-    expect(() => parseXmlPlist(`<plist><dict/></plist><`)).toThrow(new PlistParseError("unterminated tag"));
-    expect(() => parseXmlPlist(`<plist><string><![CDATA[x</string></plist>`)).toThrow(
-      new PlistParseError("unterminated CDATA"),
+    expect(() => parseXmlPlist(`<plist><dict/></plist><`)).toThrow(
+      new PlistParseError("unterminated tag"),
     );
+    expect(() =>
+      parseXmlPlist(`<plist><string><![CDATA[x</string></plist>`),
+    ).toThrow(new PlistParseError("unterminated CDATA"));
   });
 });
 
@@ -94,12 +98,12 @@ describe("readPlistFile", () => {
 
   it("wraps plutil spawn failures in PlistParseError", async () => {
     vol.fromJSON({ "/x/Info.plist": "bplist00garbage" });
-    const spy = vi
-      .spyOn(cp, "execFile")
-      .mockImplementation(((...a: unknown[]) => {
-        (a[a.length - 1] as (e: Error) => void)(new Error("boom"));
-        return {} as cp.ChildProcess;
-      }) as unknown as typeof cp.execFile);
+    const spy = vi.spyOn(cp, "execFile").mockImplementation(((
+      ...a: unknown[]
+    ) => {
+      (a[a.length - 1] as (e: Error) => void)(new Error("boom"));
+      return {} as cp.ChildProcess;
+    }) as unknown as typeof cp.execFile);
     syncBuiltinESMExports();
     await expect(
       readPlistFile("/x/Info.plist", { allowSpawn: true }),

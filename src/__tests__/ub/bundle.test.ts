@@ -35,7 +35,12 @@ const xmlPlist = (d: Record<string, string>): string =>
 
 describe("readMachOSlices", () => {
   it("reads fat arm64+x86_64", async () => {
-    vol.fromJSON({ "/b": fat([[0x0100000c, 0], [0x01000007, 3]]) });
+    vol.fromJSON({
+      "/b": fat([
+        [0x0100000c, 0],
+        [0x01000007, 3],
+      ]),
+    });
     expect((await readMachOSlices("/b")).map((s) => s.arch)).toEqual([
       "arm64",
       "x86_64",
@@ -43,15 +48,30 @@ describe("readMachOSlices", () => {
   });
 
   it("distinguishes arm64e by cpusubtype (masking capability bits)", async () => {
-    vol.fromJSON({ "/b": fat([[0x0100000c, 0x80000002], [0x01000007, 3]]) });
+    vol.fromJSON({
+      "/b": fat([
+        [0x0100000c, 0x80000002],
+        [0x01000007, 3],
+      ]),
+    });
     const s = await readMachOSlices("/b");
-    expect(s[0]).toEqual({ arch: "arm64e", cputype: 0x0100000c, cpusubtype: 2 });
+    expect(s[0]).toEqual({
+      arch: "arm64e",
+      cputype: 0x0100000c,
+      cpusubtype: 2,
+    });
     expect(s[1].cpusubtype).toBe(3);
   });
 
   it("reads fat64 headers (32-byte entries)", async () => {
     vol.fromJSON({
-      "/b": fat([[0x0100000c, 0], [0x01000007, 3]], 0xcafebabf),
+      "/b": fat(
+        [
+          [0x0100000c, 0],
+          [0x01000007, 3],
+        ],
+        0xcafebabf,
+      ),
     });
     expect((await readMachOSlices("/b")).map((s) => s.arch)).toEqual([
       "arm64",
@@ -67,7 +87,12 @@ describe("readMachOSlices", () => {
   });
 
   it("maps unknown cputypes to other and i386", async () => {
-    vol.fromJSON({ "/b": fat([[7, 3], [0x12, 0]]) });
+    vol.fromJSON({
+      "/b": fat([
+        [7, 3],
+        [0x12, 0],
+      ]),
+    });
     expect((await readMachOSlices("/b")).map((s) => s.arch)).toEqual([
       "i386",
       "other",
@@ -90,14 +115,25 @@ describe("readMachOSlices", () => {
 
   it("never opens a dataless (offloaded) file: no blocks but a nonzero size (T11-R6)", async () => {
     // memfs reports blocks: 1 for every file, so only this mocked stat is dataless
-    vol.fromJSON({ "/b": fat([[0x0100000c, 0], [0x01000007, 3]]) });
+    vol.fromJSON({
+      "/b": fat([
+        [0x0100000c, 0],
+        [0x01000007, 3],
+      ]),
+    });
     const open = vi.spyOn(fs.promises, "open");
-    vi.spyOn(fs.promises, "stat").mockResolvedValueOnce({ blocks: 0, size: 4096 } as never);
+    vi.spyOn(fs.promises, "stat").mockResolvedValueOnce({
+      blocks: 0,
+      size: 4096,
+    } as never);
     try {
       expect(await readMachOSlices("/b")).toEqual([]);
       expect(open).not.toHaveBeenCalled();
       // positive control: the same file with its data on disk is opened and read
-      expect((await readMachOSlices("/b")).map((s) => s.arch)).toEqual(["arm64", "x86_64"]);
+      expect((await readMachOSlices("/b")).map((s) => s.arch)).toEqual([
+        "arm64",
+        "x86_64",
+      ]);
       expect(open).toHaveBeenCalledTimes(1);
     } finally {
       vi.restoreAllMocks();
@@ -110,7 +146,10 @@ describe("classifySlices", () => {
     [["arm64", "x86_64"], { thinnable: true }],
     [["arm64", "x86_64", "i386"], { thinnable: true }],
     [["arm64e", "x86_64"], { thinnable: false, reason: "other-slice" }],
-    [["arm64", "x86_64", "arm64e"], { thinnable: false, reason: "other-slice" }],
+    [
+      ["arm64", "x86_64", "arm64e"],
+      { thinnable: false, reason: "other-slice" },
+    ],
     [["arm64", "x86_64", "other"], { thinnable: false, reason: "other-slice" }],
     [["x86_64", "i386"], { thinnable: false, reason: "no-arm64" }],
     [["arm64", "i386"], { thinnable: false, reason: "no-x86" }],
@@ -135,7 +174,9 @@ describe("readBundleInfo", () => {
         CFBundleVersion: "42",
       }),
     });
-    expect(await readBundleInfo("/Apps/Foo.app", { allowSpawn: false })).toEqual({
+    expect(
+      await readBundleInfo("/Apps/Foo.app", { allowSpawn: false }),
+    ).toEqual({
       appPath: "/Apps/Foo.app",
       realpath: "/Apps/Foo.app",
       bundleId: "com.ex.foo",
@@ -150,11 +191,13 @@ describe("readBundleInfo", () => {
     vol.fromJSON({
       "/A.app/Contents/Info.plist": xmlPlist({ CFBundleExecutable: "A" }),
     });
-    expect(await readBundleInfo("/A.app", { allowSpawn: false })).toMatchObject({
-      bundleId: null,
-      version: "",
-      build: "",
-    });
+    expect(await readBundleInfo("/A.app", { allowSpawn: false })).toMatchObject(
+      {
+        bundleId: null,
+        version: "",
+        build: "",
+      },
+    );
   });
 
   it.each(["../evil", "a/b", ".", ".."])(

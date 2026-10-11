@@ -31,8 +31,14 @@ export class NoStagingError extends Error {
 
 export function agentHomeDir(): string {
   const override = process.env.SQUEAKY_AGENT_HOME;
-  if (override && (process.env.VITEST || process.env.NODE_ENV === "test")) return override;
-  return path.join(os.homedir(), "Library", "Application Support", "squeaky-clean");
+  if (override && (process.env.VITEST || process.env.NODE_ENV === "test"))
+    return override;
+  return path.join(
+    os.homedir(),
+    "Library",
+    "Application Support",
+    "squeaky-clean",
+  );
 }
 
 async function ensureSecureDir(dir: string): Promise<void> {
@@ -47,8 +53,12 @@ async function ensureSecureDir(dir: string): Promise<void> {
   }
   if (st.isSymbolicLink()) throw new AgentHomeError(`${dir} is a symlink`);
   if (!st.isDirectory()) throw new AgentHomeError(`${dir} is not a directory`);
-  if (st.uid !== process.getuid!()) throw new AgentHomeError(`${dir} is not owned by the current user`);
-  if ((st.mode & 0o077) !== 0) throw new AgentHomeError(`${dir} is accessible by group/other (mode ${(st.mode & 0o777).toString(8)})`);
+  if (st.uid !== process.getuid!())
+    throw new AgentHomeError(`${dir} is not owned by the current user`);
+  if ((st.mode & 0o077) !== 0)
+    throw new AgentHomeError(
+      `${dir} is accessible by group/other (mode ${(st.mode & 0o777).toString(8)})`,
+    );
 }
 
 export async function ensureAgentHome(): Promise<AgentHome> {
@@ -59,18 +69,26 @@ export async function ensureAgentHome(): Promise<AgentHome> {
     backups: path.join(home, "backups"),
     journal: path.join(home, "journal"),
   };
-  for (const d of [h.home, h.staging, h.backups, h.journal]) await ensureSecureDir(d);
+  for (const d of [h.home, h.staging, h.backups, h.journal])
+    await ensureSecureDir(d);
   return h;
 }
 
 export function isInside(child: string, parent: string): boolean {
-  return child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep) && child !== parent;
+  return (
+    child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep) &&
+    child !== parent
+  );
 }
 
-export async function resolveCandidate(bundleReal: string, rel: string): Promise<string> {
+export async function resolveCandidate(
+  bundleReal: string,
+  rel: string,
+): Promise<string> {
   if (path.isAbsolute(rel)) throw new UnsafePathError(`absolute path: ${rel}`);
   const segs = rel.split(path.sep);
-  if (segs.some((s) => s === ".." || s === "." || s === "")) throw new UnsafePathError(`unsafe segment in: ${rel}`);
+  if (segs.some((s) => s === ".." || s === "." || s === ""))
+    throw new UnsafePathError(`unsafe segment in: ${rel}`);
   let cur = bundleReal;
   let st: fs.Stats | undefined;
   for (const seg of segs) {
@@ -80,13 +98,16 @@ export async function resolveCandidate(bundleReal: string, rel: string): Promise
     } catch {
       throw new UnsafePathError(`cannot stat ${cur}`);
     }
-    if (st.isSymbolicLink()) throw new UnsafePathError(`symlink component: ${cur}`);
+    if (st.isSymbolicLink())
+      throw new UnsafePathError(`symlink component: ${cur}`);
   }
-  if (!st || !st.isFile()) throw new UnsafePathError(`not a regular file: ${cur}`);
+  if (!st || !st.isFile())
+    throw new UnsafePathError(`not a regular file: ${cur}`);
   const real = await fs.promises.realpath(cur).catch(() => {
     throw new UnsafePathError(`cannot resolve ${cur}`);
   });
-  if (!isInside(real, bundleReal)) throw new UnsafePathError(`escapes bundle: ${real}`);
+  if (!isInside(real, bundleReal))
+    throw new UnsafePathError(`escapes bundle: ${real}`);
   return cur;
 }
 
@@ -95,12 +116,19 @@ export async function resolveCandidate(bundleReal: string, rel: string): Promise
  * the HANDLE must fstat as a regular file of at most maxBytes (a symlink to a regular file is fine). A FIFO, device,
  * socket or directory throws UnsafePathError. The caller closes the handle.
  */
-export async function openRegularFile(p: string, maxBytes = Infinity): Promise<{ fh: fs.promises.FileHandle; st: fs.Stats }> {
-  const fh = await fs.promises.open(p, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK);
+export async function openRegularFile(
+  p: string,
+  maxBytes = Infinity,
+): Promise<{ fh: fs.promises.FileHandle; st: fs.Stats }> {
+  const fh = await fs.promises.open(
+    p,
+    fs.constants.O_RDONLY | fs.constants.O_NONBLOCK,
+  );
   try {
     const st = await fh.stat();
     if (!st.isFile()) throw new UnsafePathError(`not a regular file: ${p}`);
-    if (st.size > maxBytes) throw new UnsafePathError(`larger than ${maxBytes} bytes: ${p}`);
+    if (st.size > maxBytes)
+      throw new UnsafePathError(`larger than ${maxBytes} bytes: ${p}`);
     return { fh, st };
   } catch (e) {
     await fh.close().catch(() => {});
@@ -109,7 +137,10 @@ export async function openRegularFile(p: string, maxBytes = Infinity): Promise<{
 }
 
 /** The whole of a regular file (see openRegularFile), read from the checked handle and never past its fstat size. */
-export async function readRegularFile(p: string, maxBytes: number): Promise<Buffer> {
+export async function readRegularFile(
+  p: string,
+  maxBytes: number,
+): Promise<Buffer> {
   const { fh, st } = await openRegularFile(p, maxBytes);
   try {
     const buf = Buffer.alloc(st.size);
@@ -135,7 +166,10 @@ export interface PathDeps {
 }
 
 /** Walk up from p until the parent is on another device or p is "/". */
-export async function mountPointOf(p: string, deps: PathDeps = {}): Promise<string> {
+export async function mountPointOf(
+  p: string,
+  deps: PathDeps = {},
+): Promise<string> {
   const stat = deps.stat ?? fs.promises.stat;
   let cur = path.resolve(p);
   let dev = (await stat(cur)).dev;
@@ -164,21 +198,39 @@ export async function makeStagingDir(
   const uid = process.getuid!();
   try {
     const mount = await mountPointOf(bundleReal, deps);
-    const dir = await fs.promises.mkdtemp(path.join(mount, `.squeaky-ub-staging-${uid}-`));
+    const dir = await fs.promises.mkdtemp(
+      path.join(mount, `.squeaky-ub-staging-${uid}-`),
+    );
     const st = await fs.promises.lstat(dir);
-    if (!st.isDirectory() || st.isSymbolicLink() || st.uid !== uid) throw new Error(`unsafe staging dir ${dir}`);
+    if (!st.isDirectory() || st.isSymbolicLink() || st.uid !== uid)
+      throw new Error(`unsafe staging dir ${dir}`);
     await fs.promises.chmod(dir, 0o700);
     return dir;
   } catch (e) {
-    throw new NoStagingError(`cannot create staging dir on the bundle's volume: ${(e as Error).message}`);
+    throw new NoStagingError(
+      `cannot create staging dir on the bundle's volume: ${(e as Error).message}`,
+    );
   }
 }
 
 /** Name of a bundle's per-app directory under backups/. */
 export function bundleHash(bundleReal: string): string {
-  return crypto.createHash("sha256").update(bundleReal).digest("hex").slice(0, 16);
+  return crypto
+    .createHash("sha256")
+    .update(bundleReal)
+    .digest("hex")
+    .slice(0, 16);
 }
 
-export function backupDirFor(home: AgentHome, bundleReal: string, build: string, runId: string): string {
-  return path.join(home.backups, bundleHash(bundleReal), `${sanitizeComponent(build)}-${runId}`);
+export function backupDirFor(
+  home: AgentHome,
+  bundleReal: string,
+  build: string,
+  runId: string,
+): string {
+  return path.join(
+    home.backups,
+    bundleHash(bundleReal),
+    `${sanitizeComponent(build)}-${runId}`,
+  );
 }

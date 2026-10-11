@@ -479,12 +479,16 @@ function rejectUbFlags(cmd: Command, allowed: string[] = []): void {
     .filter(([k, v]) => v !== undefined && !allowed.includes(k))
     .map(([k]) => k);
   if (set.length) {
-    throw new Error(`ub ${cmd.name()} does not take ${set.map((k) => `--${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`).join(", ")}`);
+    throw new Error(
+      `ub ${cmd.name()} does not take ${set.map((k) => `--${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`).join(", ")}`,
+    );
   }
 }
 
 ub.command("restore <app>")
-  .description("put back an app's original binaries from the backup its last thin kept (path to the .app)")
+  .description(
+    "put back an app's original binaries from the backup its last thin kept (path to the .app)",
+  )
   .action(async (app: string, _opts, cmd: Command) => {
     try {
       rejectUbFlags(cmd);
@@ -499,7 +503,9 @@ ub.command("restore <app>")
   });
 
 ub.command("prune [app]")
-  .description("release backups early: one app's (path to the .app), or every app's with --all")
+  .description(
+    "release backups early: one app's (path to the .app), or every app's with --all",
+  )
   .option("-a, --all", "release the backups of every app")
   .action(async (app: string | undefined, _opts, cmd: Command) => {
     try {

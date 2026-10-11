@@ -2,7 +2,13 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import type { BundleInfo } from "./bundle";
 
-export type AppClass = "mac-app-store" | "apple" | "chrome" | "microsoft" | "adobe" | "ilok-pace";
+export type AppClass =
+  | "mac-app-store"
+  | "apple"
+  | "chrome"
+  | "microsoft"
+  | "adobe"
+  | "ilok-pace";
 export interface AppProbe {
   hasMasReceipt: boolean;
   frameworkNames: string[];
@@ -19,13 +25,18 @@ const PREFIX_CLASSES: Array<[string, AppClass]> = [
   ["com.paceap.", "ilok-pace"],
 ];
 
-export function classifyApp(info: BundleInfo, probe: AppProbe): { cls: AppClass } | null {
+export function classifyApp(
+  info: BundleInfo,
+  probe: AppProbe,
+): { cls: AppClass } | null {
   if (probe.hasMasReceipt) return { cls: "mac-app-store" };
   const id = info.bundleId;
   if (id !== null) {
-    for (const [prefix, cls] of PREFIX_CLASSES) if (id.startsWith(prefix)) return { cls };
+    for (const [prefix, cls] of PREFIX_CLASSES)
+      if (id.startsWith(prefix)) return { cls };
   }
-  if (probe.frameworkNames.some((n) => PACE_RE.test(n))) return { cls: "ilok-pace" };
+  if (probe.frameworkNames.some((n) => PACE_RE.test(n)))
+    return { cls: "ilok-pace" };
   return null;
 }
 
@@ -36,9 +47,11 @@ export async function probeApp(realpath: string): Promise<AppProbe> {
     () => true,
     () => false,
   );
-  const frameworkNames = await fs.readdir(path.join(contents, "Frameworks")).then(
-    (names) => names.map(String),
-    () => [] as string[],
-  );
+  const frameworkNames = await fs
+    .readdir(path.join(contents, "Frameworks"))
+    .then(
+      (names) => names.map(String),
+      () => [] as string[],
+    );
   return { hasMasReceipt, frameworkNames };
 }

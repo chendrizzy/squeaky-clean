@@ -80,13 +80,27 @@ describe.skipIf(!gate)("ub paths", () => {
     fs.writeFileSync(path.join(bundle, "Contents/MacOS/real"), "x");
     fs.symlinkSync("/etc/hosts", path.join(bundle, "Contents/MacOS/link"));
     fs.symlinkSync("../../outside", path.join(bundle, "Contents/Frameworks"));
-    await expect(resolveCandidate(bundle, "Contents/MacOS/../../x")).rejects.toBeInstanceOf(UnsafePathError);
-    await expect(resolveCandidate(bundle, "/etc/hosts")).rejects.toBeInstanceOf(UnsafePathError);
-    await expect(resolveCandidate(bundle, "Contents/MacOS/link")).rejects.toBeInstanceOf(UnsafePathError);
-    await expect(resolveCandidate(bundle, "Contents/Frameworks/f")).rejects.toBeInstanceOf(UnsafePathError);
-    await expect(resolveCandidate(bundle, "Contents/MacOS")).rejects.toBeInstanceOf(UnsafePathError);
-    await expect(resolveCandidate(bundle, "Contents/MacOS/missing")).rejects.toBeInstanceOf(UnsafePathError);
-    expect(await resolveCandidate(bundle, "Contents/MacOS/real")).toBe(path.join(bundle, "Contents/MacOS/real"));
+    await expect(
+      resolveCandidate(bundle, "Contents/MacOS/../../x"),
+    ).rejects.toBeInstanceOf(UnsafePathError);
+    await expect(resolveCandidate(bundle, "/etc/hosts")).rejects.toBeInstanceOf(
+      UnsafePathError,
+    );
+    await expect(
+      resolveCandidate(bundle, "Contents/MacOS/link"),
+    ).rejects.toBeInstanceOf(UnsafePathError);
+    await expect(
+      resolveCandidate(bundle, "Contents/Frameworks/f"),
+    ).rejects.toBeInstanceOf(UnsafePathError);
+    await expect(
+      resolveCandidate(bundle, "Contents/MacOS"),
+    ).rejects.toBeInstanceOf(UnsafePathError);
+    await expect(
+      resolveCandidate(bundle, "Contents/MacOS/missing"),
+    ).rejects.toBeInstanceOf(UnsafePathError);
+    expect(await resolveCandidate(bundle, "Contents/MacOS/real")).toBe(
+      path.join(bundle, "Contents/MacOS/real"),
+    );
   });
 
   it("isInside rejects sibling prefix and the parent itself", () => {
@@ -137,7 +151,9 @@ describe.skipIf(!gate)("ub paths", () => {
     }) as unknown as typeof fs.promises.stat;
     const s = await makeStagingDir(h, bundle, "r1", { stat: fake });
     expect(path.dirname(s)).toBe(mnt);
-    expect(path.basename(s).startsWith(`.squeaky-ub-staging-${process.getuid!()}-`)).toBe(true);
+    expect(
+      path.basename(s).startsWith(`.squeaky-ub-staging-${process.getuid!()}-`),
+    ).toBe(true);
     expect(fs.statSync(s).mode & 0o777).toBe(0o700);
   });
 
@@ -152,7 +168,9 @@ describe.skipIf(!gate)("ub paths", () => {
       return { dev: s === mnt || s.startsWith(mnt + path.sep) ? 2 : 1 };
     }) as unknown as typeof fs.promises.stat;
     try {
-      await expect(makeStagingDir(h, path.join(mnt, "C.app"), "r1", { stat: fake })).rejects.toBeInstanceOf(NoStagingError);
+      await expect(
+        makeStagingDir(h, path.join(mnt, "C.app"), "r1", { stat: fake }),
+      ).rejects.toBeInstanceOf(NoStagingError);
     } finally {
       fs.chmodSync(mnt, 0o700);
     }
@@ -167,12 +185,21 @@ describe.skipIf(!gate)("ub paths", () => {
   });
 
   it("env override ignored outside test env", () => {
-    const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: process.env.HOME, SQUEAKY_AGENT_HOME: "/tmp/x" };
+    const env: NodeJS.ProcessEnv = {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      SQUEAKY_AGENT_HOME: "/tmp/x",
+    };
     const out = execFileSync(
       path.join(ROOT, "node_modules/.bin/tsx"),
-      ["-e", `import { agentHomeDir } from ${JSON.stringify(path.join(ROOT, "src/ub/paths.ts"))}; console.log(agentHomeDir());`],
+      [
+        "-e",
+        `import { agentHomeDir } from ${JSON.stringify(path.join(ROOT, "src/ub/paths.ts"))}; console.log(agentHomeDir());`,
+      ],
       { env, encoding: "utf8" },
     ).trim();
-    expect(out).toBe(path.join(os.homedir(), "Library/Application Support/squeaky-clean"));
+    expect(out).toBe(
+      path.join(os.homedir(), "Library/Application Support/squeaky-clean"),
+    );
   });
 });

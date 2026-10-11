@@ -6,7 +6,10 @@ import { sealFromPlist, loadSeal, classifyFile } from "../../ub/seal";
 const NESTED =
   "^(Frameworks|SharedFrameworks|PlugIns|Plug-ins|XPCServices|Helpers|MacOS|Library/(Automator|Spotlight|LoginItems))/";
 
-function sealFrom(o: { files2: Record<string, unknown>; rules2: Record<string, unknown> }) {
+function sealFrom(o: {
+  files2: Record<string, unknown>;
+  rules2: Record<string, unknown>;
+}) {
   return sealFromPlist({ files2: o.files2, rules2: o.rules2 } as never)!;
 }
 
@@ -42,7 +45,8 @@ describe("classifyFile", () => {
     ["MacOS/badcd", "data-sealed"],
     ["MacOS/arr", "unsealed"],
   ])("classifyFile(%s) = %s", (rel, cls) =>
-    expect(classifyFile(seal, rel, "MacOS/App")).toBe(cls));
+    expect(classifyFile(seal, rel, "MacOS/App")).toBe(cls),
+  );
 
   it("main wins even without a files2 entry; excluded beats main-less sealed", () => {
     expect(classifyFile(seal, "MacOS/nope", "MacOS/nope")).toBe("main");
@@ -52,13 +56,20 @@ describe("classifyFile", () => {
     const EVIL = "(a+)+$";
     const spy = vi.spyOn(globalThis, "RegExp");
     try {
-      const s = sealFrom({ files2: { "MacOS/h": { cdhash: "AA" } }, rules2: { [EVIL]: { nested: true }, "^(": { nested: true } } });
+      const s = sealFrom({
+        files2: { "MacOS/h": { cdhash: "AA" } },
+        rules2: { [EVIL]: { nested: true }, "^(": { nested: true } },
+      });
       expect(classifyFile(s, "MacOS/h", "MacOS/App")).toBe("cdhash-nested");
-      expect(spy.mock.calls.filter((c) => c[0] === EVIL || c[0] === "^(")).toEqual([]);
+      expect(
+        spy.mock.calls.filter((c) => c[0] === EVIL || c[0] === "^("),
+      ).toEqual([]);
     } finally {
       spy.mockRestore();
     }
-    const bare = sealFromPlist({ files2: { "MacOS/h": { cdhash: "AA" }, "PlugIns/p": { cdhash: "BB" } } } as never)!;
+    const bare = sealFromPlist({
+      files2: { "MacOS/h": { cdhash: "AA" }, "PlugIns/p": { cdhash: "BB" } },
+    } as never)!;
     expect(classifyFile(bare, "MacOS/h", "MacOS/App")).toBe("cdhash-nested");
     expect(classifyFile(bare, "PlugIns/p", "MacOS/App")).toBe("unsealed");
   });
@@ -90,7 +101,9 @@ describe("loadSeal", () => {
     vol.fromJSON({ [p]: "<plist><array/></plist>" });
     expect(await loadSeal("/b.app")).toBeNull();
     vol.reset();
-    vol.fromJSON({ [p]: "<plist><dict><key>a</key><string>b</string></dict></plist>" });
+    vol.fromJSON({
+      [p]: "<plist><dict><key>a</key><string>b</string></dict></plist>",
+    });
     expect(await loadSeal("/b.app")).toBeNull();
   });
   it("returns null for binary plist (never spawns)", async () => {

@@ -12,16 +12,25 @@ describe.skipIf(!gate)("ub run lock", () => {
   let tmp: string;
   let h: AgentHome;
   let lockPath: string;
-  const writeLock = (o: object) => fs.writeFileSync(lockPath, JSON.stringify(o), { mode: 0o600 });
+  const writeLock = (o: object) =>
+    fs.writeFileSync(lockPath, JSON.stringify(o), { mode: 0o600 });
   const deadPid = () => spawnSync("/usr/bin/true").pid!;
   // what a live holder records: lstart under LC_ALL=C TZ=UTC0
   const ourStart = () =>
-    spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(process.pid)], { encoding: "utf8", env: { ...process.env, LC_ALL: "C", TZ: "UTC0" } }).stdout.trim();
+    spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(process.pid)], {
+      encoding: "utf8",
+      env: { ...process.env, LC_ALL: "C", TZ: "UTC0" },
+    }).stdout.trim();
   let claimPath: string;
 
   beforeEach(() => {
     tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ub-lock-")));
-    h = { home: tmp, staging: path.join(tmp, "staging"), backups: path.join(tmp, "backups"), journal: path.join(tmp, "journal") };
+    h = {
+      home: tmp,
+      staging: path.join(tmp, "staging"),
+      backups: path.join(tmp, "backups"),
+      journal: path.join(tmp, "journal"),
+    };
     lockPath = path.join(tmp, "agent.lock");
     claimPath = lockPath + ".claim";
   });
@@ -36,7 +45,11 @@ describe.skipIf(!gate)("ub run lock", () => {
   });
 
   it("takes over a lock whose pid is dead and leaves no stale files", async () => {
-    writeLock({ runId: "x", pid: deadPid(), processStart: "Thu Jan  1 00:00:00 1970" });
+    writeLock({
+      runId: "x",
+      pid: deadPid(),
+      processStart: "Thu Jan  1 00:00:00 1970",
+    });
     const a = await acquireLock(h, { waitMs: 0 });
     expect(a).not.toBeNull();
     expect((await readLock(h))!.runId).toBe(a!.runId);
@@ -45,7 +58,11 @@ describe.skipIf(!gate)("ub run lock", () => {
   });
 
   it("takes over on pid reuse (live pid, different start time)", async () => {
-    writeLock({ runId: "x", pid: process.pid, processStart: "Thu Jan  1 00:00:00 1970" });
+    writeLock({
+      runId: "x",
+      pid: process.pid,
+      processStart: "Thu Jan  1 00:00:00 1970",
+    });
     expect(await acquireLock(h, { waitMs: 0 })).not.toBeNull();
   });
 
@@ -69,13 +86,19 @@ describe.skipIf(!gate)("ub run lock", () => {
 
   it("a lock that becomes valid within the poll is respected (its writer was between create and write)", async () => {
     fs.writeFileSync(lockPath, "");
-    const valid = JSON.stringify({ runId: "w", pid: process.pid, processStart: ourStart() });
+    const valid = JSON.stringify({
+      runId: "w",
+      pid: process.pid,
+      processStart: ourStart(),
+    });
     // The writer finishes 100 ms after acquireLock first READS the empty lock (not after it starts, which
     // includes a ps spawn): inside the 1000 ms poll, long after an acquirer without one would have taken over.
     let t: NodeJS.Timeout | undefined;
     let armed = true;
     const realOpen = fs.promises.open;
-    const spy = vi.spyOn(fs.promises, "open").mockImplementation((async (...a: Parameters<typeof realOpen>) => {
+    const spy = vi.spyOn(fs.promises, "open").mockImplementation((async (
+      ...a: Parameters<typeof realOpen>
+    ) => {
       const fh = await realOpen(...a);
       if (armed && a[0] === lockPath && a[1] === "r") {
         armed = false;
@@ -99,11 +122,21 @@ describe.skipIf(!gate)("ub run lock", () => {
   });
 
   it("a stalled claimer whose claim was cleared and replaced neither proceeds nor unlinks the other claim", async () => {
-    writeLock({ runId: "x", pid: deadPid(), processStart: "Thu Jan  1 00:00:00 1970" });
-    const other = JSON.stringify({ runId: "c", pid: process.pid, processStart: ourStart() });
+    writeLock({
+      runId: "x",
+      pid: deadPid(),
+      processStart: "Thu Jan  1 00:00:00 1970",
+    });
+    const other = JSON.stringify({
+      runId: "c",
+      pid: process.pid,
+      processStart: ourStart(),
+    });
     let armed = true;
     const realOpen = fs.promises.open;
-    const spy = vi.spyOn(fs.promises, "open").mockImplementation((async (...a: Parameters<typeof realOpen>) => {
+    const spy = vi.spyOn(fs.promises, "open").mockImplementation((async (
+      ...a: Parameters<typeof realOpen>
+    ) => {
       const fh = await realOpen(...a);
       if (armed && a[0] === claimPath && typeof a[1] === "number") {
         armed = false;
@@ -125,19 +158,29 @@ describe.skipIf(!gate)("ub run lock", () => {
   });
 
   it("a lock replaced between the re-check and the rename is put back, not displaced", async () => {
-    writeLock({ runId: "x", pid: deadPid(), processStart: "Thu Jan  1 00:00:00 1970" });
-    const live = JSON.stringify({ runId: "live", pid: process.pid, processStart: ourStart() });
+    writeLock({
+      runId: "x",
+      pid: deadPid(),
+      processStart: "Thu Jan  1 00:00:00 1970",
+    });
+    const live = JSON.stringify({
+      runId: "live",
+      pid: process.pid,
+      processStart: ourStart(),
+    });
     let liveIno = 0;
     const realRename = fs.promises.rename;
-    const spy = vi.spyOn(fs.promises, "rename").mockImplementation(async (from, to) => {
-      if (from === lockPath && !liveIno) {
-        // a racer replaced the dead lock just after this acquirer re-checked it
-        fs.writeFileSync(lockPath + ".new", live, { mode: 0o600 });
-        fs.renameSync(lockPath + ".new", lockPath);
-        liveIno = fs.statSync(lockPath).ino;
-      }
-      return realRename(from, to);
-    });
+    const spy = vi
+      .spyOn(fs.promises, "rename")
+      .mockImplementation(async (from, to) => {
+        if (from === lockPath && !liveIno) {
+          // a racer replaced the dead lock just after this acquirer re-checked it
+          fs.writeFileSync(lockPath + ".new", live, { mode: 0o600 });
+          fs.renameSync(lockPath + ".new", lockPath);
+          liveIno = fs.statSync(lockPath).ino;
+        }
+        return realRename(from, to);
+      });
     try {
       expect(await acquireLock(h, { waitMs: 0, pollMs: 20 })).toBeNull();
     } finally {
@@ -150,8 +193,19 @@ describe.skipIf(!gate)("ub run lock", () => {
   });
 
   it("a leftover claim from a dead (or never-written) claimer is cleared and the stale lock taken over", async () => {
-    for (const claim of [JSON.stringify({ runId: "c", pid: deadPid(), processStart: "Thu Jan  1 00:00:00 1970" }), ""]) {
-      writeLock({ runId: "x", pid: deadPid(), processStart: "Thu Jan  1 00:00:00 1970" });
+    for (const claim of [
+      JSON.stringify({
+        runId: "c",
+        pid: deadPid(),
+        processStart: "Thu Jan  1 00:00:00 1970",
+      }),
+      "",
+    ]) {
+      writeLock({
+        runId: "x",
+        pid: deadPid(),
+        processStart: "Thu Jan  1 00:00:00 1970",
+      });
       fs.writeFileSync(claimPath, claim, { mode: 0o600 });
       const a = await acquireLock(h, { waitMs: 0, pollMs: 20 });
       expect(a).not.toBeNull();
@@ -161,8 +215,16 @@ describe.skipIf(!gate)("ub run lock", () => {
   });
 
   it("a live claimer's claim is respected: no takeover, claim untouched", async () => {
-    writeLock({ runId: "x", pid: deadPid(), processStart: "Thu Jan  1 00:00:00 1970" });
-    const live = JSON.stringify({ runId: "c", pid: process.pid, processStart: ourStart() });
+    writeLock({
+      runId: "x",
+      pid: deadPid(),
+      processStart: "Thu Jan  1 00:00:00 1970",
+    });
+    const live = JSON.stringify({
+      runId: "c",
+      pid: process.pid,
+      processStart: ourStart(),
+    });
     fs.writeFileSync(claimPath, live, { mode: 0o600 });
     expect(await acquireLock(h, { waitMs: 0, pollMs: 20 })).toBeNull();
     expect(fs.readFileSync(claimPath, "utf8")).toBe(live);
@@ -170,7 +232,11 @@ describe.skipIf(!gate)("ub run lock", () => {
   });
 
   it("an overlong runId in the lock never becomes a file name (no ENAMETOOLONG)", async () => {
-    writeLock({ runId: "r".repeat(1000), pid: deadPid(), processStart: "Thu Jan  1 00:00:00 1970" });
+    writeLock({
+      runId: "r".repeat(1000),
+      pid: deadPid(),
+      processStart: "Thu Jan  1 00:00:00 1970",
+    });
     const a = await acquireLock(h, { waitMs: 0, pollMs: 20 });
     expect(a).not.toBeNull();
     expect(fs.readdirSync(tmp)).toEqual(["agent.lock"]);
@@ -178,8 +244,14 @@ describe.skipIf(!gate)("ub run lock", () => {
 
   it("exactly one of 8 concurrent acquirers on a stale lock wins", async () => {
     for (let i = 0; i < 20; i++) {
-      writeLock({ runId: "x", pid: deadPid(), processStart: "Thu Jan  1 00:00:00 1970" });
-      const hs = await Promise.all(Array.from({ length: 8 }, () => acquireLock(h, { waitMs: 0 })));
+      writeLock({
+        runId: "x",
+        pid: deadPid(),
+        processStart: "Thu Jan  1 00:00:00 1970",
+      });
+      const hs = await Promise.all(
+        Array.from({ length: 8 }, () => acquireLock(h, { waitMs: 0 })),
+      );
       expect(hs.filter(Boolean)).toHaveLength(1);
       expect(fs.readdirSync(tmp)).toEqual(["agent.lock"]);
       await hs.find(Boolean)!.release();
@@ -188,9 +260,16 @@ describe.skipIf(!gate)("ub run lock", () => {
 
   it("a live holder is not stolen when the checker runs under another TZ/locale", async () => {
     const start = (env: NodeJS.ProcessEnv) =>
-      spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(process.pid)], { encoding: "utf8", env }).stdout.trim();
+      spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(process.pid)], {
+        encoding: "utf8",
+        env,
+      }).stdout.trim();
     // Canonical form is what the holder records (LC_ALL=C, TZ=UTC0).
-    writeLock({ runId: "other", pid: process.pid, processStart: start({ ...process.env, LC_ALL: "C", TZ: "UTC0" }) });
+    writeLock({
+      runId: "other",
+      pid: process.pid,
+      processStart: start({ ...process.env, LC_ALL: "C", TZ: "UTC0" }),
+    });
     const saved = { TZ: process.env.TZ, LC_ALL: process.env.LC_ALL };
     process.env.TZ = "Asia/Tokyo";
     process.env.LC_ALL = "de_DE.UTF-8";

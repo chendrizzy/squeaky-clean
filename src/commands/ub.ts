@@ -40,10 +40,12 @@ interface UBOptions {
 
 /** Recovery of interrupted earlier runs and housekeeping notes (e.g. a failed prune), under their own heading. */
 function printHousekeeping(cleaner: UniversalBinaryCleaner): void {
-  if (cleaner.lastRecovery.length === 0 && cleaner.lastNotes.length === 0) return;
+  if (cleaner.lastRecovery.length === 0 && cleaner.lastNotes.length === 0)
+    return;
   console.log("\nRecovery and housekeeping:");
   for (const r of cleaner.lastRecovery) {
-    if (r.result === "restore-failed" || r.result === "unreachable") printError(recoveryLine(r));
+    if (r.result === "restore-failed" || r.result === "unreachable")
+      printError(recoveryLine(r));
     else printInfo(recoveryLine(r));
   }
   for (const n of cleaner.lastNotes) printWarning(printable(n));
@@ -101,9 +103,13 @@ export async function ubCommand(options: UBOptions): Promise<void> {
       console.log("\n📋 Universal Binaries found:\n");
 
       for (const cat of thinnable) {
-        console.log(`  ${symbols.binary} ${printable(cat.name)}  [${printable(cat.id)}]`);
+        console.log(
+          `  ${symbols.binary} ${printable(cat.name)}  [${printable(cat.id)}]`,
+        );
         console.log(`     ${printable(cat.paths[0])}`);
-        console.log(`     Potential savings: ${formatSizeWithColor(cat.size || 0)}`);
+        console.log(
+          `     Potential savings: ${formatSizeWithColor(cat.size || 0)}`,
+        );
         console.log();
       }
       printSkippedByDefault();
@@ -156,9 +162,7 @@ export async function ubCommand(options: UBOptions): Promise<void> {
     } else {
       // Interactive selection: an explicit tick may include an auto-ignored app (spec §6.2)
       console.log();
-      printWarning(
-        "Thinning removes x86_64 code from application binaries.",
-      );
+      printWarning("Thinning removes x86_64 code from application binaries.");
       printWarning(
         `   Originals are kept as backups for ${DEFAULT_KEEP_BACKUP_DAYS} days; an app that fails signature verification is rolled back.`,
       );
@@ -213,7 +217,9 @@ export async function ubCommand(options: UBOptions): Promise<void> {
     printInfo(
       `Will thin ${willThin.length} of ${binariesToThin.length} selected application(s)`,
     );
-    printInfo(`Expected space savings: ${formatSizeWithColor(expectedSavings)}`);
+    printInfo(
+      `Expected space savings: ${formatSizeWithColor(expectedSavings)}`,
+    );
     if (willSkip.length > 0) {
       console.log("\nWill skip:\n");
       for (const o of willSkip) console.log(`  ${outcomeLine(o)}`);
@@ -295,10 +301,13 @@ export async function ubCommand(options: UBOptions): Promise<void> {
 }
 
 /** Runs fn under the agent lock (the same wait as a thinning run). A busy lock is an error: nothing is touched. */
-async function withAgentLock<T>(fn: (home: AgentHome, runId: string) => Promise<T>): Promise<T> {
+async function withAgentLock<T>(
+  fn: (home: AgentHome, runId: string) => Promise<T>,
+): Promise<T> {
   const home = await ensureAgentHome();
   const lock = await acquireLock(home, { waitMs: LOCK_WAIT_MS });
-  if (!lock) throw new Error(`agent busy: another squeaky run holds ${lockPath(home)}`);
+  if (!lock)
+    throw new Error(`agent busy: another squeaky run holds ${lockPath(home)}`);
   try {
     return await fn(home, lock.runId);
   } finally {
@@ -312,24 +321,40 @@ export async function ubRestoreCommand(app: string): Promise<void> {
   const { status, notes } = await withAgentLock(async (home, runId) => {
     // an interrupted run is finished by its own journal entry first (it may be this very app)
     for (const r of await recoverJournal(home, runId)) {
-      if (r.result === "restore-failed" || r.result === "unreachable") printError(recoveryLine(r));
+      if (r.result === "restore-failed" || r.result === "unreachable")
+        printError(recoveryLine(r));
       else printInfo(recoveryLine(r));
     }
     return restoreAppFromJournal(home, app);
   });
-  if (status === "restored") printSuccess(`Restored ${name} from its backup (signature verified)`);
+  if (status === "restored")
+    printSuccess(`Restored ${name} from its backup (signature verified)`);
   else if (status === "nothing-to-do") printInfo(`${name}: nothing to restore`);
   for (const n of notes) printWarning(`  ${printable(n)}`);
-  if (status !== "restored" && status !== "nothing-to-do") throw new Error(`${name} was not restored: ${status}`);
+  if (status !== "restored" && status !== "nothing-to-do")
+    throw new Error(`${name} was not restored: ${status}`);
 }
 
 /** `squeaky ub prune [<app>|--all]`: release backups early. Neither or both is an error that removes nothing. */
-export async function ubPruneCommand(app: string | undefined, opts: { all?: boolean }): Promise<void> {
-  if ((app === undefined) === !opts.all) throw new Error("give an app path or --all (not both)");
+export async function ubPruneCommand(
+  app: string | undefined,
+  opts: { all?: boolean },
+): Promise<void> {
+  if ((app === undefined) === !opts.all)
+    throw new Error("give an app path or --all (not both)");
   const r = await withAgentLock((home) => pruneBackups(home, app));
-  const what = app === undefined ? "all apps" : printable(path.basename(app, ".app"));
-  if (r.removedDirs.length === 0 && r.heldDirs.length === 0) printInfo(`No backups found for ${what}.`);
-  else printSuccess(`Removed ${r.removedDirs.length} backup(s) for ${what}, freed ${formatSizeWithColor(r.freedBytes)}`);
-  for (const d of r.heldDirs) printWarning(`  kept ${d}: an unfinished thin or restore still needs it`);
-  if (r.heldDirs.length > 0) throw new Error(`${r.heldDirs.length} backup(s) kept; run \`squeaky ub restore <app>\` to finish the interrupted run first`);
+  const what =
+    app === undefined ? "all apps" : printable(path.basename(app, ".app"));
+  if (r.removedDirs.length === 0 && r.heldDirs.length === 0)
+    printInfo(`No backups found for ${what}.`);
+  else
+    printSuccess(
+      `Removed ${r.removedDirs.length} backup(s) for ${what}, freed ${formatSizeWithColor(r.freedBytes)}`,
+    );
+  for (const d of r.heldDirs)
+    printWarning(`  kept ${d}: an unfinished thin or restore still needs it`);
+  if (r.heldDirs.length > 0)
+    throw new Error(
+      `${r.heldDirs.length} backup(s) kept; run \`squeaky ub restore <app>\` to finish the interrupted run first`,
+    );
 }

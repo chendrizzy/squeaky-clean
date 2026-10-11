@@ -11,10 +11,18 @@ import {
   codesignVerify,
   processSnapshot,
 } from "../../ub/exec";
-import { buildFixtureApp, hasToolchain, hasArm64eToolchain } from "./helpers/ubFixture";
+import {
+  buildFixtureApp,
+  hasToolchain,
+  hasArm64eToolchain,
+} from "./helpers/ubFixture";
 
 const d = describe.skipIf(
-  !(process.platform === "darwin" && process.arch === "arm64" && hasToolchain()),
+  !(
+    process.platform === "darwin" &&
+    process.arch === "arm64" &&
+    hasToolchain()
+  ),
 );
 
 d("exec wrappers", () => {
@@ -60,7 +68,9 @@ d("exec wrappers", () => {
   it("processSnapshot lists a child this test started by absolute path", async () => {
     const child = cp.execFile("/bin/sleep", ["30"]);
     try {
-      await new Promise((resolve, reject) => child.once("spawn", resolve).once("error", reject));
+      await new Promise((resolve, reject) =>
+        child.once("spawn", resolve).once("error", reject),
+      );
       expect((await processSnapshot()).has("/bin/sleep")).toBe(true);
     } finally {
       child.kill();
@@ -79,8 +89,11 @@ d("exec wrappers", () => {
     expect((await codesignVerify(f.app)).ok).toBe(true);
   });
 
-  it.skipIf(!hasArm64eToolchain())("arm64e option adds an arm64e slice", async () => {
-    const f = await buildFixtureApp(tmp, { arm64e: true });
-    expect(await lipoArchs(f.mainExe)).toContain("arm64e");
-  });
+  it.skipIf(!hasArm64eToolchain())(
+    "arm64e option adds an arm64e slice",
+    async () => {
+      const f = await buildFixtureApp(tmp, { arm64e: true });
+      expect(await lipoArchs(f.mainExe)).toContain("arm64e");
+    },
+  );
 });

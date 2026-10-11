@@ -62,7 +62,9 @@ export async function lipoThin(src: string, out: string): Promise<void> {
   if (r.code !== 0) {
     const m = `lipo -thin failed (${r.code}): ${r.stderr.trim()}`;
     // lipo reports a full disk only in text; surface it as ENOSPC so the thinner maps it to aborted:no-space
-    throw /No space left on device/i.test(m) ? Object.assign(new Error(m), { code: "ENOSPC" }) : new Error(m);
+    throw /No space left on device/i.test(m)
+      ? Object.assign(new Error(m), { code: "ENOSPC" })
+      : new Error(m);
   }
 }
 
@@ -92,7 +94,8 @@ export async function codesignVerify(
  */
 export async function processSnapshot(): Promise<Set<string>> {
   const r = await run("/bin/ps", ["-axww", "-o", "comm="], PS_TIMEOUT);
-  if (r.code !== 0) throw new Error(`ps failed (${r.code}): ${r.stderr.trim()}`);
+  if (r.code !== 0)
+    throw new Error(`ps failed (${r.code}): ${r.stderr.trim()}`);
   const out = new Set<string>();
   for (const line of r.stdout.split("\n")) {
     const t = line.trim();
