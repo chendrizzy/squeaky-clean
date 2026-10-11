@@ -203,7 +203,8 @@ export function parseXmlPlist(xml: string): PlistValue {
 }
 
 /** Info.plist and CodeResources come from untrusted bundles: nothing larger is read. */
-export const PLIST_MAX_BYTES = 16 * 1024 * 1024;
+// Xcode's CodeResources is ~31 MB; the cap bounds a hostile file, it must not refuse real ones
+export const PLIST_MAX_BYTES = 64 * 1024 * 1024;
 
 /**
  * Read and parse a plist file. XML plists parse in-process. A binary plist

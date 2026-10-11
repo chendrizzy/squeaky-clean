@@ -202,7 +202,7 @@ describe.skipIf(!gate)("ub thinner", () => {
     try {
       const o = await thinBundle(f.app, ctx());
       expect([o.status, o.reason]).toEqual(["skipped", "not-writable"]);
-      expect(o.detail).toMatch(/^EACCES: permission denied, access '.*\/Contents\/MacOS'$/);
+      expect(o.detail).toMatch(/\/Contents\/MacOS is not writable by its permission bits$/);
     } finally {
       fs.chmodSync(macos, 0o755);
     }

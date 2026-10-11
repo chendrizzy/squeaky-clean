@@ -131,6 +131,13 @@ function failure(err: unknown): [ThinStatus, string] {
 
 const msg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
+/** POSIX write permission from stat bits alone. Never access(W_OK): that is a write probe against the app bundle. */
+function modeWritable(st: fs.Stats): boolean {
+  if (st.uid === process.getuid?.()) return (st.mode & 0o200) !== 0;
+  if ((process.getgroups?.() ?? []).includes(st.gid)) return (st.mode & 0o020) !== 0;
+  return (st.mode & 0o002) !== 0;
+}
+
 /** lstat of a candidate through resolveCandidate; one that vanished or was swapped for a symlink/non-file since selection is a changed-during-thin stop, not an error. */
 async function lstatCandidate(bundleReal: string, rel: string): Promise<fs.Stats> {
   try {
@@ -195,7 +202,11 @@ export async function thinBundle(
     }
 
     // 7. stage thin copies on the bundle's device, once the bundle is known writable: no lipo or backup work is wasted
-    await fs.promises.access(path.join(bundleReal, "Contents", "MacOS"), fs.constants.W_OK);
+    const macos = path.join(bundleReal, "Contents", "MacOS");
+    if (!modeWritable(await fs.promises.stat(macos))) {
+      out.detail = `${macos} is not writable by its permission bits`;
+      return end("skipped", "not-writable");
+    }
     const id = `${ctx.runId}-${ctx.seq}`;
     try {
       stagingDir = await makeStagingDir(home, bundleReal, id);

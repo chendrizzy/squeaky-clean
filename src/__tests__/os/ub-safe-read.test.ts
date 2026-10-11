@@ -79,7 +79,7 @@ d("untrusted bundle files are read only when they are regular files", () => {
   it("a file over the plist cap is refused; a symlink to a regular plist is still read", async () => {
     fs.truncateSync(at("Info.plist"), PLIST_MAX_BYTES + 1);
     const r = await settles(readPlistFile(at("Info.plist"), { allowSpawn: false }));
-    expect(String((r as { error: unknown }).error)).toMatch(/PlistParseError: larger than 16777216 bytes/);
+    expect(String((r as { error: unknown }).error)).toMatch(new RegExp(`PlistParseError: larger than ${PLIST_MAX_BYTES} bytes`));
 
     const real = path.join(tmp, "real.plist");
     fs.writeFileSync(real, PLIST);
