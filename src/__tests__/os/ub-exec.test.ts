@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import * as cp from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -55,10 +56,15 @@ d("exec wrappers", () => {
     });
   });
 
-  it("processSnapshot contains this node's execPath", async () => {
-    expect((await processSnapshot()).has(fs.realpathSync(process.execPath))).toBe(
-      true,
-    );
+  // not this node's own path: vitest workers retitle themselves "node (vitest N)", so ps never lists it
+  it("processSnapshot lists a child this test started by absolute path", async () => {
+    const child = cp.execFile("/bin/sleep", ["30"]);
+    try {
+      await new Promise((resolve, reject) => child.once("spawn", resolve).once("error", reject));
+      expect((await processSnapshot()).has("/bin/sleep")).toBe(true);
+    } finally {
+      child.kill();
+    }
   });
 
   it("fixture builder produces helper, dylib and resource when requested", async () => {
