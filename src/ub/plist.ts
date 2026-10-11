@@ -1,5 +1,5 @@
-import { promises as fs } from "fs";
 import * as cp from "child_process";
+import { readRegularFile, UnsafePathError } from "./paths";
 
 export type PlistValue =
   | string
@@ -177,17 +177,24 @@ export function parseXmlPlist(xml: string): PlistValue {
   return root as PlistValue;
 }
 
+/** Info.plist and CodeResources come from untrusted bundles: nothing larger is read. */
+export const PLIST_MAX_BYTES = 16 * 1024 * 1024;
+
 /**
  * Read and parse a plist file. XML plists parse in-process. A binary plist
  * (`bplist00`) is converted through `plutil` only when `allowSpawn`; otherwise
  * returns null (scan paths must never spawn). Throws PlistParseError on
- * malformed XML or a plutil failure; fs errors propagate.
+ * malformed XML, a plutil failure, or a path that is not a regular file of at
+ * most PLIST_MAX_BYTES (a FIFO or device is refused without blocking); other fs
+ * errors propagate.
  */
 export async function readPlistFile(
   p: string,
   opts: { allowSpawn: boolean },
 ): Promise<PlistValue | null> {
-  const buf = await fs.readFile(p);
+  const buf = await readRegularFile(p, PLIST_MAX_BYTES).catch((e: unknown) => {
+    throw e instanceof UnsafePathError ? new PlistParseError(e.message) : e;
+  });
   if (buf.subarray(0, 8).toString("latin1") === "bplist00") {
     if (!opts.allowSpawn) return null;
     const out = await new Promise<string>((resolve, reject) => {

@@ -90,6 +90,41 @@ export async function resolveCandidate(bundleReal: string, rel: string): Promise
   return cur;
 }
 
+/**
+ * Opens a path from an untrusted bundle for reading, never blocking: O_NONBLOCK keeps a FIFO from hanging the open, and
+ * the HANDLE must fstat as a regular file of at most maxBytes (a symlink to a regular file is fine). A FIFO, device,
+ * socket or directory throws UnsafePathError. The caller closes the handle.
+ */
+export async function openRegularFile(p: string, maxBytes = Infinity): Promise<{ fh: fs.promises.FileHandle; st: fs.Stats }> {
+  const fh = await fs.promises.open(p, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK);
+  try {
+    const st = await fh.stat();
+    if (!st.isFile()) throw new UnsafePathError(`not a regular file: ${p}`);
+    if (st.size > maxBytes) throw new UnsafePathError(`larger than ${maxBytes} bytes: ${p}`);
+    return { fh, st };
+  } catch (e) {
+    await fh.close().catch(() => {});
+    throw e;
+  }
+}
+
+/** The whole of a regular file (see openRegularFile), read from the checked handle and never past its fstat size. */
+export async function readRegularFile(p: string, maxBytes: number): Promise<Buffer> {
+  const { fh, st } = await openRegularFile(p, maxBytes);
+  try {
+    const buf = Buffer.alloc(st.size);
+    let n = 0;
+    while (n < buf.length) {
+      const { bytesRead } = await fh.read(buf, n, buf.length - n, n);
+      if (bytesRead === 0) break;
+      n += bytesRead;
+    }
+    return buf.subarray(0, n);
+  } finally {
+    await fh.close();
+  }
+}
+
 export function sanitizeComponent(s: string): string {
   const r = s.replace(/[^A-Za-z0-9._-]/g, "_");
   return r === "" || r === "." || r === ".." ? "_" : r;

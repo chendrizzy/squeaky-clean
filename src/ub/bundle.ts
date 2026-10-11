@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import * as path from "path";
 import { readPlistFile } from "./plist";
+import { openRegularFile } from "./paths";
 
 export type Arch = "arm64" | "arm64e" | "x86_64" | "i386" | "other";
 
@@ -25,17 +26,20 @@ function sliceOf(cputype: number, rawSub: number): Slice {
 
 /**
  * Read Mach-O slices straight from the header bytes (no spawn). Returns []
- * for non-Mach-O files (including Java class files sharing CAFEBABE), and for
- * dataless files (iCloud-offloaded: no allocated blocks but a nonzero size),
- * which are never opened because opening one faults its data back in.
+ * for non-Mach-O files (including Java class files sharing CAFEBABE), for
+ * anything that is not a regular file (a FIFO is refused without blocking),
+ * and for dataless files (iCloud-offloaded: no allocated blocks but a nonzero
+ * size), which are never opened because opening one faults its data back in.
  */
 export async function readMachOSlices(p: string): Promise<Slice[]> {
   let file;
+  // ponytail: blocks==0 also matches tiny decmpfs-compressed files; skipping them is safe (never thinned)
+  const dataless = (st: { blocks: number; size: number }) => st.blocks === 0 && st.size > 0;
   try {
-    const st = await fs.stat(p);
-    // ponytail: blocks==0 also matches tiny decmpfs-compressed files; skipping them is safe (never thinned)
-    if (st.blocks === 0 && st.size > 0) return [];
-    file = await fs.open(p, "r");
+    if (dataless(await fs.stat(p))) return []; // checked before the open: the open itself would fault it in
+    const opened = await openRegularFile(p);
+    file = opened.fh;
+    if (dataless(opened.st)) return [];
     const buf = Buffer.alloc(1024);
     const { bytesRead } = await file.read(buf, 0, 1024, 0);
     if (bytesRead < 8) return [];
