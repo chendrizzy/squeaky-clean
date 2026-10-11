@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { outcomeLine } from "../../commands/ub";
+import { printable, recoveryLine, type RecoveryItem } from "../../cleaners/universalBinary";
 import type { ThinOutcome } from "../../ub/thinner";
 
 // eslint-disable-next-line no-control-regex
@@ -23,5 +24,23 @@ describe("ub per-app outcome lines", () => {
     expect(plain(outcomeLine(o("blocked", "app-management")))).toMatch(
       /^⛔ Some App blocked: app-management — grant App Management to \/\S.* in System Settings → Privacy & Security$/,
     );
+  });
+});
+
+describe("bundle-derived text prints inertly (c10)", () => {
+  // OSC title rewrite, BEL, and an 8-bit CSI "erase screen"
+  const evil = "Evil\x1b]0;pwned\x07\x9b2J";
+  const shown = "Evil\\x1b]0;pwned\\x07\\x9b2J";
+
+  it("printable escapes every C0/C1 control char and DEL as \\xNN, and nothing else", () => {
+    expect(printable("a\x00b\x1f\x7f\x80\x9f\t\n é—✓")).toBe("a\\x00b\\x1f\\x7f\\x80\\x9f\\x09\\x0a é—✓");
+  });
+
+  it("outcomeLine and recoveryLine escape the app name, the detail and the notes", () => {
+    expect(outcomeLine({ ...o("aborted", "error"), app: `/Applications/${evil}.app`, detail: `lipo: ${evil}` })).toBe(
+      `✗ ${shown} aborted:error — lipo: ${shown}`,
+    );
+    const r = { entry: { bundle: `/Applications/${evil}.app` }, result: "restore-failed", notes: [`x: ${evil}`] } as unknown as RecoveryItem;
+    expect(recoveryLine(r)).toBe(`↻ Recovered interrupted run for ${shown}: restore-failed (x: ${shown})`);
   });
 });

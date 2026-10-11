@@ -43,7 +43,11 @@ interface Work {
 const DETAIL_IN_ERROR = new Set(["not-attempted", "auto-ignored", "stale-id"]);
 
 const sum = (xs: number[]) => xs.reduce((n, x) => n + x, 0);
-const appName = (p: string) => path.basename(p, ".app");
+
+/** Bundle-derived text (names, paths, tool stderr) may hold terminal escapes (c10): every C0/C1 control char and DEL prints as `\xNN`. */
+// eslint-disable-next-line no-control-regex
+export const printable = (s: string): string => s.replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
+const appName = (p: string) => printable(path.basename(p, ".app"));
 const underSystem = (real: string) => real === "/System" || real.startsWith("/System/");
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -87,12 +91,12 @@ export function outcomeLine(o: ThinOutcome): string {
     return `⛔ ${name} blocked: app-management — grant App Management to ${grantTarget()} in System Settings → Privacy & Security`;
   }
   const mark = o.status === "skipped" ? "•" : "✗";
-  return `${mark} ${name} ${why}${o.detail ? ` — ${o.detail}` : ""}`;
+  return `${mark} ${name} ${why}${o.detail ? ` — ${printable(o.detail)}` : ""}`;
 }
 
 /** One line per interrupted earlier run that this run recovered under the lock. */
 export function recoveryLine(r: RecoveryItem): string {
-  return `↻ Recovered interrupted run for ${appName(r.entry.bundle)}: ${r.result}${r.notes.length ? ` (${r.notes.join("; ")})` : ""}`;
+  return printable(`↻ Recovered interrupted run for ${path.basename(r.entry.bundle, ".app")}: ${r.result}${r.notes.length ? ` (${r.notes.join("; ")})` : ""}`);
 }
 
 export class UniversalBinaryCleaner implements CleanerModule {
@@ -179,7 +183,7 @@ export class UniversalBinaryCleaner implements CleanerModule {
       while (next < paths.length) {
         const p = paths[next++];
         const s = await this.scanApp(p).catch((e: unknown) => {
-          printVerbose(`Skipping ${p}: ${e instanceof Error ? e.message : String(e)}`);
+          printVerbose(printable(`Skipping ${p}: ${errText(e)}`));
           return null;
         });
         if (s) found.push(s);
@@ -403,7 +407,7 @@ export class UniversalBinaryCleaner implements CleanerModule {
       sizeAfter: sizeBefore,
       heldBytes: sum(this.lastOutcomes.map((o) => o.heldBytes)),
       clearedPaths: done.map((o) => o.app),
-      error: problems.length ? problems.join("; ") : undefined,
+      error: problems.length ? printable(problems.join("; ")) : undefined,
     };
   }
 

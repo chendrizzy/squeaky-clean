@@ -145,6 +145,19 @@ describe("squeaky ub command", () => {
     expect(text()).not.toContain("Thinning failed");
   });
 
+  it("recovery names and housekeeping notes from bundles print inertly (c10)", async () => {
+    fake.clear = vi.fn(async () => {
+      fake.lastRecovery = [{ entry: { bundle: "/Apps/E\x1b]0;x\x07.app" }, result: "unreachable", notes: [] }];
+      fake.lastNotes = ["prune: \x1b[2J"];
+      return ok();
+    });
+    await ubCommand({ all: true, force: true });
+    const raw = out.join("\n");
+    expect(raw).toContain("↻ Recovered interrupted run for E\\x1b]0;x\\x07: unreachable");
+    expect(raw).toContain("prune: \\x1b[2J");
+    expect(raw).not.toMatch(/\x1b\]|\x07|\x1b\[2J/); // eslint-disable-line no-control-regex
+  });
+
   it("says 'Thinning failed' when the run did not succeed and no app has an outcome", async () => {
     fake.clear = vi.fn(async () => ok({ success: false, error: "agent busy" }));
     await ubCommand({ all: true, force: true });

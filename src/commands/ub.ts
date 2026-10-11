@@ -13,6 +13,7 @@ import {
   LOCK_WAIT_MS,
   UniversalBinaryCleaner,
   outcomeLine,
+  printable,
   recoveryLine,
 } from "../cleaners/universalBinary";
 import { DEFAULT_MIN_SAVINGS } from "../ub/thinner";
@@ -45,7 +46,7 @@ function printHousekeeping(cleaner: UniversalBinaryCleaner): void {
     if (r.result === "restore-failed" || r.result === "unreachable") printError(recoveryLine(r));
     else printInfo(recoveryLine(r));
   }
-  for (const n of cleaner.lastNotes) printWarning(n);
+  for (const n of cleaner.lastNotes) printWarning(printable(n));
 }
 
 export async function ubCommand(options: UBOptions): Promise<void> {
@@ -90,7 +91,7 @@ export async function ubCommand(options: UBOptions): Promise<void> {
       console.log("\nSkipped by default:\n");
       for (const cat of skippedByDefault) {
         console.log(
-          `  • ${cat.name} — auto-ignored: ${ignoredClass(cat.id)} (${formatSizeWithColor(cat.size || 0)})`,
+          `  • ${printable(cat.name)} — auto-ignored: ${ignoredClass(cat.id)} (${formatSizeWithColor(cat.size || 0)})`,
         );
       }
     };
@@ -100,8 +101,8 @@ export async function ubCommand(options: UBOptions): Promise<void> {
       console.log("\n📋 Universal Binaries found:\n");
 
       for (const cat of thinnable) {
-        console.log(`  ${symbols.binary} ${cat.name}  [${cat.id}]`);
-        console.log(`     ${cat.paths[0]}`);
+        console.log(`  ${symbols.binary} ${printable(cat.name)}  [${printable(cat.id)}]`);
+        console.log(`     ${printable(cat.paths[0])}`);
         console.log(`     Potential savings: ${formatSizeWithColor(cat.size || 0)}`);
         console.log();
       }
@@ -126,7 +127,7 @@ export async function ubCommand(options: UBOptions): Promise<void> {
 
     for (const cat of thinnable) {
       const sizeStr = formatSizeWithColor(cat.size || 0);
-      console.log(`  • ${cat.name} - ${sizeStr} potential savings`);
+      console.log(`  • ${printable(cat.name)} - ${sizeStr} potential savings`);
     }
     printSkippedByDefault();
 
@@ -164,7 +165,7 @@ export async function ubCommand(options: UBOptions): Promise<void> {
       console.log();
 
       const choices = categories.map((cat) => ({
-        name: `${cat.name} (${formatSizeWithColor(cat.size || 0)} savings)${ignoredClass(cat.id) ? ` [auto-ignored: ${ignoredClass(cat.id)}]` : ""}`,
+        name: `${printable(cat.name)} (${formatSizeWithColor(cat.size || 0)} savings)${ignoredClass(cat.id) ? ` [auto-ignored: ${ignoredClass(cat.id)}]` : ""}`,
         value: cat.id,
         checked: false,
       }));
@@ -223,7 +224,7 @@ export async function ubCommand(options: UBOptions): Promise<void> {
       console.log("\n[DRY RUN] Would thin the following applications:\n");
       for (const o of willThin) {
         console.log(
-          `  • ${path.basename(o.app, ".app")} (${formatSizeWithColor(o.heldBytes)})`,
+          `  • ${printable(path.basename(o.app, ".app"))} (${formatSizeWithColor(o.heldBytes)})`,
         );
       }
       if (willThin.length === 0) console.log("  (none)");
@@ -288,7 +289,7 @@ export async function ubCommand(options: UBOptions): Promise<void> {
     }
   } catch (error) {
     spinner.stop();
-    printError(`Universal Binary command error: ${error}`);
+    printError(`Universal Binary command error: ${printable(String(error))}`);
     throw error;
   }
 }
@@ -307,7 +308,7 @@ async function withAgentLock<T>(fn: (home: AgentHome, runId: string) => Promise<
 
 /** `squeaky ub restore <app>`: put back the originals recorded by the app's last thin. Throws unless restored or nothing to do. */
 export async function ubRestoreCommand(app: string): Promise<void> {
-  const name = path.basename(app, ".app");
+  const name = printable(path.basename(app, ".app"));
   const { status, notes } = await withAgentLock(async (home, runId) => {
     // an interrupted run is finished by its own journal entry first (it may be this very app)
     for (const r of await recoverJournal(home, runId)) {
@@ -318,7 +319,7 @@ export async function ubRestoreCommand(app: string): Promise<void> {
   });
   if (status === "restored") printSuccess(`Restored ${name} from its backup (signature verified)`);
   else if (status === "nothing-to-do") printInfo(`${name}: nothing to restore`);
-  for (const n of notes) printWarning(`  ${n}`);
+  for (const n of notes) printWarning(`  ${printable(n)}`);
   if (status !== "restored" && status !== "nothing-to-do") throw new Error(`${name} was not restored: ${status}`);
 }
 
@@ -326,7 +327,7 @@ export async function ubRestoreCommand(app: string): Promise<void> {
 export async function ubPruneCommand(app: string | undefined, opts: { all?: boolean }): Promise<void> {
   if ((app === undefined) === !opts.all) throw new Error("give an app path or --all (not both)");
   const r = await withAgentLock((home) => pruneBackups(home, app));
-  const what = app === undefined ? "all apps" : path.basename(app, ".app");
+  const what = app === undefined ? "all apps" : printable(path.basename(app, ".app"));
   if (r.removedDirs.length === 0 && r.heldDirs.length === 0) printInfo(`No backups found for ${what}.`);
   else printSuccess(`Removed ${r.removedDirs.length} backup(s) for ${what}, freed ${formatSizeWithColor(r.freedBytes)}`);
   for (const d of r.heldDirs) printWarning(`  kept ${d}: an unfinished thin or restore still needs it`);
