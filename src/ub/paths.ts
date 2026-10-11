@@ -112,17 +112,21 @@ export async function resolveCandidate(
 }
 
 /**
- * Opens a path from an untrusted bundle for reading, never blocking: O_NONBLOCK keeps a FIFO from hanging the open, and
- * the HANDLE must fstat as a regular file of at most maxBytes (a symlink to a regular file is fine). A FIFO, device,
- * socket or directory throws UnsafePathError. The caller closes the handle.
+ * Opens a path from an untrusted bundle for reading, never blocking: the path must stat (following symlinks) as a
+ * regular file before it is opened at all, it is opened O_RDONLY|O_NONBLOCK|O_NOCTTY (a FIFO swapped in afterwards
+ * cannot hang the open), and the HANDLE must fstat as a regular file of at most maxBytes. A symlink to a regular file
+ * is fine; a FIFO, device, socket or directory throws UnsafePathError. The caller closes the handle.
  */
 export async function openRegularFile(
   p: string,
   maxBytes = Infinity,
 ): Promise<{ fh: fs.promises.FileHandle; st: fs.Stats }> {
+  // never open a device, FIFO or socket at all (F3): opening can have side effects; the fstat below covers the race
+  if (!(await fs.promises.stat(p)).isFile())
+    throw new UnsafePathError(`not a regular file: ${p}`);
   const fh = await fs.promises.open(
     p,
-    fs.constants.O_RDONLY | fs.constants.O_NONBLOCK,
+    fs.constants.O_RDONLY | fs.constants.O_NONBLOCK | fs.constants.O_NOCTTY,
   );
   try {
     const st = await fh.stat();

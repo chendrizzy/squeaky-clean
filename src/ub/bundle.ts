@@ -37,7 +37,8 @@ export async function readMachOSlices(p: string): Promise<Slice[]> {
   const dataless = (st: { blocks: number; size: number }) =>
     st.blocks === 0 && st.size > 0;
   try {
-    if (dataless(await fs.stat(p))) return []; // checked before the open: the open itself would fault it in
+    const pre = await fs.stat(p); // before the open: a dataless file would be faulted in, a device opened (F3)
+    if (!pre.isFile() || dataless(pre)) return [];
     const opened = await openRegularFile(p);
     file = opened.fh;
     if (dataless(opened.st)) return [];

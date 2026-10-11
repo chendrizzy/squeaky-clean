@@ -202,9 +202,12 @@ export function parseXmlPlist(xml: string): PlistValue {
   return root as PlistValue;
 }
 
-/** Info.plist and CodeResources come from untrusted bundles: nothing larger is read. */
-// Xcode's CodeResources is ~31 MB; the cap bounds a hostile file, it must not refuse real ones
-export const PLIST_MAX_BYTES = 64 * 1024 * 1024;
+/**
+ * Info.plist and CodeResources come from untrusted bundles. The cap bounds parser heap, not just bytes read: a flood of
+ * `<dict>` costs ~40x its size, so 64 MiB would be an uncatchable OOM under a 2 GB heap (F1). A larger real file (Xcode's
+ * CodeResources is ~31 MB) is a PlistParseError, so its app reads as unsigned and is never thinned.
+ */
+export const PLIST_MAX_BYTES = 16 * 1024 * 1024;
 
 /**
  * Read and parse a plist file. XML plists parse in-process. A binary plist

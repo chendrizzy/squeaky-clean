@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as cp from "child_process";
 import * as fs from "fs";
 import * as os from "os";
@@ -15,6 +15,7 @@ import { loadSeal } from "../../ub/seal";
 // A plain open(2) of a FIFO with no writer blocks forever in a libuv thread, so every wait here is bounded, and
 // afterEach opens each FIFO for writing, which releases a reader stuck in open (a RED run must not leak threads).
 const d = describe.skipIf(process.platform !== "darwin");
+const REPO = path.resolve(__dirname, "../../..");
 
 const PLIST = `<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>X</string></dict></plist>`;
 const settles = <T>(p: Promise<T>) =>
@@ -100,6 +101,59 @@ d("untrusted bundle files are read only when they are regular files", () => {
     expect(await settles(readMachOSlices(at("MacOS/X")))).toEqual({
       value: [],
     });
+  });
+
+  it("a symlink to /dev/null is refused before it is ever opened (F3)", async () => {
+    fs.rmSync(at("Info.plist"));
+    fs.symlinkSync("/dev/null", at("Info.plist"));
+    fs.symlinkSync("/dev/null", at("MacOS/X"));
+    const open = vi.spyOn(fs.promises, "open");
+    try {
+      const r = await settles(
+        readPlistFile(at("Info.plist"), { allowSpawn: false }),
+      );
+      expect(String((r as { error: unknown }).error)).toMatch(
+        /PlistParseError: not a regular file/,
+      );
+      expect(await settles(readMachOSlices(at("MacOS/X")))).toEqual({
+        value: [],
+      });
+      const opened = open.mock.calls.map((c) => String(c[0]));
+      expect(opened).not.toContain(at("Info.plist"));
+      expect(opened).not.toContain(at("MacOS/X"));
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  it("the largest <dict> flood the cap admits parses without OOM under a 2 GB heap (F1)", () => {
+    const flood = path.join(tmp, "flood.plist");
+    fs.writeFileSync(flood, "<dict>".repeat(Math.floor(PLIST_MAX_BYTES / 6)));
+    const script = path.join(tmp, "parse.ts");
+    fs.writeFileSync(
+      script,
+      `import { readPlistFile, PlistParseError } from ${JSON.stringify(path.join(REPO, "src/ub/plist.ts"))};
+readPlistFile(process.argv[2], { allowSpawn: false }).then(
+  () => console.log("parsed"),
+  (e) => {
+    console.log(e instanceof PlistParseError ? "PlistParseError: " + e.message : "other: " + String(e));
+    if (!(e instanceof PlistParseError)) process.exitCode = 3;
+  },
+);
+`,
+    );
+    const r = cp.spawnSync(
+      path.join(REPO, "node_modules/.bin/tsx"),
+      [script, flood],
+      {
+        cwd: REPO,
+        timeout: 120_000,
+        encoding: "utf8",
+        env: { ...process.env, NODE_OPTIONS: "--max-old-space-size=2048" },
+      },
+    );
+    expect([r.status, r.signal], r.stderr.slice(-2000)).toEqual([0, null]); // an OOM abort is SIGABRT / 134
+    expect(r.stdout.trim()).toBe("PlistParseError: unbalanced tags");
   });
 
   it("a file over the plist cap is refused; a symlink to a regular plist is still read", async () => {
