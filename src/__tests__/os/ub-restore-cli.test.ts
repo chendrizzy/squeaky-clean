@@ -153,7 +153,7 @@ describe.skipIf(!gate)("ub restore / prune on a thinned fixture app", () => {
       /fixture-main: changed since it was thinned; not overwriting/,
     );
     expect(r.notes.join("\n")).toContain(
-      `not restoring: ${MAIN} changed since the thin while 1 other file(s) are still squeaky's`,
+      `not restoring: ${MAIN} changed since the thin while 1 other file(s) are still thin; nothing was written and the backup is kept. Reinstall or update the app to fix it`,
     );
     expect(sha(path.join(app, MAIN))).toBe(vendor);
     expect(fs.statSync(path.join(app, HELPER)).ino).toBe(helperIno);

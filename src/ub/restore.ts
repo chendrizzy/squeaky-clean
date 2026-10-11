@@ -157,12 +157,14 @@ export async function restoreEntry(
     const foreign = e.files
       .filter((_, i) => classes[i] === "foreign")
       .map((f) => f.rel);
-    // superseded is terminal and makes the backup pruneable: never while a file is unclassifiable, or still ours
+    const thin = classes.filter((c) => c === "thin").length;
+    // superseded is terminal and makes the backup pruneable: never while a file is unclassifiable, or still thin
+    // (an "ours" file is already the original again, so it no longer needs the backup)
     if (classes.includes("error")) status = "restore-failed";
-    else if (foreign.length > 0 && todo.length > 0) {
+    else if (foreign.length > 0 && thin > 0) {
       status = "restore-failed";
       notes.push(
-        `not restoring: ${foreign.join(", ")} changed since the thin while ${todo.length} other file(s) are still squeaky's; nothing was written and the backup is kept`,
+        `not restoring: ${foreign.join(", ")} changed since the thin while ${thin} other file(s) are still thin; nothing was written and the backup is kept. Reinstall or update the app to fix it`,
       );
     } else if (foreign.length > 0) status = "superseded";
     else if (todo.length === 0) status = "nothing-to-do";

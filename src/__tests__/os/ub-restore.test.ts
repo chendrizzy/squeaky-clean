@@ -269,7 +269,7 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     const r = await restoreEntry(h, entry, okVerify);
     expect(r.status).toBe("restore-failed");
     expect(r.notes).toContain(
-      `not restoring: ${mainRel} changed since the thin while 1 other file(s) are still squeaky's; nothing was written and the backup is kept`,
+      `not restoring: ${mainRel} changed since the thin while 1 other file(s) are still thin; nothing was written and the backup is kept. Reinstall or update the app to fix it`,
     );
     expect(sha(file)).toBe(thinSha); // still the thin, byte for byte
     expect(fs.readFileSync(mainFile, "utf8")).toBe("app was updated");
@@ -281,6 +281,25 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     expect(
       (await recoverJournal(h, "other", okVerify)).map((x) => x.result),
     ).toEqual(["restore-failed"]);
+  });
+
+  it("a replaced file with no file still thin (the other already restored) -> superseded, nothing written (concern 1)", async () => {
+    const { mainFile } = addMainExe();
+    await thin("swapping");
+    // an earlier attempt restored the helper (ours: original bytes at its journaled restoredIno) ...
+    const staged = path.join(path.dirname(file), "helper.restore");
+    fs.copyFileSync(path.join(entry.backupDir, rel), staged);
+    entry.files[0].restoredIno = fs.statSync(staged).ino;
+    fs.renameSync(staged, file);
+    await writeEntry(h, entry);
+    // ... and then an update replaced the main executable
+    replaceWithNewInode(mainFile, "app was updated");
+    const r = await restoreEntry(h, entry, okVerify);
+    expect(r.status).toBe("superseded");
+    expect(r.notes.join("\n")).not.toMatch(/Reinstall/);
+    expect(sha(file)).toBe(origSha);
+    expect(fs.readFileSync(mainFile, "utf8")).toBe("app was updated");
+    expect(await listIncomplete(h, "")).toEqual([]); // terminal: the backup is no longer held
   });
 
   it("a file with no thinIno that is no longer the original is foreign -> superseded", async () => {
