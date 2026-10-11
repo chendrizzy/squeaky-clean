@@ -181,6 +181,36 @@ describe.skipIf(!gate)("ub thinner", () => {
     expect(await listIncomplete(h, "")).toEqual([]);
   });
 
+  it("post-swap EACCES rolls back and is skipped:not-writable, never app-management (k2)", async () => {
+    const f = await buildFixtureApp(apps, { helper: true });
+    const files = [f.mainExe, f.helper!];
+    const orig = files.map(sha);
+    const afterSwap = (n: number) => {
+      if (n === 1) throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    };
+    const o = await thinBundle(f.app, ctx({ deps: { afterSwap } }));
+    expect([o.status, o.reason]).toEqual(["skipped", "not-writable"]);
+    expect(files.map(sha)).toEqual(orig);
+    expect(await listIncomplete(h, "")).toEqual([]);
+  });
+
+  it("a non-writable Contents/MacOS is skipped:not-writable before any staging, lipo or backup (k2)", async () => {
+    const f = await buildFixtureApp(apps, { helper: true });
+    const macos = path.dirname(f.mainExe);
+    const before = sha(f.mainExe);
+    fs.chmodSync(macos, 0o555);
+    try {
+      const o = await thinBundle(f.app, ctx());
+      expect([o.status, o.reason]).toEqual(["skipped", "not-writable"]);
+      expect(o.detail).toMatch(/^EACCES: permission denied, access '.*\/Contents\/MacOS'$/);
+    } finally {
+      fs.chmodSync(macos, 0o755);
+    }
+    expect(sha(f.mainExe)).toBe(before);
+    agentEmpty();
+    expect(fs.readdirSync(h.journal)).toEqual([]); // no entry was ever written: no lipo ran
+  });
+
   it("a candidate replaced by a symlink before the re-check -> skipped:changed-during-thin", async () => {
     const f = await buildFixtureApp(apps, { helper: true });
     const orig = sha(f.mainExe);

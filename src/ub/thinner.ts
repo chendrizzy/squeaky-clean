@@ -122,7 +122,9 @@ function failure(err: unknown): [ThinStatus, string] {
   if (err instanceof Stop) return [err.status, err.reason];
   if (err instanceof ExecTimeoutError) return ["blocked", "timeout"];
   const code = (err as NodeJS.ErrnoException)?.code;
-  if (code === "EPERM" || code === "EACCES") return ["blocked", "app-management"];
+  // only EPERM is a TCC App Management denial; EACCES/EROFS are this app's own permissions or volume (k2)
+  if (code === "EPERM") return ["blocked", "app-management"];
+  if (code === "EACCES" || code === "EROFS") return ["skipped", "not-writable"];
   if (code === "ENOSPC") return ["aborted", "no-space"];
   return ["aborted", "error"];
 }
@@ -192,7 +194,8 @@ export async function thinBundle(
       return end("skipped", "dry-run");
     }
 
-    // 7. stage thin copies on the bundle's device
+    // 7. stage thin copies on the bundle's device, once the bundle is known writable: no lipo or backup work is wasted
+    await fs.promises.access(path.join(bundleReal, "Contents", "MacOS"), fs.constants.W_OK);
     const id = `${ctx.runId}-${ctx.seq}`;
     try {
       stagingDir = await makeStagingDir(home, bundleReal, id);
