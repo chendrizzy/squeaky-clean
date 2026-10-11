@@ -24,11 +24,13 @@ export const LOCK_WAIT_MS = 150_000;
 export const BACKUP_RELEASE = `freed by the next squeaky run after ${DEFAULT_KEEP_BACKUP_DAYS} days, or now with \`squeaky ub prune\``;
 /** With no readable seal only the main executable is estimated (classifyFile: main first, everything else unsealed). */
 const NO_SEAL: Seal = { files2: Object.create(null) };
-const SIGNAL_EXIT: Record<string, number> = { SIGINT: 130, SIGTERM: 143 };
+const SIGNAL_EXIT: Record<string, number> = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 };
 
 interface ScannedApp {
   id: string;
   info: BundleInfo;
+  /** every path the scan found it at, unresolved from its root: protected globs may be written against these (c2) */
+  foundAt: string[];
   cls: AppClass | null;
   candidates: Candidate[];
   savings: number;
@@ -138,33 +140,34 @@ export class UniversalBinaryCleaner implements CleanerModule {
   }
 
   /**
-   * `.app` realpaths under the roots: depth 3 through non-.app folders, symlinks followed. A folder is read again
-   * only when reached at a strictly shallower depth than before, so entry order never decides what is found
-   * (a folder first met deep through a symlink is re-read when met shallow); that also cuts cycles.
+   * `.app` realpaths under the roots, sorted, each with the paths it was found at (unresolved, joined from the root):
+   * depth 3 through non-.app folders, symlinks followed. A folder is read again only when reached at a strictly
+   * shallower depth than before, so entry order never decides what is found (a folder first met deep through a
+   * symlink is re-read when met shallow); that also cuts cycles.
    */
-  private async findApps(): Promise<string[]> {
+  private async findApps(): Promise<Map<string, string[]>> {
     const depthOf = new Map<string, number>(); // folder realpath -> shallowest depth it was read at
-    const apps = new Set<string>();
+    const apps = new Map<string, string[]>();
     const visit = async (dir: string, depth: number): Promise<void> => {
       const real = await fs.realpath(dir).catch(() => null);
       if (!real || underSystem(real) || (depthOf.get(real) ?? Infinity) <= depth) return;
       depthOf.set(real, depth);
       const names = await fs.readdir(real).catch(() => [] as string[]);
       for (const n of names) {
-        const p = path.join(real, n);
+        const p = path.join(dir, n);
         if (!(await fs.stat(p).catch(() => null))?.isDirectory()) continue;
         if (n.endsWith(".app")) {
           const r = await fs.realpath(p).catch(() => null);
-          if (r && !underSystem(r)) apps.add(r);
+          if (r && !underSystem(r)) apps.set(r, [...(apps.get(r) ?? []), p]);
         } else if (depth < SCAN_DEPTH) await visit(p, depth + 1);
       }
     };
     for (const root of this.scanRoots()) await visit(root, 0);
-    return [...apps].sort();
+    return new Map([...apps].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
   }
 
   /** Spawn-free: in-process plist (bplist -> bundleId null), header reads, seal and policy probes. */
-  private async scanApp(real: string): Promise<Omit<ScannedApp, "id"> | null> {
+  private async scanApp(real: string): Promise<Omit<ScannedApp, "id" | "foundAt"> | null> {
     const info = await readBundleInfo(real, { allowSpawn: false });
     if (!info) return null;
     const main = path.join(real, "Contents", "MacOS", info.executable);
@@ -175,7 +178,8 @@ export class UniversalBinaryCleaner implements CleanerModule {
   }
 
   private async scan(): Promise<ScannedApp[]> {
-    const paths = await this.findApps();
+    const foundAt = await this.findApps();
+    const paths = [...foundAt.keys()];
     const found: Array<Omit<ScannedApp, "id">> = [];
     let next = 0;
     // bounded: each app is a few header reads; unbounded would risk EMFILE on big /Applications
@@ -186,7 +190,7 @@ export class UniversalBinaryCleaner implements CleanerModule {
           printVerbose(printable(`Skipping ${p}: ${errText(e)}`));
           return null;
         });
-        if (s) found.push(s);
+        if (s) found.push({ ...s, foundAt: foundAt.get(p)! });
       }
     });
     await Promise.all(workers);
@@ -243,8 +247,8 @@ export class UniversalBinaryCleaner implements CleanerModule {
    * - Stale ids (T11-R4): an id whose re-scanned realpath differs from the path the caller showed is `skipped:stale-id`.
    *   The shown path is `criteria.expectedPaths[id]` (an id missing there is stale too), else the caller's own
    *   `cacheInfo.categories` paths[0]; with neither, the rescan is accepted.
-   * - Protected (round 3): an app at or inside a protected path (`protectedPaths`, already widened by
-   *   `withRealpaths`) is `skipped:protected` in every mode, ticked or not.
+   * - Protected (round 3): an app whose realpath, or any path the scan found it at, is at or inside a protected path
+   *   (`protectedPaths`, already widened by `withRealpaths`) is `skipped:protected` in every mode, ticked or not.
    */
   private select(
     scanned: ScannedApp[],
@@ -256,7 +260,8 @@ export class UniversalBinaryCleaner implements CleanerModule {
     const work: Work[] = [];
     const skip = (app: string, reason: string, detail?: string) =>
       skips.push({ app, status: "skipped", reason, detail, heldBytes: 0, candidates: [], skipped: [] });
-    const isProtected = (a: ScannedApp) => matchesProtectedPath(a.info.realpath, protectedPaths);
+    // the realpath and every path it was found at: a glob through a symlinked folder only matches the latter (c2)
+    const isProtected = (a: ScannedApp) => [a.info.realpath, ...a.foundAt].some((p) => matchesProtectedPath(p, protectedPaths));
     if (!criteria?.categories) {
       for (const a of scanned.filter((x) => !x.cls)) {
         if (isProtected(a)) skip(a.info.realpath, "protected");
@@ -325,14 +330,24 @@ export class UniversalBinaryCleaner implements CleanerModule {
       const home = await ensureAgentHome();
       const lock = await acquireLock(home, { waitMs: LOCK_WAIT_MS });
       if (!lock) return { ...result, error: `agent busy: another squeaky run holds ${lockPath(home)}` };
-      // SIGTERM/SIGINT: let the app in flight reach a terminal state, start no other, release the lock, then exit
+      // SIGTERM/SIGINT/SIGHUP (a closed terminal): let the app in flight reach a terminal state, start no other,
+      // release the lock, then exit
       let stopSignal: NodeJS.Signals | undefined;
       const onSignal = (s: NodeJS.Signals) => {
         stopSignal = s;
       };
-      process.on("SIGTERM", onSignal);
-      process.on("SIGINT", onSignal);
+      const signals = Object.keys(SIGNAL_EXIT) as NodeJS.Signals[];
+      for (const s of signals) process.on(s, onSignal);
       try {
+        // §6.2 row 5 for binary-plist apps (k1): the scan could not read their bundle id without spawning plutil
+        const engine: Work[] = [];
+        for (const w of work) {
+          const info = w.ticked || w.app.info.bundleId !== null ? null : await readBundleInfo(w.app.info.realpath, { allowSpawn: true });
+          const cls = info && (classifyApp(info, await probeApp(info.realpath))?.cls ?? null);
+          if (cls) {
+            skips.push({ app: w.app.info.realpath, status: "skipped", reason: "auto-ignored", detail: cls, heldBytes: 0, candidates: [], skipped: [] });
+          } else engine.push(w);
+        }
         this.lastOutcomes.push(...skips);
         this.lastRecovery = await recoverJournal(home, lock.runId);
         // housekeeping: a prune failure is reported, never fatal, so the recovery results above still reach the caller
@@ -340,13 +355,13 @@ export class UniversalBinaryCleaner implements CleanerModule {
           this.lastNotes.push(`prune: ${errText(e)}`);
         });
         try {
-          for (const [seq, { app: a, ticked }] of work.entries()) {
+          for (const [seq, { app: a, ticked }] of engine.entries()) {
             if (stopSignal) break;
             const o = await thinBundle(a.info.realpath, { home, runId: lock.runId, seq, minSavingsBytes: ticked ? 0 : undefined });
             this.lastOutcomes.push(o);
             // spec §10 EPERM: stop attempting other bundles this pass; each attempt is an App Management write probe
             if (o.status === "blocked" && o.reason === "app-management") {
-              for (const { app: rest } of work.slice(seq + 1)) {
+              for (const { app: rest } of engine.slice(seq + 1)) {
                 this.lastOutcomes.push({
                   app: rest.info.realpath,
                   status: "skipped",
@@ -366,8 +381,7 @@ export class UniversalBinaryCleaner implements CleanerModule {
           thinThrew = true;
         }
       } finally {
-        process.off("SIGTERM", onSignal);
-        process.off("SIGINT", onSignal);
+        for (const s of signals) process.off(s, onSignal);
         try {
           await lock.release();
         } finally {

@@ -457,7 +457,7 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     }
   });
 
-  it("a signal mid-pass prints the in-flight outcome and exits 143 even when releasing the lock throws (T11-R7)", async () => {
+  it("a signal mid-pass prints the in-flight outcome and exits 143 (SIGTERM) / 129 (SIGHUP) even when releasing the lock throws (T11-R7, c8)", async () => {
     const a = path.join(roots, "A.app");
     const b = path.join(roots, "B.app");
     await fixtureAt(a, b);
@@ -470,18 +470,102 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     }) as typeof process.exit);
     const errs = vi.spyOn(console, "error").mockImplementation(() => {});
     lockCtl.releaseThrows = true;
-    // no engine: the first app is "in flight" when clear()'s own SIGTERM handler fires (called directly, no real signal)
-    thinCtl.fake = async (app) => {
-      const handler = on.mock.calls.find((c) => c[0] === "SIGTERM")![1] as (s: NodeJS.Signals) => void;
-      handler("SIGTERM");
-      return { app, status: "skipped", reason: "running", heldBytes: 0, candidates: [], skipped: [] };
-    };
-    await expect(cleaner.clear(false, { categories: ids, tickedIds: ids })).rejects.toThrow("release boom");
-    expect(thinCtl.calls).toEqual([a]);
-    expect(exits).toEqual([143]);
-    expect(cleaner.lastOutcomes.map((o) => o.app)).toEqual([a]);
-    expect(errs.mock.calls.map((c) => c.join(" "))).toContain(`  ${outcomeLine(cleaner.lastOutcomes[0])}`);
-    expect(fs.existsSync(path.join(home, "agent.lock"))).toBe(false);
+    for (const [signal, code] of [["SIGTERM", 143], ["SIGHUP", 129]] as const) {
+      on.mockClear();
+      errs.mockClear();
+      exits.length = 0;
+      thinCtl.calls = [];
+      // no engine: the first app is "in flight" when clear()'s own handler fires (called directly, no real signal)
+      thinCtl.fake = async (app) => {
+        const handler = on.mock.calls.find((c) => c[0] === signal)![1] as (s: NodeJS.Signals) => void;
+        handler(signal);
+        return { app, status: "skipped", reason: "running", heldBytes: 0, candidates: [], skipped: [] };
+      };
+      await expect(cleaner.clear(false, { categories: ids, tickedIds: ids }), signal).rejects.toThrow("release boom");
+      expect(thinCtl.calls, signal).toEqual([a]);
+      expect(exits, signal).toEqual([code]);
+      expect(cleaner.lastOutcomes.map((o) => o.app), signal).toEqual([a]);
+      expect(errs.mock.calls.map((c) => c.join(" ")), signal).toContain(`  ${outcomeLine(cleaner.lastOutcomes[0])}`);
+      expect(fs.existsSync(path.join(home, "agent.lock")), signal).toBe(false);
+      expect(process.listeners(signal), signal).not.toContain(on.mock.calls.find((c) => c[0] === signal)![1]);
+    }
+  });
+
+  it("a binary-plist app of an auto-ignored vendor is skipped:auto-ignored unless ticked, in every mode (k1)", async () => {
+    const app = path.join(roots, "Bin.app");
+    await fixtureAt(app);
+    const plist = path.join(app, "Contents", "Info.plist");
+    for (const args of [
+      ["-replace", "CFBundleExecutable", "-string", "Bin", plist],
+      ["-replace", "CFBundleIdentifier", "-string", "com.microsoft.fixture", plist],
+    ]) {
+      expect((await run("/usr/bin/plutil", args, 10_000)).code).toBe(0);
+    }
+    const exe = path.join(app, "Contents", "MacOS", "Bin");
+    fs.renameSync(path.join(app, MAIN), exe);
+    expect((await run("/usr/bin/plutil", ["-convert", "binary1", plist], 10_000)).code).toBe(0);
+    expect((await run("/usr/bin/codesign", ["-s", "-", "--force", "--deep", app], 120_000)).code).toBe(0);
+    const before = sha(exe);
+    const cleaner = new UniversalBinaryCleaner();
+    const [cat] = await cleaner.getCacheCategories();
+    expect(cleaner.autoIgnoredClass(cat.id)).toBeNull(); // the spawn-free scan cannot read a bplist's bundle id
+    const outcomes = () => cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason, o.detail]);
+
+    // ub --all / squeaky clean --categories (categories, no tick), then squeaky clean (auto)
+    const r = await cleaner.clear(false, { categories: [cat.id] });
+    expect(outcomes()).toEqual([[app, "skipped", "auto-ignored", "microsoft"]]);
+    expect(r.error).toBe("Bin: skipped:auto-ignored (microsoft)");
+    await cleaner.clear(false);
+    expect(outcomes()).toEqual([[app, "skipped", "auto-ignored", "microsoft"]]);
+    expect(thinCtl.calls).toEqual([]);
+    expect(sha(exe)).toBe(before);
+
+    // an interactive tick beats the class
+    await cleaner.clear(false, { categories: [cat.id], tickedIds: [cat.id] });
+    expect(thinCtl.calls).toEqual([app]);
+    expect(cleaner.lastOutcomes.map((o) => o.status)).toEqual(["thinned"]);
+    expect(await lipoArchs(exe)).toEqual(["arm64"]);
+  });
+
+  it("a protected glob written against the path an app was found at protects it through a symlinked folder (c2)", async () => {
+    const real = path.join(tmp, "elsewhere", "Pro.app");
+    await fixtureAt(real);
+    fs.symlinkSync(path.join(tmp, "elsewhere"), path.join(roots, "alias")); // found at <roots>/alias/Pro.app
+    const before = sha(path.join(real, MAIN));
+    const cleaner = new UniversalBinaryCleaner();
+    const [cat] = await cleaner.getCacheCategories();
+    expect(cat.paths[0]).toBe(real);
+    const prot = [`${roots}/alias/Pro*`];
+    const tick = { categories: [cat.id], tickedIds: [cat.id] };
+    await cleaner.clear(false, tick, undefined, prot);
+    expect(cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason])).toEqual([[real, "skipped", "protected"]]);
+    expect((await cleaner.preview(tick, prot)).map((o) => o.reason)).toEqual(["protected"]);
+    expect(thinCtl.calls).toEqual([]);
+    expect(sha(path.join(real, MAIN))).toBe(before);
+  });
+
+  it("an app whose Contents/MacOS is not writable is skipped:not-writable and the pass goes on (k2)", async () => {
+    const a = path.join(roots, "A.app");
+    const b = path.join(roots, "B.app");
+    await fixtureAt(a, b);
+    const macos = path.join(a, "Contents", "MacOS");
+    const aBefore = sha(path.join(a, MAIN));
+    const cleaner = new UniversalBinaryCleaner();
+    const ids = (await cleaner.getCacheCategories()).map((c) => c.id);
+    fs.chmodSync(macos, 0o555);
+    try {
+      const r = await cleaner.clear(false, { categories: ids, tickedIds: ids });
+      expect(cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason])).toEqual([
+        [a, "skipped", "not-writable"],
+        [b, "thinned", undefined],
+      ]);
+      expect(r.error).toBe("A: skipped:not-writable");
+      expect(r.success).toBe(true);
+    } finally {
+      fs.chmodSync(macos, 0o755);
+    }
+    expect(sha(path.join(a, MAIN))).toBe(aBefore);
+    expect(await lipoArchs(path.join(b, MAIN))).toEqual(["arm64"]);
   });
 
   it("skips apps at or inside a protected path in every mode, ticked or not (round 3)", async () => {
