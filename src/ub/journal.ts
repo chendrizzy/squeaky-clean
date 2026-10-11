@@ -95,9 +95,12 @@ export async function removeEntry(home: AgentHome, e: JournalEntry): Promise<voi
   await fs.promises.rm(entryPath(home, e), { force: true });
 }
 
+/** Where listEntries quarantines invalid journal files; prune refuses to run while it holds any (c3). */
+export const rejectedDir = (home: AgentHome) => path.join(home.journal, "rejected");
+
 async function reject(home: AgentHome, name: string, why: string): Promise<void> {
   console.warn(`ub journal: rejecting ${name}: ${why}`);
-  const dir = path.join(home.journal, "rejected");
+  const dir = rejectedDir(home);
   await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
   await fs.promises.rename(path.join(home.journal, name), path.join(dir, `${Date.now().toString(36)}-${name}`)).catch(() => {});
 }
@@ -109,18 +112,24 @@ export async function listIncomplete(home: AgentHome, exceptRunId: string): Prom
 /**
  * Every valid entry, finished ones included, in filename order. A `done` entry is the restore record of
  * its thin (`ub restore` reads it), so finished entries must not be pruned while their backupDir exists.
- * Invalid files are quarantined to `journal/rejected/` and never returned.
+ * Files that are invalid on every read (not a regular file, too large, not JSON, failing validation) are quarantined
+ * to `journal/rejected/` and never returned. Any errno from lstat/readFile is rethrown: a transient read error must
+ * abort the run, never quarantine a good record and un-hold its backup (c11).
  */
 export async function listEntries(home: AgentHome): Promise<JournalEntry[]> {
   const names = (await fs.promises.readdir(home.journal)).filter((n) => n.endsWith(".json")).sort();
   const out: JournalEntry[] = [];
   for (const name of names) {
     const p = path.join(home.journal, name);
+    const st = await fs.promises.lstat(p);
+    if (!st.isFile() || st.size > 16 * 1024 * 1024) {
+      await reject(home, name, "not a regular file or too large");
+      continue;
+    }
+    const text = await fs.promises.readFile(p, "utf8");
     let parsed: unknown;
     try {
-      const st = await fs.promises.lstat(p);
-      if (!st.isFile() || st.size > 16 * 1024 * 1024) throw new Error("not a regular file or too large");
-      parsed = JSON.parse(await fs.promises.readFile(p, "utf8"));
+      parsed = JSON.parse(text);
     } catch (err) {
       await reject(home, name, `unreadable: ${(err as Error).message}`);
       continue;

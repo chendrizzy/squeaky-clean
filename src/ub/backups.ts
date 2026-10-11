@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { listIncomplete } from "./journal";
+import { listIncomplete, rejectedDir } from "./journal";
 import { bundleHash, type AgentHome } from "./paths";
 
 export async function backupFile(
@@ -43,9 +43,21 @@ export interface PruneResult {
   heldDirs: string[];
 }
 
-/** Removes `backups/<h>/<name>` dirs (real dirs only) that `remove` accepts and no incomplete journal entry references. */
+/**
+ * Removes `backups/<h>/<name>` dirs (real dirs only) that `remove` accepts and no incomplete journal entry references.
+ * Fails closed (c3): a quarantined journal record may be the one holding a backup, so while `journal/rejected/` holds
+ * anything nothing is removed and this throws, saying where the records are.
+ */
 async function pruneWhere(home: AgentHome, remove: (st: fs.Stats) => boolean, onlyHash?: string): Promise<PruneResult> {
   const held = new Set((await listIncomplete(home, "")).map((e) => e.backupDir));
+  const dir = rejectedDir(home);
+  const rejected = await fs.promises.readdir(dir).catch((e: NodeJS.ErrnoException) => {
+    if (e.code === "ENOENT") return [];
+    throw e;
+  });
+  if (rejected.length > 0) {
+    throw new Error(`${rejected.length} quarantined journal record(s) in ${dir}; inspect them, then remove them to re-enable pruning`);
+  }
   const out: PruneResult = { removedDirs: [], freedBytes: 0, heldDirs: [] };
   const hashes = onlyHash === undefined ? await fs.promises.readdir(home.backups) : [onlyHash];
   for (const h of hashes) {

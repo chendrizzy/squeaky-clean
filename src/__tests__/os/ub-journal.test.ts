@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { writeEntry, listIncomplete, validateEntry, removeEntry, type JournalEntry } from "../../ub/journal";
-import { backupFile, pruneExpiredBackups } from "../../ub/backups";
+import { backupFile, pruneBackups, pruneExpiredBackups } from "../../ub/backups";
 import type { AgentHome } from "../../ub/paths";
 
 const gate = process.platform === "darwin" && process.arch === "arm64";
@@ -140,6 +140,39 @@ describe.skipIf(!gate)("ub journal and backups", () => {
     expect(r.removedDirs).toEqual([]);
     expect(fs.existsSync(d)).toBe(true);
     await writeEntry(h, mk({ backupDir: d, phase: "done" }));
+    expect((await pruneExpiredBackups(h, 3, now)).removedDirs).toEqual([d]);
+  });
+
+  it("a transient read error aborts the listing and quarantines nothing (c11)", async () => {
+    const now = Date.now();
+    const d = mkBackup("hh", "1-old-1-1", 10, 10, now);
+    await writeEntry(h, mk({ backupDir: d, phase: "swapping" }));
+    const file = path.join(h.journal, "abc-1-1-0.json");
+    const eio = (op: string) => Object.assign(new Error(`EIO: i/o error, ${op}`), { code: "EIO" });
+    for (const [fn, op] of [["readFile", "read"], ["lstat", "lstat"]] as const) {
+      const real = fs.promises[fn] as (...a: unknown[]) => Promise<unknown>;
+      const spy = vi.spyOn(fs.promises, fn).mockImplementation((async (p: fs.PathLike, ...rest: unknown[]) => {
+        if (String(p) === file) throw eio(op);
+        return real(p, ...rest);
+      }) as never);
+      await expect(listIncomplete(h, "me")).rejects.toThrow(/EIO/);
+      await expect(pruneExpiredBackups(h, 3, now)).rejects.toThrow(/EIO/);
+      spy.mockRestore();
+    }
+    expect(fs.existsSync(path.join(h.journal, "rejected"))).toBe(false);
+    expect(fs.existsSync(d)).toBe(true);
+    expect((await listIncomplete(h, "me")).map((e) => e.phase)).toEqual(["swapping"]); // still held
+  });
+
+  it("prune fails closed while journal/rejected/ holds a quarantined record (c3)", async () => {
+    const now = Date.now();
+    const d = mkBackup("hh", "1-old-1-1", 10, 10, now);
+    fs.writeFileSync(path.join(h.journal, "junk-1-1.json"), "{not json"); // quarantined by the listing prune runs
+    const msg = `1 quarantined journal record(s) in ${path.join(h.journal, "rejected")}; inspect them, then remove them to re-enable pruning`;
+    await expect(pruneExpiredBackups(h, 3, now)).rejects.toThrow(msg);
+    await expect(pruneBackups(h)).rejects.toThrow(msg);
+    expect(fs.existsSync(d)).toBe(true);
+    fs.rmSync(path.join(h.journal, "rejected"), { recursive: true });
     expect((await pruneExpiredBackups(h, 3, now)).removedDirs).toEqual([d]);
   });
 
