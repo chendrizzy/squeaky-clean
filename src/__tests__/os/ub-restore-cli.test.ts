@@ -89,7 +89,7 @@ describe.skipIf(!gate)("ub restore / prune on a thinned fixture app", () => {
     for (const rel of [MAIN, HELPER]) expect(sha(path.join(app, rel))).toBe(orig[rel]);
   });
 
-  it("same build, arm64-only vendor update → superseded; the new bytes stay byte-identical", async () => {
+  it("same build, arm64-only vendor update of the main exe, helper still thin → restore-failed; the new bytes stay byte-identical", async () => {
     await thin();
     // the vendor re-ships arm64-only binaries under the same CFBundleVersion: new inode, new bytes
     const fresh = path.join(base, "t", "fresh");
@@ -101,14 +101,15 @@ describe.skipIf(!gate)("ub restore / prune on a thinned fixture app", () => {
     const helperIno = fs.statSync(path.join(app, HELPER)).ino;
 
     const r = await restoreAppFromJournal(home, app, ok);
-    expect(r.status).toBe("superseded");
+    expect(r.status).toBe("restore-failed"); // the helper is still squeaky's thin: never superseded (R19 item 5)
     expect(r.notes.join("\n")).toMatch(/fixture-main: changed since it was thinned; not overwriting/);
+    expect(r.notes.join("\n")).toContain(`not restoring: ${MAIN} changed since the thin while 1 other file(s) are still squeaky's`);
     expect(sha(path.join(app, MAIN))).toBe(vendor);
     expect(fs.statSync(path.join(app, HELPER)).ino).toBe(helperIno);
     expect(fs.readdirSync(home.staging)).toEqual([]);
   });
 
-  it("restore refuses when the app was updated since (current exe fat again) → superseded", async () => {
+  it("restore refuses when the main exe was updated since (fat again) and the helper is still thin → restore-failed, nothing written", async () => {
     const o = await thin();
     // an "update" puts a fat main executable back (new inode); the helper is still our thin file
     const fresh = path.join(base, "t", "fresh");
@@ -118,7 +119,7 @@ describe.skipIf(!gate)("ub restore / prune on a thinned fixture app", () => {
     const before = journalNames();
 
     const r = await restoreAppFromJournal(home, app, ok);
-    expect(r.status).toBe("superseded");
+    expect(r.status).toBe("restore-failed");
     expect(r.notes.join("\n")).toMatch(/fixture-main: changed since it was thinned/);
     // nothing written in the bundle: helper untouched and still thin, no new journal entry, no staging
     expect(fs.statSync(path.join(app, HELPER)).ino).toBe(helperIno);
@@ -183,14 +184,35 @@ describe.skipIf(!gate)("ub restore / prune on a thinned fixture app", () => {
     for (const rel of [MAIN, HELPER]) expect(sha(path.join(app, rel))).toBe(orig[rel]);
   });
 
-  it("never thinned → nothing-to-do; no app → unreachable; a missing file → superseded", async () => {
+  it("never thinned → nothing-to-do; no app → unreachable; a missing file while another is still thin → restore-failed", async () => {
     expect(await restoreAppFromJournal(home, app)).toEqual({ status: "nothing-to-do", notes: [] });
     expect((await restoreAppFromJournal(home, path.join(base, "apps", "Gone.app"))).status).toBe("unreachable");
     await thin();
     fs.rmSync(path.join(app, HELPER));
     const r = await restoreAppFromJournal(home, app, ok);
-    expect(r.status).toBe("superseded");
+    expect(r.status).toBe("restore-failed");
+    expect(r.notes.join("\n")).toContain(`not restoring: ${HELPER} changed since the thin`);
     expect(await lipoArchs(path.join(app, MAIN))).toEqual(["arm64"]);
+  });
+
+  it("an unfinished newest entry is a failure naming its phase, never nothing-to-do, even with the main executable fat (c12)", async () => {
+    await thin();
+    const [name] = Object.keys(journalFiles());
+    const e = JSON.parse(fs.readFileSync(path.join(home.journal, name), "utf8")) as JournalEntry;
+    // a restore that put the main executable back and then failed on the helper
+    fs.copyFileSync(path.join(e.backupDir, MAIN), path.join(app, MAIN));
+    expect((await lipoArchs(path.join(app, MAIN))).sort()).toEqual(["arm64", "x86_64"]);
+    const helperThin = sha(path.join(app, HELPER));
+    for (const phase of ["staged", "backed-up", "swapping", "restoring", "restore-failed"] as const) {
+      await writeEntry(home, { ...e, phase });
+      const journal = journalFiles();
+      expect(await restoreAppFromJournal(home, app, ok), phase).toEqual({
+        status: "restore-failed",
+        notes: [`the last thin or restore of ${app} is unfinished (journal phase ${phase}) and recovery could not complete it; nothing was changed`],
+      });
+      expect(journalFiles()).toEqual(journal);
+    }
+    expect(sha(path.join(app, HELPER))).toBe(helperThin);
   });
 
   it("uses the journaled backupDir, never the newest dir under backups/", async () => {

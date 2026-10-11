@@ -31,7 +31,7 @@ export interface JournalEntry {
 const PHASES: ReadonlySet<string> = new Set<JournalPhase>([
   "staged", "backed-up", "swapping", "done", "restoring", "restored", "superseded", "restore-failed",
 ]);
-const FINISHED: ReadonlySet<string> = new Set<JournalPhase>(["done", "restored", "superseded"]);
+export const FINISHED: ReadonlySet<string> = new Set<JournalPhase>(["done", "restored", "superseded"]);
 /** Valid run ids (journal entries and the run lock): never long enough to overflow a file name. */
 export const RUN_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
 

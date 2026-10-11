@@ -215,15 +215,22 @@ describe.skipIf(!gate)("ub restore and journal recovery", () => {
     expect(fs.readFileSync(path.join(victim, "keep.txt"), "utf8")).toBe("precious");
   });
 
-  it("mixed: the LAST file replaced, an earlier one still thin -> superseded and nothing written", async () => {
-    const { mainFile } = addMainExe();
+  it("mixed: the LAST file replaced, an earlier one still thin -> restore-failed naming it, nothing written, entry still held", async () => {
+    const { mainRel, mainFile } = addMainExe();
     await thin("swapping");
     const thinSha = sha(file);
     replaceWithNewInode(mainFile, "app was updated"); // foreign comes after the thin: single-pass would write first
     const r = await restoreEntry(h, entry, okVerify);
-    expect(r.status).toBe("superseded");
+    expect(r.status).toBe("restore-failed");
+    expect(r.notes).toContain(
+      `not restoring: ${mainRel} changed since the thin while 1 other file(s) are still squeaky's; nothing was written and the backup is kept`,
+    );
     expect(sha(file)).toBe(thinSha); // still the thin, byte for byte
     expect(fs.readFileSync(mainFile, "utf8")).toBe("app was updated");
+    // not terminal: retried by recovery, and its backup stays held against prune
+    expect((await listIncomplete(h, "")).map((e) => e.phase)).toEqual(["restore-failed"]);
+    expect(fs.existsSync(path.join(entry.backupDir, rel))).toBe(true);
+    expect((await recoverJournal(h, "other", okVerify)).map((x) => x.result)).toEqual(["restore-failed"]);
   });
 
   it("a file with no thinIno that is no longer the original is foreign -> superseded", async () => {

@@ -3,7 +3,7 @@ import * as path from "path";
 import { codesignVerify } from "./exec";
 import { backupFile } from "./backups";
 import { classifySlices, readBundleInfo, readMachOSlices } from "./bundle";
-import { listEntries, listIncomplete, writeEntry, type JournalEntry, type JournalFile, type JournalPhase } from "./journal";
+import { FINISHED, listEntries, listIncomplete, writeEntry, type JournalEntry, type JournalFile, type JournalPhase } from "./journal";
 import { isInside, makeStagingDir, mountPointOf, resolveCandidate, type AgentHome, type PathDeps } from "./paths";
 
 export type RestoreStatus = "restored" | "nothing-to-do" | "superseded" | "restore-failed" | "unreachable";
@@ -101,9 +101,13 @@ export async function restoreEntry(
     const classes: FileClass[] = [];
     for (const f of e.files) classes.push(await classify(bundleReal, f, notes));
     const todo = e.files.flatMap((f, i) => (classes[i] === "thin" || classes[i] === "ours" ? [{ f, thin: classes[i] === "thin" }] : []));
-    // an unclassifiable file blocks the decision: superseded is terminal and makes the backup pruneable
+    const foreign = e.files.filter((_, i) => classes[i] === "foreign").map((f) => f.rel);
+    // superseded is terminal and makes the backup pruneable: never while a file is unclassifiable, or still ours
     if (classes.includes("error")) status = "restore-failed";
-    else if (classes.includes("foreign")) status = "superseded";
+    else if (foreign.length > 0 && todo.length > 0) {
+      status = "restore-failed";
+      notes.push(`not restoring: ${foreign.join(", ")} changed since the thin while ${todo.length} other file(s) are still squeaky's; nothing was written and the backup is kept`);
+    } else if (foreign.length > 0) status = "superseded";
     else if (todo.length === 0) status = "nothing-to-do";
     else {
       const backupsReal = await fs.promises.realpath(home.backups);
@@ -211,7 +215,9 @@ async function mainIsFat(bundleReal: string): Promise<boolean> {
  * already replaced). The record goes to restoreEntry unchanged, so the identity checks compare the app's
  * files with the thinIno/thinSize journaled at swap time (a vendor update is `superseded`, nothing written).
  * With no record nothing is written, not even the journal:
- * - `nothing-to-do` when the main executable is universal, whatever the entries say;
+ * - `restore-failed` (its note names the phase) when the newest entry is unfinished (staged, backed-up, swapping,
+ *   restoring, restore-failed): a partial restore can leave the main executable universal and helpers thin;
+ * - `nothing-to-do` when the newest entry is finished (or there is none) and the main executable is universal;
  * - otherwise `no-record`: squeaky cannot prove what is in the app now is what it left there.
  * Callers run recoverJournal first (ubRestoreCommand does), so an interrupted run is finished by its own entry.
  */
@@ -230,6 +236,13 @@ export async function restoreAppFromJournal(
   for (const e of await listEntries(home)) if (e.bundle === bundleReal && (!newest || newer(e, newest))) newest = e;
   if (newest?.phase === "done" && (await fs.promises.lstat(newest.backupDir).catch(() => null))?.isDirectory()) {
     return restoreEntry(home, newest, deps);
+  }
+  // an unfinished thin or restore may have put the main executable back and left helpers thin (c12)
+  if (newest && !FINISHED.has(newest.phase)) {
+    return {
+      status: "restore-failed",
+      notes: [`the last thin or restore of ${bundleReal} is unfinished (journal phase ${newest.phase}) and recovery could not complete it; nothing was changed`],
+    };
   }
 
   if (await mainIsFat(bundleReal)) return { status: "nothing-to-do", notes: [] };
