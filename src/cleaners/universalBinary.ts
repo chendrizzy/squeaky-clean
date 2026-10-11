@@ -477,13 +477,17 @@ export class UniversalBinaryCleaner implements CleanerModule {
         // §6.2 row 5 for binary-plist apps (k1): the scan could not read their bundle id without spawning plutil
         const engine: Work[] = [];
         for (const w of work) {
-          const info =
-            w.ticked || w.app.info.bundleId !== null
-              ? null
-              : await readBundleInfo(w.app.info.realpath, { allowSpawn: true });
-          const cls =
-            info &&
-            (classifyApp(info, await probeApp(info.realpath))?.cls ?? null);
+          if (w.ticked || w.app.info.bundleId !== null) {
+            engine.push(w);
+            continue;
+          }
+          const info = await readBundleInfo(w.app.info.realpath, {
+            allowSpawn: true,
+          }).catch(() => null);
+          // an identity that cannot be read fails closed: it could be any auto-ignored vendor (F2)
+          const cls = info
+            ? (classifyApp(info, await probeApp(info.realpath))?.cls ?? null)
+            : "identity unreadable";
           if (cls) {
             skips.push({
               app: w.app.info.realpath,

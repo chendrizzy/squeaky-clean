@@ -767,6 +767,41 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     expect(await lipoArchs(exe)).toEqual(["arm64"]);
   });
 
+  it("an un-ticked app whose identity cannot be read even with plutil fails closed as auto-ignored (F2)", async () => {
+    const app = path.join(roots, "Junk.app");
+    await fixtureAt(app);
+    const exe = path.join(app, "Contents", "MacOS", "Junk");
+    fs.renameSync(path.join(app, MAIN), exe); // a bplist the scan cannot read: executable = bundle name
+    fs.writeFileSync(
+      path.join(app, "Contents", "Info.plist"),
+      "bplist00 not a real binary plist",
+    );
+    const before = sha(exe);
+    const cleaner = new UniversalBinaryCleaner();
+    const [cat] = await cleaner.getCacheCategories();
+    expect(cat.paths[0]).toBe(app); // listed by the spawn-free scan, with no bundle id
+    const outcomes = () =>
+      cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason, o.detail]);
+
+    const r = await cleaner.clear(false, { categories: [cat.id] });
+    expect(outcomes()).toEqual([
+      [app, "skipped", "auto-ignored", "identity unreadable"],
+    ]);
+    expect(r.error).toBe("Junk: skipped:auto-ignored (identity unreadable)");
+    await cleaner.clear(false);
+    expect(outcomes()).toEqual([
+      [app, "skipped", "auto-ignored", "identity unreadable"],
+    ]);
+    expect(thinCtl.calls).toEqual([]);
+    expect(sha(exe)).toBe(before);
+
+    // a tick still reaches the engine, which refuses a bundle it cannot read
+    await cleaner.clear(false, { categories: [cat.id], tickedIds: [cat.id] });
+    expect(thinCtl.calls).toEqual([app]);
+    expect(outcomes()).toEqual([[app, "skipped", "not-a-bundle", undefined]]);
+    expect(sha(exe)).toBe(before);
+  });
+
   it("a protected glob written against the path an app was found at protects it through a symlinked folder (c2)", async () => {
     const real = path.join(tmp, "elsewhere", "Pro.app");
     await fixtureAt(real);
