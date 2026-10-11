@@ -150,6 +150,23 @@ describe("squeaky ub subcommand parsing", () => {
     await runCli(["ub", "restore", "Foo"]);
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1));
   });
+  it("a failing subcommand's message prints with control characters escaped (F5)", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const cases = [
+      [["ub", "restore", "Foo"], h.ubRestoreCommand],
+      [["ub", "prune", "--all"], h.ubPruneCommand],
+      [["ub", "--all"], h.ubCommand],
+    ] as const;
+    for (const [argv, fn] of cases) {
+      fn.mockRejectedValue(new Error("bad \x1b]0;x\x07 name"));
+      await runCli([...argv]);
+      await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1));
+      exit.mockClear();
+    }
+    const out = log.mock.calls.map((c) => c.join(" ")).join("\n");
+    expect(out).not.toMatch(/\x1b\]|\x07/); // eslint-disable-line no-control-regex
+    expect(out.match(/bad \\x1b\]0;x\\x07 name/g)).toHaveLength(3);
+  });
 });
 
 describe("ub restore / prune commands", () => {

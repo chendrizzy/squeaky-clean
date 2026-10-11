@@ -86,6 +86,14 @@ export function printInfo(text: string): void {
   console.log(prefix + text);
 }
 
+/** Bundle-derived text (names, paths, tool stderr) may hold terminal escapes (c10): every C0/C1 control char and DEL prints as `\xNN`. */
+export const printable = (s: string): string =>
+  s.replace(
+    // eslint-disable-next-line no-control-regex
+    /[\x00-\x1f\x7f-\x9f]/g,
+    (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`,
+  );
+
 export function printVerbose(text: string): void {
   // Diagnostics must never reach stdout under --json, or they corrupt the
   // single machine-readable object the consumer expects to parse.

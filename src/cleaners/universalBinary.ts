@@ -8,7 +8,10 @@ import {
   CacheSelectionCriteria,
   CacheCategory,
 } from "../types";
-import { formatSizeWithColor, printVerbose } from "../utils/cli";
+import { formatSizeWithColor, printable, printVerbose } from "../utils/cli";
+
+// commands/ub.ts and tests import it from here
+export { printable };
 import {
   classifySlices,
   readBundleInfo,
@@ -67,13 +70,6 @@ const DETAIL_IN_ERROR = new Set(["not-attempted", "auto-ignored", "stale-id"]);
 
 const sum = (xs: number[]) => xs.reduce((n, x) => n + x, 0);
 
-/** Bundle-derived text (names, paths, tool stderr) may hold terminal escapes (c10): every C0/C1 control char and DEL prints as `\xNN`. */
-export const printable = (s: string): string =>
-  s.replace(
-    // eslint-disable-next-line no-control-regex
-    /[\x00-\x1f\x7f-\x9f]/g,
-    (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`,
-  );
 const appName = (p: string) => printable(path.basename(p, ".app"));
 const underSystem = (real: string) =>
   real === "/System" || real.startsWith("/System/");

@@ -11,7 +11,12 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import pc from "picocolors";
 import { config } from "./config";
-import { printHeader, printError, showBootPristine } from "./utils/cli";
+import {
+  printHeader,
+  printError,
+  printable,
+  showBootPristine,
+} from "./utils/cli";
 import { SAFETY_TIER_ORDER, SAFETY_TIER_INFO } from "./safety";
 
 // One line per safety tier: colored label + summary. Shown in --help output
@@ -465,7 +470,7 @@ const ub = program
       await ubCommand(options);
     } catch (error) {
       printError(
-        `Failed to thin binaries: ${error instanceof Error ? error.message : error}`,
+        `Failed to thin binaries: ${printable(error instanceof Error ? error.message : String(error))}`,
       );
       process.exit(1);
     }
@@ -496,7 +501,7 @@ ub.command("restore <app>")
       await ubRestoreCommand(app);
     } catch (error) {
       printError(
-        `Failed to restore: ${error instanceof Error ? error.message : error}`,
+        `Failed to restore: ${printable(error instanceof Error ? error.message : String(error))}`,
       );
       process.exit(1);
     }
@@ -518,7 +523,7 @@ ub.command("prune [app]")
       await ubPruneCommand(app, { all });
     } catch (error) {
       printError(
-        `Failed to prune backups: ${error instanceof Error ? error.message : error}`,
+        `Failed to prune backups: ${printable(error instanceof Error ? error.message : String(error))}`,
       );
       process.exit(1);
     }
