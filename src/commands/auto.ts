@@ -8,7 +8,11 @@ import {
 } from "../utils/cli";
 import { cacheManager } from "../cleaners";
 import { config } from "../config";
-import { aggregateVolumeBreakdown, volumeLabel } from "../utils/volumes";
+import {
+  aggregateVolumeBreakdown,
+  freedBytes,
+  volumeLabel,
+} from "../utils/volumes";
 import ora from "ora";
 import inquirer from "inquirer";
 
@@ -259,9 +263,7 @@ export async function autoCommand(options: AutoOptions): Promise<void> {
       console.log();
       for (const result of results) {
         if (result.success) {
-          const freed = options.dryRun
-            ? result.sizeBefore || 0
-            : (result.sizeBefore || 0) - (result.sizeAfter || 0);
+          const freed = freedBytes(result, Boolean(options.dryRun));
           actualFreed += freed;
 
           if (freed > 0) {

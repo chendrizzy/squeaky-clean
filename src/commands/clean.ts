@@ -37,7 +37,12 @@ import {
   summarizeAppCaches,
 } from "../utils/categoryView";
 import { normalizeHierarchy } from "../utils/groupHierarchy";
-import { aggregateVolumeBreakdown, volumeLabel } from "../utils/volumes";
+import {
+  aggregateVolumeBreakdown,
+  freedBytes,
+  volumeLabel,
+} from "../utils/volumes";
+import { BACKUP_RELEASE } from "../cleaners/universalBinary";
 
 function parseCsvOption(value?: string | string[]): string[] | undefined {
   if (!value) return undefined;
@@ -315,16 +320,21 @@ interface RenderContext {
 function renderCleanResults(
   results: ClearResult[],
   ctx: RenderContext,
-): { totalFreed: number; successCount: number; errorCount: number } {
+): {
+  totalFreed: number;
+  totalHeld: number;
+  successCount: number;
+  errorCount: number;
+} {
   let totalFreed = 0;
   let successCount = 0;
   let errorCount = 0;
+  // held bytes are real backups even when the result failed partway, so they count regardless of success
+  const totalHeld = results.reduce((sum, r) => sum + (r.heldBytes || 0), 0);
 
   const rows = results.map((result) => ({
     result,
-    freed: ctx.dryRun
-      ? result.sizeBefore || 0
-      : (result.sizeBefore || 0) - (result.sizeAfter || 0),
+    freed: freedBytes(result, ctx.dryRun),
   }));
 
   if (ctx.json) {
@@ -339,6 +349,7 @@ function renderCleanResults(
     const payload = {
       dryRun: ctx.dryRun,
       totalFreed,
+      totalHeld,
       volumes: ctx.volumes,
       results: rows.map(({ result, freed }) => ({
         name: result.name,
@@ -347,6 +358,7 @@ function renderCleanResults(
         sizeBefore: result.sizeBefore ?? 0,
         sizeAfter: result.sizeAfter ?? 0,
         freed,
+        heldBytes: result.heldBytes ?? 0,
         categories: result.categoryBreakdown?.map((c) => ({
           id: c.id,
           name: c.name,
@@ -358,7 +370,7 @@ function renderCleanResults(
       })),
     };
     console.log(JSON.stringify(payload, null, 2));
-    return { totalFreed, successCount, errorCount };
+    return { totalFreed, totalHeld, successCount, errorCount };
   }
 
   console.log();
@@ -372,8 +384,14 @@ function renderCleanResults(
     totalFreed += freed;
     successCount++;
 
+    const held = result.heldBytes || 0;
+    if (held > 0) {
+      printSuccess(
+        `${result.name}: ${formatSizeWithColor(held)} ${ctx.dryRun ? "estimated savings; originals are kept as backups first" : "held in backups"} (${BACKUP_RELEASE})`,
+      );
+    }
     if (freed <= 0) {
-      printInfo(`${result.name}: No cache data found`);
+      if (held <= 0) printInfo(`${result.name}: No cache data found`);
       continue;
     }
 
@@ -408,7 +426,7 @@ function renderCleanResults(
   }
   console.log();
 
-  return { totalFreed, successCount, errorCount };
+  return { totalFreed, totalHeld, successCount, errorCount };
 }
 
 export async function cleanCommand(options: CommandOptions): Promise<void> {
@@ -633,9 +651,8 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
     // --json (no banners); otherwise the per-cleaner human summary, with
     // app-caches collapsed to a summary line (expandable with -v).
     const display = config.getAppCacheDisplay();
-    const { totalFreed, successCount, errorCount } = renderCleanResults(
-      results,
-      {
+    const { totalFreed, totalHeld, successCount, errorCount } =
+      renderCleanResults(results, {
         dryRun,
         json,
         volumes,
@@ -648,8 +665,7 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
         useColor: config.shouldUseColors(),
         emojiMode: config.getEmojiMode(),
         topN: display.topN,
-      },
-    );
+      });
 
     // Summary footer (human output only; JSON carries totals in its payload).
     if (!json) {
@@ -668,6 +684,12 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
             );
           }
         }
+      }
+
+      if (totalHeld > 0) {
+        printInfo(
+          `${dryRun ? "Would be held" : "Held"} in backups: ${formatSizeWithColor(totalHeld)} (${BACKUP_RELEASE})`,
+        );
       }
 
       if (errorCount > 0) {

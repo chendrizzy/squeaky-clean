@@ -341,6 +341,7 @@ describe("clean command", () => {
   // ---- universal-binary: opt-in selection and honest reporting ----
   // Every cleaner here is a stub; the real universal-binary cleaner is never
   // reachable from this file.
+  const GB = 1024 ** 3;
   const HINT = /App thinning \(universal-binary\) is not part of clean/;
 
   function stubCleaner(name: string, type: string) {
@@ -355,6 +356,25 @@ describe("clean command", () => {
       clearByCategory: vi.fn(),
     };
   }
+
+  // A dry run's view of a universal-binary result: originals summed in
+  // sizeBefore (the backup size), nothing removed, savings deferred.
+  const ubResult = {
+    name: "universal-binary",
+    success: true,
+    sizeBefore: 5 * GB,
+    sizeAfter: 5 * GB,
+    heldBytes: 2.5 * GB,
+    clearedPaths: ["/mock/Apps/Big.app"],
+  };
+  const npmResult = {
+    name: "npm",
+    success: true,
+    sizeBefore: 1024,
+    sizeAfter: 0,
+    clearedPaths: ["/mock/.npm"],
+    volumeBreakdown: { "/": 1024 },
+  };
 
   function countMatches(output: string, pattern: RegExp): number {
     return output.split("\n").filter((line) => pattern.test(line)).length;
@@ -418,5 +438,86 @@ describe("clean command", () => {
       showProgress: true,
       cleaners: [npm],
     });
+  });
+
+  it("dry run: a held universal-binary row is not 'would be freed' and stays out of the totals", async () => {
+    const { cleanCommand } = await import("../../commands/clean.js");
+    vi.mocked(cacheManager.cleanAllCaches).mockResolvedValue([
+      npmResult,
+      ubResult,
+    ]);
+
+    await cleanCommand({
+      include: "npm,universal-binary",
+      dryRun: true,
+    } as any);
+    const output = getConsoleOutput();
+    const ubLines = output
+      .split("\n")
+      .filter((line) => line.startsWith("universal-binary:"));
+
+    expect(ubLines).toHaveLength(1);
+    expect(ubLines[0]).toContain("2.5 GB estimated savings");
+    expect(ubLines[0]).toContain("squeaky ub prune");
+    expect(ubLines[0]).not.toMatch(/freed\b(?! by)/);
+    expect(output).not.toContain("universal-binary: No cache data found");
+    expect(output).toContain("Total potential space freed: 1.0 KB");
+    expect(output).not.toContain("5.0 GB");
+    expect(countMatches(output, /^Would be held in backups: 2\.5 GB \(/)).toBe(
+      1,
+    );
+    expect(output).toMatch(/By volume:\n {3}\/ \(internal\): 1\.0 KB/);
+  });
+
+  it("real run: says the savings are held in backups, total excludes them", async () => {
+    const { cleanCommand } = await import("../../commands/clean.js");
+    vi.mocked(cacheManager.cleanAllCaches).mockResolvedValue([
+      npmResult,
+      ubResult,
+    ]);
+
+    await cleanCommand({ include: "npm,universal-binary", force: true } as any);
+    const output = getConsoleOutput();
+
+    expect(output).toMatch(
+      /^universal-binary: 2\.5 GB held in backups \(freed by the next squeaky run/m,
+    );
+    expect(output).toContain("Total space freed: 1.0 KB");
+    expect(countMatches(output, /^Held in backups: 2\.5 GB \(/)).toBe(1);
+  });
+
+  it("prints the held line even when nothing else was freed", async () => {
+    const { cleanCommand } = await import("../../commands/clean.js");
+    vi.mocked(cacheManager.cleanAllCaches).mockResolvedValue([ubResult]);
+
+    await cleanCommand({ include: "universal-binary", force: true } as any);
+    const output = getConsoleOutput();
+
+    expect(output).not.toContain("Total space freed");
+    expect(output).not.toContain("By volume:");
+    expect(output).toMatch(/^Held in backups: 2\.5 GB \(/m);
+  });
+
+  it("--json: freed and totalFreed exclude held bytes, carried as heldBytes/totalHeld", async () => {
+    const { cleanCommand } = await import("../../commands/clean.js");
+    vi.mocked(cacheManager.cleanAllCaches).mockResolvedValue([
+      npmResult,
+      ubResult,
+    ]);
+    vi.spyOn(config, "getOutputFormat").mockReturnValue("json");
+
+    await cleanCommand({
+      include: "npm,universal-binary",
+      dryRun: true,
+    } as any);
+    const payload = JSON.parse(getConsoleOutput());
+
+    expect(payload.totalFreed).toBe(1024);
+    expect(payload.totalHeld).toBe(2.5 * GB);
+    expect(payload.volumes).toEqual({ "/": 1024 });
+    const ub = payload.results.find((r: any) => r.name === "universal-binary");
+    expect(ub).toMatchObject({ freed: 0, heldBytes: 2.5 * GB });
+    const npm = payload.results.find((r: any) => r.name === "npm");
+    expect(npm).toMatchObject({ freed: 1024, heldBytes: 0 });
   });
 });

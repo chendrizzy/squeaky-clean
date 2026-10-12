@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **`clean` no longer thins apps unless asked** - `clean --all`, `--types system` and the interactive pickers never select `universal-binary` (it rewrites installed apps); only `--include universal-binary` does, and `clean` prints a one-line hint pointing at `squeaky ub` when it skipped it. `clean --sizes` now scans only the selected cleaners
+- **Honest space reporting for app thinning** - `clean` reported the size of the original binaries (the backup size) as "would be freed" and counted it in the total and "By volume". Thinning savings are now shown as held in backups, excluded from the freed total and per-volume rows, and carried as `heldBytes`/`totalHeld` in `--json`
 - **`auto` now confirms before deleting** - it was the only destructive command with no confirmation prompt at all; it now matches `clean`'s safety gate (prompts unless `--dry-run` or `--force` is given)
 - **`auto --verbose`** - the flag existed but was never read; it now lists cleared paths like `clean`/`interactive` do
 - **Session flags no longer persist** - `--json`, `--verbose`, `--quiet`, and `--no-color` are now applied in memory per invocation instead of being written to `config.json`; previously, using `--json` once made every later run emit JSON

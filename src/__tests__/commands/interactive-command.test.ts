@@ -132,6 +132,38 @@ describe("interactive command", () => {
     expect(offeredValues()).toContain("npm");
     expect(offeredValues()).not.toContain("universal-binary");
   });
+
+  it("reports held bytes apart from freed bytes", async () => {
+    vi.spyOn(cacheManager, "cleanAllCaches").mockResolvedValue([
+      {
+        name: "npm",
+        success: true,
+        sizeBefore: 1024,
+        sizeAfter: 0,
+        clearedPaths: [],
+      },
+      {
+        name: "held-stub",
+        success: true,
+        sizeBefore: 5 * GB,
+        sizeAfter: 5 * GB,
+        heldBytes: 2.5 * GB,
+        clearedPaths: [],
+      },
+    ]);
+    vi.mocked(inquirer.prompt)
+      .mockResolvedValueOnce({ selectionMethod: "individual" })
+      .mockResolvedValueOnce({ caches: ["npm"] })
+      .mockResolvedValueOnce({ action: "clean" })
+      .mockResolvedValueOnce({ cleanMore: false });
+
+    await interactiveCommand.parseAsync([], { from: "user" });
+    const output = getConsoleOutput();
+
+    expect(output).toContain("1.0 KB was freed");
+    expect(output).not.toContain("5.0 GB");
+    expect(output).toMatch(/Held in backups: 2\.5 GB \(freed by the next/);
+  });
 });
 
 describe("enhanced interactive command", () => {

@@ -10,6 +10,8 @@ import {
 } from "../utils/cli";
 import { config } from "../config";
 import { CacheCategory, CacheType } from "../types";
+import { freedBytes } from "../utils/volumes";
+import { BACKUP_RELEASE } from "../cleaners/universalBinary";
 import {
   SAFETY_TIER_INFO,
   SAFETY_TIER_ORDER,
@@ -383,10 +385,12 @@ export const interactiveCommand = new Command("interactive")
 
           // Display results
           let totalFreed = 0;
+          let totalHeld = 0;
           results.forEach((result: any) => {
             const emoji = result.success ? "✅" : "❌";
-            const freed = result.sizeBefore;
+            const freed = freedBytes(result, isDryRun);
             totalFreed += freed;
+            totalHeld += result.heldBytes || 0;
 
             if (result.success) {
               const freedStr =
@@ -419,6 +423,11 @@ export const interactiveCommand = new Command("interactive")
             );
           } else {
             console.log(pc.yellow("   No space was freed\n"));
+          }
+          if (totalHeld > 0) {
+            console.log(
+              `   ${isDryRun ? "Would be held" : "Held"} in backups: ${formatSizeWithColor(totalHeld)} (${BACKUP_RELEASE})\n`,
+            );
           }
 
           if (isDryRun) {

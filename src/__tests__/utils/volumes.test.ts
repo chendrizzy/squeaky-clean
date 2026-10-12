@@ -7,6 +7,7 @@ import { promises as fs } from "fs";
 import {
   aggregateVolumeBreakdown,
   computeVolumeBreakdown,
+  freedBytes,
   resolveVolume,
   UNATTRIBUTABLE,
   volumeBreakdownForPaths,
@@ -343,5 +344,56 @@ describe("BaseCleaner volumeBreakdown wiring", () => {
     // breakdown reflects the volume the cleaned tree actually lived on.
     expect(result.volumeBreakdown).toEqual({ "/Volumes/FAKE2": 32 });
     await expect(fs.readdir(cacheDir)).resolves.toEqual([]);
+  });
+});
+
+// A result with heldBytes defers its reclaim (universal-binary thinning keeps
+// the originals as backups): it frees before - after now, dry run or not.
+describe("freedBytes", () => {
+  const GB = 1024 ** 3;
+
+  it("keeps today's rule for ordinary results", () => {
+    const npm = { sizeBefore: GB, sizeAfter: GB };
+    expect(freedBytes(npm, true)).toBe(GB);
+    expect(freedBytes({ sizeBefore: GB, sizeAfter: 0 }, false)).toBe(GB);
+    expect(freedBytes({ sizeBefore: GB, sizeAfter: GB / 4 }, false)).toBe(
+      (3 * GB) / 4,
+    );
+    expect(freedBytes({}, true)).toBe(0);
+  });
+
+  it("frees nothing now for a held result, in dry and real runs", () => {
+    const ub = { sizeBefore: 5 * GB, sizeAfter: 5 * GB, heldBytes: 2 * GB };
+    expect(freedBytes(ub, true)).toBe(0);
+    expect(freedBytes(ub, false)).toBe(0);
+  });
+
+  it("treats heldBytes: 0 as a deferred-reclaim result too", () => {
+    expect(
+      freedBytes({ sizeBefore: 7, sizeAfter: 7, heldBytes: 0 }, true),
+    ).toBe(0);
+  });
+
+  it("keeps held results out of the per-volume totals", async () => {
+    const totals = await aggregateVolumeBreakdown(
+      [
+        {
+          success: true,
+          sizeBefore: 80,
+          sizeAfter: 80,
+          heldBytes: 40,
+          clearedPaths: ["/ext/Big.app"],
+        },
+        {
+          success: true,
+          sizeBefore: 10,
+          sizeAfter: 10,
+          clearedPaths: ["/ext/yarn-cache"],
+        },
+      ],
+      true,
+      fakeResolve,
+    );
+    expect(totals).toEqual({ "/Volumes/BOLT": 10 });
   });
 });

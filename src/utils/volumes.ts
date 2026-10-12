@@ -19,6 +19,20 @@ export function volumeOf(resolvedPath: string): string {
 export type VolumeResolver = (p: string) => Promise<string>;
 
 /**
+ * Bytes a clean result frees now. A result carrying heldBytes defers its reclaim (universal-binary keeps the
+ * originals as backups), so it frees only what its run removed, dry run or not; any other dry run frees what it found.
+ */
+export function freedBytes(
+  result: Pick<ClearResult, "sizeBefore" | "sizeAfter" | "heldBytes">,
+  dryRun: boolean,
+): number {
+  const before = result.sizeBefore || 0;
+  return dryRun && result.heldBytes === undefined
+    ? before
+    : before - (result.sizeAfter || 0);
+}
+
+/**
  * Resolve which physical volume a cleaned path lives on. The path may
  * already be deleted (clean just ran), so walk up to the nearest existing
  * ancestor - every level of one tree sits on the same volume, and the
@@ -93,6 +107,7 @@ export async function aggregateVolumeBreakdown(
       | "success"
       | "sizeBefore"
       | "sizeAfter"
+      | "heldBytes"
       | "clearedPaths"
       | "volumeBreakdown"
     >
@@ -104,9 +119,7 @@ export async function aggregateVolumeBreakdown(
   const totals: Record<string, number> = {};
   for (const result of results) {
     if (!result.success) continue;
-    const freed = dryRun
-      ? result.sizeBefore || 0
-      : (result.sizeBefore || 0) - (result.sizeAfter || 0);
+    const freed = freedBytes(result, dryRun);
     if (freed <= 0) continue;
 
     let breakdown = result.volumeBreakdown;
