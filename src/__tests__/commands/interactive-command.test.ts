@@ -186,4 +186,35 @@ describe("enhanced interactive command", () => {
     expect(getConsoleOutput()).toContain("npm");
     expect(getConsoleOutput()).not.toContain("universal-binary");
   });
+
+  it("a preview reports what a dry run found, not before minus after", async () => {
+    vi.spyOn(cleanerRegistry, "autoDetect").mockResolvedValue();
+    vi.spyOn(cleanerRegistry, "getAvailableCleaners").mockResolvedValue([
+      npm,
+    ] as any);
+    // a dry run leaves the cache in place, so after equals before
+    npm.clear.mockResolvedValue({
+      name: "npm",
+      success: true,
+      sizeBefore: 1024,
+      sizeAfter: 1024,
+      clearedPaths: [],
+    });
+    vi.mocked(inquirer.prompt)
+      .mockResolvedValueOnce({ configureProtected: false })
+      .mockResolvedValueOnce({ selectionMethod: "all" })
+      .mockResolvedValueOnce({ action: "dryrun" });
+
+    await interactiveEnhancedCommand.parseAsync(["--profile", "none"], {
+      from: "user",
+    });
+
+    expect(npm.clear).toHaveBeenCalledWith(
+      true,
+      undefined,
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(getConsoleOutput()).toContain("Would save: 1.0 KB");
+  });
 });

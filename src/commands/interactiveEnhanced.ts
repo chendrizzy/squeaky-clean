@@ -12,6 +12,7 @@ import { config } from "../config";
 import { CacheType, CacheCategory } from "../types";
 import { profileManager } from "../profiles";
 import { cleanerRegistry } from "../cleaners/CleanerRegistry";
+import { freedBytes } from "../utils/volumes";
 
 interface InteractiveOptions {
   verbose?: boolean;
@@ -513,7 +514,7 @@ export const interactiveEnhancedCommand = new Command("interactive")
           }
 
           if (result.success) {
-            const savedSize = result.sizeBefore - (result.sizeAfter || 0);
+            const savedSize = freedBytes(result, isDryRun);
             console.log(
               pc.green(
                 `   ✅ ${isDryRun ? "Would save" : "Saved"}: ${formatSizeWithColor(savedSize)}`,
