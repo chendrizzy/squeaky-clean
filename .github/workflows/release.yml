@@ -157,46 +157,50 @@ jobs:
       
       - name: Generate changelog
         id: changelog
+        # Commit subjects are untrusted text: they go to a file, never into a run script through ${{ }}
+        env:
+          TAG_NAME: ${{ steps.release.outputs.tag }}
+          REPO: ${{ github.repository }}
         run: |
-          VERSION="${{ steps.release.outputs.version }}"
-          
-          # Get the previous tag
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          
+          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          git fetch --tags --force
+
+          # Bound the range by the release tag, not HEAD: a dispatch from main may run ahead of the tag
+          PREV_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$TAG_NAME^" 2>/dev/null || echo "")
+
           if [ -z "$PREV_TAG" ]; then
             # First release
-            echo "changelog=Initial release of squeaky-clean v$VERSION" >> "$GITHUB_OUTPUT"
+            echo "Initial release of squeaky-clean $TAG_NAME" > "$NOTES_FILE"
           else
             # Generate changelog from commits
-            CHANGELOG=$(git log "${PREV_TAG}..HEAD" --pretty=format:"- %s" | grep -v "^- chore" | head -20)
-            
+            CHANGELOG=$(git log "${PREV_TAG}..${TAG_NAME}" --pretty=format:"- %s" | grep -v "^- chore" | head -20)
+
             if [ -z "$CHANGELOG" ]; then
               CHANGELOG="- Minor updates and improvements"
             fi
-            
-            # Save to output
+
             {
-              echo 'changelog<<EOF'
               echo "## What's Changed"
               echo ""
               echo "$CHANGELOG"
               echo ""
-              echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...v$VERSION"
-              echo 'EOF'
-            } >> "$GITHUB_OUTPUT"
+              echo "**Full Changelog**: https://github.com/$REPO/compare/$PREV_TAG...$TAG_NAME"
+            } > "$NOTES_FILE"
           fi
-      
+          echo "file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release with gh CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOTES_FILE: ${{ steps.changelog.outputs.file }}
         run: |
           TAG_NAME="${{ steps.release.outputs.tag }}"
-          
+
           # Prepare release arguments
           RELEASE_ARGS=(
             "$TAG_NAME"
             --title "Release $TAG_NAME"
-            --notes "${{ steps.changelog.outputs.changelog }}"
+            --notes-file "$NOTES_FILE"
           )
           
           # Add prerelease flag if needed
@@ -207,7 +211,7 @@ jobs:
           # Create or update the release (idempotent)
           if gh release view "$TAG_NAME" &>/dev/null; then
             echo "Release $TAG_NAME already exists, updating..."
-            gh release edit "$TAG_NAME" --title "Release $TAG_NAME" --notes "${{ steps.changelog.outputs.changelog }}"
+            gh release edit "$TAG_NAME" --title "Release $TAG_NAME" --notes-file "$NOTES_FILE"
           else
             echo "Creating release $TAG_NAME..."
             gh release create "${RELEASE_ARGS[@]}"
