@@ -65,8 +65,13 @@ interface Work {
   ticked: boolean;
 }
 
-/** Outcomes clear() decides itself, before the engine; their detail is part of the error text. */
-const DETAIL_IN_ERROR = new Set(["not-attempted", "auto-ignored", "stale-id"]);
+/** Outcomes whose detail is part of the error text: those clear() decides itself, and the engine's low-space (which volume, need, free). */
+const DETAIL_IN_ERROR = new Set([
+  "not-attempted",
+  "auto-ignored",
+  "stale-id",
+  "low-space",
+]);
 
 const sum = (xs: number[]) => xs.reduce((n, x) => n + x, 0);
 
@@ -125,6 +130,8 @@ export function outcomeLine(o: ThinOutcome): string {
     return `↩ ${name} rolled back (verify failed) — unchanged`;
   if (why === "skipped:running")
     return `⏸ ${name} skipped: running — quit it and re-run`;
+  if (why === "skipped:low-space")
+    return `• ${name} skipped: low space — ${printable(o.detail ?? "")} (\`squeaky ub prune\` frees held backups)`;
   if (why === "blocked:app-management") {
     return `⛔ ${name} blocked: app-management — grant App Management to ${grantTarget()} in System Settings → Privacy & Security`;
   }

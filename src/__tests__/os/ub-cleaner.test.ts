@@ -404,6 +404,36 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     expect(fs.existsSync(path.join(home, "agent.lock"))).toBe(false);
   });
 
+  it("a low-space app is skipped with its detail and the run goes on: free space is read again for the next app", async () => {
+    const a = path.join(roots, "A.app");
+    const b = path.join(roots, "B.app");
+    await fixtureAt(a, b);
+    const before = sha(path.join(a, MAIN));
+    let reads = 0;
+    thinCtl.freeBytes = async () =>
+      ++reads === 1 ? 0 : Number.MAX_SAFE_INTEGER;
+    const cleaner = new UniversalBinaryCleaner();
+    const cats = await cleaner.getCacheCategories();
+    const ids = cats.map((c) => c.id);
+    // ticked: the fixtures are under the default per-app floor
+    const r = await cleaner.clear(false, { categories: ids, tickedIds: ids });
+    expect(thinCtl.calls).toEqual([a, b]);
+    expect(
+      cleaner.lastOutcomes.map((o) => [o.app, o.status, o.reason]),
+    ).toEqual([
+      [a, "skipped", "low-space"],
+      [b, "thinned", undefined],
+    ]);
+    expect(r.error).toBe(
+      `A: skipped:low-space (${cleaner.lastOutcomes[0].detail})`,
+    );
+    expect(cleaner.lastOutcomes[0].detail).toMatch(
+      /needs .* reserve, 0\.0 MB free$/,
+    );
+    expect(sha(path.join(a, MAIN))).toBe(before);
+    expect(r.heldBytes).toBe(cleaner.lastOutcomes[1].heldBytes);
+  });
+
   it("surfaces journal recovery results in error and lastRecovery", async () => {
     const h = await ensureAgentHome();
     const gone = path.join(roots, "Gone.app"); // never created: recovery cannot reach it

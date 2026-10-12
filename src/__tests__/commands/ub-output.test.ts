@@ -38,6 +38,13 @@ describe("ub per-app outcome lines", () => {
     ],
     [o("skipped", "below-threshold"), "• Some App skipped:below-threshold"],
     [
+      {
+        ...o("skipped", "low-space"),
+        detail: "the volume of /b needs 3.0 GB + 2.0 GB reserve, 1.7 GB free",
+      },
+      "• Some App skipped: low space — the volume of /b needs 3.0 GB + 2.0 GB reserve, 1.7 GB free (`squeaky ub prune` frees held backups)",
+    ],
+    [
       { ...o("aborted", "error"), detail: "boom" },
       "✗ Some App aborted:error — boom",
     ],
