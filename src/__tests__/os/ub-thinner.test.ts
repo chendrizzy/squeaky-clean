@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as crypto from "crypto";
-import { thinBundle, type ThinDeps } from "../../ub/thinner";
+import { SPACE_RESERVE, thinBundle, type ThinDeps } from "../../ub/thinner";
 import { listIncomplete } from "../../ub/journal";
 import { recoverJournal } from "../../ub/restore";
 import type { AgentHome } from "../../ub/paths";
@@ -52,9 +52,17 @@ describe.skipIf(!gate)("ub thinner", () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
+  // this machine may have less than SPACE_RESERVE free: a thin test reads a generous free space unless it sets its own
   const ctx = (
     o: { dryRun?: boolean; minSavingsBytes?: number; deps?: ThinDeps } = {},
-  ) => ({ home: h, runId: "run1", seq: seq++, minSavingsBytes: 0, ...o });
+  ) => ({
+    home: h,
+    runId: "run1",
+    seq: seq++,
+    minSavingsBytes: 0,
+    ...o,
+    deps: { freeBytes: async () => Number.MAX_SAFE_INTEGER, ...o.deps },
+  });
   const agentEmpty = () => {
     expect(fs.readdirSync(h.staging)).toEqual([]);
     expect(fs.readdirSync(h.backups)).toEqual([]);
@@ -340,7 +348,7 @@ describe.skipIf(!gate)("ub thinner", () => {
       `import { thinBundle } from ${JSON.stringify(path.join(REPO, "src/ub/thinner.ts"))};
 const [app, home] = process.argv.slice(2);
 const h = JSON.parse(home);
-void thinBundle(app, { home: h, runId: "killed", seq: 0, minSavingsBytes: 0, deps: { afterSwap: (n) => { if (n === 1) process.exit(9); } } })
+void thinBundle(app, { home: h, runId: "killed", seq: 0, minSavingsBytes: 0, deps: { freeBytes: async () => Number.MAX_SAFE_INTEGER, afterSwap: (n) => { if (n === 1) process.exit(9); } } })
   .then(() => process.exit(0));
 `,
     );
@@ -385,5 +393,134 @@ void thinBundle(app, { home: h, runId: "killed", seq: 0, minSavingsBytes: 0, dep
     ).toEqual(before);
     agentEmpty();
     expect(fs.readdirSync(h.journal)).toEqual([]);
+  });
+
+  describe("free-space guard", () => {
+    const GB = 1024 ** 3;
+    /** Nothing was staged, backed up or journaled, and the bundle is byte-identical. */
+    const untouched = async (
+      f: { mainExe: string; helper?: string },
+      before: string[],
+    ) => {
+      expect([f.mainExe, f.helper!].map(sha)).toEqual(before);
+      expect(await lipoArchs(f.mainExe)).toHaveLength(2);
+      agentEmpty();
+      expect(fs.readdirSync(h.journal)).toEqual([]);
+    };
+
+    it("too little free space -> skipped:low-space before any staging, backup or journal write", async () => {
+      const f = await buildFixtureApp(apps, { helper: true });
+      const before = [f.mainExe, f.helper!].map(sha);
+      const read: string[] = [];
+      const freeBytes = async (p: string) => {
+        read.push(p);
+        return GB;
+      };
+      const o = await thinBundle(f.app, ctx({ deps: { freeBytes } }));
+      expect([o.status, o.reason]).toEqual(["skipped", "low-space"]);
+      expect(o.detail).toMatch(
+        /^the volume of \S+ needs [\d.]+ MB \+ 2\.0 GB reserve, 1\.0 GB free$/,
+      );
+      expect(o.detail).toContain(`the volume of ${h.backups} `);
+      expect(read).toEqual([h.backups]); // fixture and agent home share one volume: one reading
+      expect([o.heldBytes, o.backupDir]).toEqual([0, undefined]);
+      await untouched(f, before);
+    });
+
+    it("on one volume the backup and staging needs add up; free = need + reserve is enough, a byte less is not", async () => {
+      const f = await buildFixtureApp(apps, { helper: true });
+      const before = [f.mainExe, f.helper!].map(sha);
+      const { candidates } = await thinBundle(f.app, ctx({ dryRun: true }));
+      const backup = candidates.reduce((n, c) => n + c.size, 0);
+      const staged = candidates.reduce((n, c) => n + c.size - c.savings, 0);
+      const free = (bytes: number) => ({
+        freeBytes: async () => SPACE_RESERVE + bytes,
+      });
+      // one byte short of the sum still covers each need alone
+      expect(backup + staged - 1).toBeGreaterThan(Math.max(backup, staged));
+      const short = await thinBundle(
+        f.app,
+        ctx({ deps: free(backup + staged - 1) }),
+      );
+      expect([short.status, short.reason]).toEqual(["skipped", "low-space"]);
+      await untouched(f, before);
+      const o = await thinBundle(f.app, ctx({ deps: free(backup + staged) }));
+      expect(o.status).toBe("thinned");
+      expect((await codesignVerify(f.app)).ok).toBe(true);
+    });
+
+    it("a dry run never reads free space", async () => {
+      const f = await buildFixtureApp(apps, { helper: true });
+      const freeBytes = vi.fn(async () => 0);
+      const o = await thinBundle(
+        f.app,
+        ctx({ dryRun: true, deps: { freeBytes } }),
+      );
+      expect([o.status, o.reason]).toEqual(["skipped", "dry-run"]);
+      expect(freeBytes).not.toHaveBeenCalled();
+    });
+
+    it("the default reader counts blocks available to the user (bavail), not all free blocks", async () => {
+      const f = await buildFixtureApp(apps, { helper: true });
+      const before = [f.mainExe, f.helper!].map(sha);
+      const statfs = (bavail: number, bfree: number) =>
+        vi.spyOn(fs.promises, "statfs").mockResolvedValue({
+          type: 0,
+          bsize: 4096,
+          blocks: 2 ** 40,
+          bfree,
+          bavail,
+          files: 0,
+          ffree: 0,
+        } as fs.StatsFs);
+      statfs(1, 2 ** 40);
+      const o = await thinBundle(
+        f.app,
+        ctx({ deps: { freeBytes: undefined } }),
+      );
+      expect([o.status, o.reason]).toEqual(["skipped", "low-space"]);
+      expect(o.detail).toMatch(/, 0\.0 MB free$/);
+      await untouched(f, before);
+      vi.restoreAllMocks();
+      statfs(2 ** 30, 0);
+      const ok = await thinBundle(
+        f.app,
+        ctx({ deps: { freeBytes: undefined } }),
+      );
+      expect(ok.status).toBe("thinned");
+    });
+
+    it("statfs missing (Node < 18.15) fails closed: skipped:low-space, nothing written", async () => {
+      const f = await buildFixtureApp(apps, { helper: true });
+      const before = [f.mainExe, f.helper!].map(sha);
+      const real = fs.promises.statfs;
+      (fs.promises as { statfs?: unknown }).statfs = undefined;
+      let o;
+      try {
+        o = await thinBundle(f.app, ctx({ deps: { freeBytes: undefined } }));
+      } finally {
+        (fs.promises as { statfs?: unknown }).statfs = real;
+      }
+      expect([o.status, o.reason]).toEqual(["skipped", "low-space"]);
+      expect(o.detail).toBe(
+        "free space unknown: the free-space check needs Node >= 18.15",
+      );
+      await untouched(f, before);
+    });
+
+    it("a statfs error fails closed: skipped:low-space with the error, nothing written", async () => {
+      const f = await buildFixtureApp(apps, { helper: true });
+      const before = [f.mainExe, f.helper!].map(sha);
+      vi.spyOn(fs.promises, "statfs").mockRejectedValue(
+        Object.assign(new Error("EIO: i/o error, statfs"), { code: "EIO" }),
+      );
+      const o = await thinBundle(
+        f.app,
+        ctx({ deps: { freeBytes: undefined } }),
+      );
+      expect([o.status, o.reason]).toEqual(["skipped", "low-space"]);
+      expect(o.detail).toBe("free space unknown: EIO: i/o error, statfs");
+      await untouched(f, before);
+    });
   });
 });

@@ -65,7 +65,12 @@ export interface ThinDeps {
   snapshot?: () => Promise<Set<string>>;
   verify?: (app: string) => Promise<{ ok: boolean; errorText: string }>;
   afterSwap?: (filesSwapped: number) => void;
+  /** bytes an unprivileged user can still write on the volume holding `p` */
+  freeBytes?: (p: string) => Promise<number>;
 }
+
+/** Free space a thin must leave on every volume it writes to. */
+export const SPACE_RESERVE = 2 * 1024 ** 3;
 
 const WALK_DIRS = ["MacOS", "Frameworks", "Helpers", "XPCServices"];
 /** v1 ceiling: nested bundles are not descended into. */
@@ -184,6 +189,55 @@ function modeWritable(st: fs.Stats): boolean {
   return (st.mode & 0o002) !== 0;
 }
 
+async function statfsFree(p: string): Promise<number> {
+  // engines allows Node 18.0; statfs arrived in 18.15
+  if (!fs.promises.statfs)
+    throw new Error("the free-space check needs Node >= 18.15");
+  const s = await fs.promises.statfs(p);
+  return s.bavail * s.bsize;
+}
+
+/** utils/cli formatSize's MB/GB, kept here so the engine imports no CLI or config module */
+const fmtSize = (n: number) =>
+  n >= 1024 ** 3
+    ? `${(n / 1024 ** 3).toFixed(1)} GB`
+    : `${(n / 1024 ** 2).toFixed(1)} MB`;
+
+/**
+ * Why thinning these candidates would leave a volume under SPACE_RESERVE, or undefined when both have room. Backups
+ * (full copies of the originals) go to the agent home's volume, the staged thin copies to the bundle's; on one volume
+ * they add up. Assumes full copies, though an APFS clone makes a same-volume backup nearly free.
+ */
+async function spaceShortfall(
+  bundleReal: string,
+  backups: string,
+  candidates: Candidate[],
+  freeBytes: (p: string) => Promise<number>,
+): Promise<string | undefined> {
+  const backup = candidates.reduce((n, c) => n + c.size, 0);
+  const staged = candidates.reduce((n, c) => n + c.size - c.savings, 0);
+  const [a, b] = await Promise.all([
+    fs.promises.stat(bundleReal),
+    fs.promises.stat(backups),
+  ]);
+  const needs: [string, number][] =
+    a.dev === b.dev
+      ? [[backups, backup + staged]]
+      : [
+          [bundleReal, staged],
+          [backups, backup],
+        ];
+  const short: string[] = [];
+  for (const [p, need] of needs) {
+    const free = await freeBytes(p);
+    if (free - need < SPACE_RESERVE)
+      short.push(
+        `the volume of ${p} needs ${fmtSize(need)} + ${fmtSize(SPACE_RESERVE)} reserve, ${fmtSize(free)} free`,
+      );
+  }
+  return short.length > 0 ? short.join("; ") : undefined;
+}
+
 /** lstat of a candidate through resolveCandidate; one that vanished or was swapped for a symlink/non-file since selection is a changed-during-thin stop, not an error. */
 async function lstatCandidate(
   bundleReal: string,
@@ -275,6 +329,17 @@ export async function thinBundle(
     if (ctx.dryRun) {
       out.heldBytes = total;
       return end("skipped", "dry-run");
+    }
+    // 6b. free space, read per app so this run's earlier backups count; unknown space fails closed
+    const short = await spaceShortfall(
+      bundleReal,
+      home.backups,
+      candidates,
+      deps.freeBytes ?? statfsFree,
+    ).catch((err: unknown) => `free space unknown: ${msg(err)}`);
+    if (short) {
+      out.detail = short;
+      return end("skipped", "low-space");
     }
 
     // 7. stage thin copies on the bundle's device, once the bundle is known writable: no lipo or backup work is wasted

@@ -69,6 +69,8 @@ afterAll(() => {
 
 describe.skipIf(!gate)("ub restore / prune on a thinned fixture app", () => {
   const ok = { verify: async () => ({ ok: true, errorText: "" }) };
+  // this machine may have less than the engine's free-space reserve: setup thins read a generous free space
+  const freeBytes = async () => Number.MAX_SAFE_INTEGER;
   let orig: Record<string, string>;
 
   const thin = async () => {
@@ -77,6 +79,7 @@ describe.skipIf(!gate)("ub restore / prune on a thinned fixture app", () => {
       runId: newRunId(),
       seq: 0,
       minSavingsBytes: 0,
+      deps: { freeBytes },
     });
     expect(o.status).toBe("thinned");
     expect(await lipoArchs(path.join(app, MAIN))).toEqual(["arm64"]);
@@ -243,7 +246,7 @@ describe.skipIf(!gate)("ub restore / prune on a thinned fixture app", () => {
       runId: newRunId(),
       seq: 0,
       minSavingsBytes: 0,
-      deps: { copyFile: eperm },
+      deps: { copyFile: eperm, freeBytes },
     });
     expect(`${o.status}:${o.reason}`).toBe("blocked:app-management");
     const journal = journalFiles();

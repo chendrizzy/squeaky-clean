@@ -61,10 +61,12 @@ vi.mock("../../ub/lock", async (importOriginal) => {
 
 // The EPERM test stands in for an App Management denial without touching any bundle: blocked thinBundle calls never reach the engine.
 // fake: when set, thinBundle returns it instead of running the engine (no bundle is touched).
+// freeBytes: the engine's free-space reader (this machine may have less than its reserve free).
 const thinCtl = vi.hoisted(() => ({
   block: false,
   calls: [] as string[],
   fake: undefined as undefined | ((app: string) => Promise<ThinOutcome>),
+  freeBytes: async (_p: string) => Number.MAX_SAFE_INTEGER,
 }));
 vi.mock("../../ub/thinner", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../ub/thinner")>();
@@ -73,7 +75,11 @@ vi.mock("../../ub/thinner", async (importOriginal) => {
     thinBundle: (app: string, ctx: Parameters<typeof real.thinBundle>[1]) => {
       thinCtl.calls.push(app);
       if (thinCtl.fake) return thinCtl.fake(app);
-      if (!thinCtl.block) return real.thinBundle(app, ctx);
+      if (!thinCtl.block)
+        return real.thinBundle(app, {
+          ...ctx,
+          deps: { freeBytes: thinCtl.freeBytes, ...ctx.deps },
+        });
       return Promise.resolve({
         app,
         status: "blocked" as const,
@@ -170,6 +176,7 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
     thinCtl.block = false;
     thinCtl.calls = [];
     thinCtl.fake = undefined;
+    thinCtl.freeBytes = async () => Number.MAX_SAFE_INTEGER;
     pruneCtl.fail = undefined;
     assertTempRoots();
   });
