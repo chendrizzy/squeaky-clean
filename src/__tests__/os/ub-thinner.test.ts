@@ -449,6 +449,48 @@ void thinBundle(app, { home: h, runId: "killed", seq: 0, minSavingsBytes: 0, dep
       expect((await codesignVerify(f.app)).ok).toBe(true);
     });
 
+    it("on separate volumes each need is checked on its own volume (the incident: an app on an external drive)", async () => {
+      const f = await buildFixtureApp(apps, { helper: true });
+      const app = fs.realpathSync(f.app);
+      const before = [f.mainExe, f.helper!].map(sha);
+      const { candidates } = await thinBundle(f.app, ctx({ dryRun: true }));
+      const backup = candidates.reduce((n, c) => n + c.size, 0);
+      const staged = candidates.reduce((n, c) => n + c.size - c.savings, 0);
+      // the backups dir reports another device; everything else stats for real
+      const realStat = fs.promises.stat;
+      vi.spyOn(fs.promises, "stat").mockImplementation((async (
+        p: fs.PathLike,
+        o?: fs.StatOptions,
+      ) => {
+        const st = await realStat(p, o);
+        return p === h.backups ? Object.assign(st, { dev: st.dev + 1 }) : st;
+      }) as typeof fs.promises.stat);
+      const free = (onApp: number, onBackups: number) => ({
+        freeBytes: async (p: string) =>
+          SPACE_RESERVE + (p === h.backups ? onBackups : onApp),
+      });
+      const backupsShort = await thinBundle(
+        f.app,
+        ctx({ deps: free(staged, backup - 1) }),
+      );
+      expect([
+        backupsShort.reason,
+        backupsShort.detail?.split(" needs ")[0],
+      ]).toEqual(["low-space", `the volume of ${h.backups}`]);
+      const appShort = await thinBundle(
+        f.app,
+        ctx({ deps: free(staged - 1, backup) }),
+      );
+      expect([appShort.reason, appShort.detail?.split(" needs ")[0]]).toEqual([
+        "low-space",
+        `the volume of ${app}`,
+      ]);
+      await untouched(f, before);
+      // each volume holds only its own need, not the sum: enough
+      const o = await thinBundle(f.app, ctx({ deps: free(staged, backup) }));
+      expect(o.status).toBe("thinned");
+    });
+
     it("a dry run never reads free space", async () => {
       const f = await buildFixtureApp(apps, { helper: true });
       const freeBytes = vi.fn(async () => 0);
