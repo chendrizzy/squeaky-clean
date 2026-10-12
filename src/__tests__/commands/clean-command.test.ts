@@ -9,15 +9,22 @@ vi.mock("inquirer", () => ({
   },
 }));
 
-vi.mock("../../cleaners/index.js", () => ({
-  cacheManager: {
-    cleanAllCaches: vi.fn(),
-    getAllCacheInfo: vi.fn(),
-    getEnabledCleaners: vi.fn(),
-  },
-  cleaners: [],
-  CacheManager: vi.fn(),
-}));
+// The real selection rule runs over the mocked enabled list, so these tests
+// see exactly what `clean` would select without any real cleaner.
+vi.mock("../../cleaners/index.js", async (importOriginal) => {
+  const { CacheManager } =
+    await importOriginal<typeof import("../../cleaners/index.js")>();
+  return {
+    cacheManager: {
+      cleanAllCaches: vi.fn(),
+      getAllCacheInfo: vi.fn(),
+      getEnabledCleaners: vi.fn(),
+      selectCleaners: CacheManager.prototype.selectCleaners,
+    },
+    cleaners: [],
+    CacheManager: vi.fn(),
+  };
+});
 
 const originalStdinIsTTY = process.stdin.isTTY;
 const originalStdoutIsTTY = process.stdout.isTTY;
@@ -80,6 +87,7 @@ describe("clean command", () => {
       },
     ]);
     vi.mocked(inquirer.prompt).mockResolvedValue({ confirmed: true });
+    vi.mocked(cacheManager.getEnabledCleaners).mockReturnValue([]);
   });
 
   afterEach(() => {
@@ -250,6 +258,7 @@ describe("clean command", () => {
 
     expect(cacheManager.getAllCacheInfo).toHaveBeenCalledWith({
       showProgress: true,
+      cleaners: [],
     });
 
     vi.clearAllMocks();
@@ -327,5 +336,87 @@ describe("clean command", () => {
     const output = getConsoleOutput();
     expect(output).toContain("npm: 1.0 KB freed");
     expect(output).not.toMatch(/KB\s{2,}freed/);
+  });
+
+  // ---- universal-binary: opt-in selection and honest reporting ----
+  // Every cleaner here is a stub; the real universal-binary cleaner is never
+  // reachable from this file.
+  const HINT = /App thinning \(universal-binary\) is not part of clean/;
+
+  function stubCleaner(name: string, type: string) {
+    return {
+      name,
+      type,
+      description: `${name} stub`,
+      isAvailable: vi.fn().mockResolvedValue(true),
+      getCacheInfo: vi.fn(),
+      getCacheCategories: vi.fn().mockResolvedValue([]),
+      clear: vi.fn(),
+      clearByCategory: vi.fn(),
+    };
+  }
+
+  function countMatches(output: string, pattern: RegExp): number {
+    return output.split("\n").filter((line) => pattern.test(line)).length;
+  }
+
+  it("--all never inspects universal-binary and prints the opt-in hint once", async () => {
+    const { cleanCommand } = await import("../../commands/clean.js");
+    const npm = stubCleaner("npm", "package-manager");
+    const ub = stubCleaner("universal-binary", "system");
+    vi.mocked(cacheManager.getEnabledCleaners).mockReturnValue([
+      npm,
+      ub,
+    ] as any);
+
+    await cleanCommand({ all: true, dryRun: true } as any);
+
+    // the consent pre-inspection ran over the selection, which has no UB
+    expect(npm.getCacheCategories).toHaveBeenCalled();
+    expect(ub.getCacheCategories).not.toHaveBeenCalled();
+    expect(ub.clear).not.toHaveBeenCalled();
+    expect(countMatches(getConsoleOutput(), HINT)).toBe(1);
+    expect(getConsoleOutput()).toContain("squeaky ub");
+  });
+
+  it("--include universal-binary opts in and drops the hint", async () => {
+    const { cleanCommand } = await import("../../commands/clean.js");
+    const ub = stubCleaner("universal-binary", "system");
+    vi.mocked(cacheManager.getEnabledCleaners).mockReturnValue([ub] as any);
+
+    await cleanCommand({ include: "universal-binary", dryRun: true } as any);
+
+    expect(ub.getCacheCategories).toHaveBeenCalled();
+    expect(getConsoleOutput()).not.toMatch(HINT);
+  });
+
+  it("never prints the hint under --json", async () => {
+    const { cleanCommand } = await import("../../commands/clean.js");
+    vi.mocked(cacheManager.getEnabledCleaners).mockReturnValue([
+      stubCleaner("universal-binary", "system"),
+    ] as any);
+    vi.mocked(cacheManager.cleanAllCaches).mockResolvedValue([]);
+    vi.spyOn(config, "getOutputFormat").mockReturnValue("json");
+
+    await cleanCommand({ dryRun: true });
+
+    expect(getConsoleOutput()).not.toMatch(HINT);
+  });
+
+  it("--sizes scans only the selected cleaners", async () => {
+    const { cleanCommand } = await import("../../commands/clean.js");
+    const npm = stubCleaner("npm", "package-manager");
+    const ub = stubCleaner("universal-binary", "system");
+    vi.mocked(cacheManager.getEnabledCleaners).mockReturnValue([
+      npm,
+      ub,
+    ] as any);
+
+    await cleanCommand({ all: true, force: true, sizes: true } as any);
+
+    expect(cacheManager.getAllCacheInfo).toHaveBeenCalledWith({
+      showProgress: true,
+      cleaners: [npm],
+    });
   });
 });

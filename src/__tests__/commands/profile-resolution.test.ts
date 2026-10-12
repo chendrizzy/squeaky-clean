@@ -23,6 +23,7 @@ vi.mock("../../cleaners/index.js", () => ({
   cacheManager: {
     cleanAllCaches: vi.fn(),
     getAllCacheInfo: vi.fn(),
+    selectCleaners: vi.fn(() => ({ cleaners: [], optInSkipped: false })),
   },
   cleaners: [],
   CacheManager: vi.fn(),

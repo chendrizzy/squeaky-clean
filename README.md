@@ -206,10 +206,10 @@ squeaky clean --config my-config.json --dry-run
 
 #### `clean` Options
 
-- `-a, --all` - Clean all configured caches
+- `-a, --all` - Clean all configured caches (never thins apps: `universal-binary` runs only when named in `--include`; use `squeaky ub`)
 - `-t, --types <types>` - Comma-separated list of cache types
 - `-e, --exclude <tools>` - Comma-separated list of tools to exclude
-- `--include <tools>` - Comma-separated list of tools to include (overrides `--all` and `--exclude`)
+- `--include <tools>` - Comma-separated list of tools to include (overrides `--all` and `--exclude`; the only way `clean` runs `universal-binary`)
 - `-d, --dry-run` - Show what would be cleaned without actually cleaning
 - `-f, --force` - Skip confirmation prompts
 - `-s, --sizes` - Show cache sizes before cleaning

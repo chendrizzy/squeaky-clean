@@ -186,7 +186,10 @@ export const interactiveEnhancedCommand = new Command("interactive")
       // Scan for caches
       printInfo("🔍 Scanning for available caches...");
       await cleanerRegistry.autoDetect();
-      const allCleaners = await cleanerRegistry.getAvailableCleaners();
+      // UB is a separate operation via `squeaky ub`; app thinning is never offered here
+      const allCleaners = (await cleanerRegistry.getAvailableCleaners()).filter(
+        (cleaner) => cleaner.name !== "universal-binary",
+      );
 
       if (allCleaners.length === 0) {
         console.log(pc.yellow("\n⚠️  No caches found with reclaimable space."));

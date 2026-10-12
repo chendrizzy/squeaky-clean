@@ -232,7 +232,7 @@ squeaky clean --all
 #### Options
 
 ##### `-a, --all`
-Clean all configured caches (respects enable/disable settings).
+Clean all configured caches (respects enable/disable settings). App thinning (`universal-binary`) is never part of `--all` or `--types`: it rewrites installed apps, so `clean` runs it only when `--include` names it. Use `squeaky ub` for thinning.
 
 ```bash
 squeaky clean --all
@@ -285,7 +285,7 @@ squeaky clean --types package-manager --exclude yarn
 ```
 
 ##### `--include <tools>`
-Clean only the listed tools (comma-separated). Overrides `--all` and `--exclude`.
+Clean only the listed tools (comma-separated). Overrides `--all` and `--exclude`. This is the only way `clean` runs `universal-binary`; its savings are reported as held in backups (released by the next squeaky run after 3 days, or now with `squeaky ub prune`), not as freed space.
 
 ```bash
 # Run only the system-wide app cache discovery cleaner

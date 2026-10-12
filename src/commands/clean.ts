@@ -182,30 +182,6 @@ export function resolveSafetyTiers(
   };
 }
 
-/**
- * Mirror the cleaner selection logic in CacheManager.cleanAllCaches so we can
- * inspect manual-tier categories before any cleaning starts.
- */
-function selectTargetCleaners(
-  types?: CacheType[],
-  include?: string[],
-  exclude?: string[],
-): CleanerModule[] {
-  let cleaners = cacheManager.getEnabledCleaners?.() ?? [];
-
-  if (types && types.length > 0) {
-    cleaners = cleaners.filter((cleaner) => types.includes(cleaner.type));
-  }
-
-  if (include && include.length > 0) {
-    cleaners = cleaners.filter((cleaner) => include.includes(cleaner.name));
-  } else if (exclude && exclude.length > 0) {
-    cleaners = cleaners.filter((cleaner) => !exclude.includes(cleaner.name));
-  }
-
-  return cleaners;
-}
-
 interface PendingManualCategory {
   cleanerName: string;
   category: CacheCategory;
@@ -564,6 +540,16 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
       printInfo("Starting cleanup process...");
     }
 
+    // One selection for the size scan, the manual-tier pre-inspection and the
+    // clean itself (cleanAllCaches applies the same rule to the same options).
+    const { cleaners: targetCleaners, optInSkipped } =
+      cacheManager.selectCleaners({ types, include, exclude });
+    if (optInSkipped && !json) {
+      printInfo(
+        "App thinning (universal-binary) is not part of clean; run `squeaky ub`, or pass --include universal-binary.",
+      );
+    }
+
     // Get cache info first if showing sizes
     if (options.sizes && !dryRun && !json) {
       // Use real-time parallel progress tracking for size scanning
@@ -571,6 +557,7 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
       try {
         const cacheInfos = await cacheManager.getAllCacheInfo({
           showProgress: true, // Enable real-time progress tracking
+          cleaners: targetCleaners,
         });
         const totalSize = cacheInfos.reduce(
           (sum, info) => sum + (info.size || 0),
@@ -588,7 +575,6 @@ export async function cleanCommand(options: CommandOptions): Promise<void> {
     // Manual-tier categories require explicit per-category consent. --force
     // never auto-confirms them: prompt when interactive, otherwise skip them
     // with a clear notice.
-    const targetCleaners = selectTargetCleaners(types, include, exclude);
     const pendingManual = await collectPendingManualCategories(
       targetCleaners,
       criteria.allowManualIds ?? [],

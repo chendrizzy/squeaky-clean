@@ -135,3 +135,94 @@ describe("CacheManager cleaner filtering", () => {
     expect(webpackCleaner.clear).not.toHaveBeenCalled();
   });
 });
+
+// App thinning rewrites installed apps: `clean` runs it only when --include
+// names it. Stubs stand in for every cleaner, so nothing here can reach the
+// real universal-binary cleaner.
+describe("CacheManager.selectCleaners (universal-binary is opt-in)", () => {
+  function managerWith(...cleaners: CleanerModule[]): CacheManager {
+    const manager = new CacheManager();
+    (manager as any).cleaners = new Map(cleaners.map((c) => [c.name, c]));
+    return manager;
+  }
+  const names = (cleaners: CleanerModule[]) => cleaners.map((c) => c.name);
+
+  let npm: CleanerModule;
+  let docker: CleanerModule;
+  let ub: CleanerModule;
+  let manager: CacheManager;
+
+  beforeEach(() => {
+    config.set({
+      tools: { npm: true, docker: true, "universal-binary": true } as any,
+    });
+    npm = createMockCleaner("npm", "package-manager");
+    docker = createMockCleaner("docker", "system");
+    ub = createMockCleaner("universal-binary", "system");
+    manager = managerWith(npm, docker, ub);
+  });
+
+  it("drops universal-binary from a plain (--all) selection and says so", () => {
+    const { cleaners, optInSkipped } = manager.selectCleaners();
+    expect(names(cleaners)).toEqual(["npm", "docker"]);
+    expect(optInSkipped).toBe(true);
+  });
+
+  it("does not opt in through --types system (docker is system too)", () => {
+    const { cleaners, optInSkipped } = manager.selectCleaners({
+      types: ["system"],
+    });
+    expect(names(cleaners)).toEqual(["docker"]);
+    expect(optInSkipped).toBe(true);
+  });
+
+  it("keeps universal-binary when --include names it", () => {
+    const { cleaners, optInSkipped } = manager.selectCleaners({
+      include: ["universal-binary"],
+    });
+    expect(names(cleaners)).toEqual(["universal-binary"]);
+    expect(optInSkipped).toBe(false);
+  });
+
+  it("lets --include win over --exclude for universal-binary, as for any tool", () => {
+    const { cleaners } = manager.selectCleaners({
+      include: ["universal-binary", "npm"],
+      exclude: ["universal-binary"],
+    });
+    expect(names(cleaners)).toEqual(["npm", "universal-binary"]);
+  });
+
+  it("stays quiet when the user excluded it or included other tools", () => {
+    expect(
+      manager.selectCleaners({ exclude: ["universal-binary"] }),
+    ).toMatchObject({ optInSkipped: false });
+    const included = manager.selectCleaners({ include: ["npm"] });
+    expect(names(included.cleaners)).toEqual(["npm"]);
+    expect(included.optInSkipped).toBe(false);
+  });
+
+  it("stays quiet when universal-binary is disabled in config", () => {
+    config.set({ tools: { "universal-binary": false } as any });
+    const { cleaners, optInSkipped } = manager.selectCleaners();
+    expect(names(cleaners)).toEqual(["npm", "docker"]);
+    expect(optInSkipped).toBe(false);
+  });
+
+  it("cleanAllCaches never scans or clears universal-binary unless included", async () => {
+    const results = await manager.cleanAllCaches({
+      dryRun: true,
+      showProgress: false,
+    });
+    expect(results.map((r) => r.name)).toEqual(["npm", "docker"]);
+    expect(ub.getCacheInfo).not.toHaveBeenCalled();
+    expect(ub.clear).not.toHaveBeenCalled();
+
+    await manager.cleanAllCaches({
+      dryRun: true,
+      include: ["universal-binary"],
+      showProgress: false,
+    });
+    expect(ub.clear).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(ub.clear).mock.calls[0][0]).toBe(true);
+  });
+});

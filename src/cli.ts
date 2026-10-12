@@ -103,7 +103,10 @@ program
 program
   .command("clean")
   .description("clean development caches with granular control")
-  .option("-a, --all", "clean all configured caches")
+  .option(
+    "-a, --all",
+    "clean all configured caches (app thinning runs only via --include universal-binary or `squeaky ub`)",
+  )
   .option(
     "-t, --types <types>",
     "comma-separated list of cache types (package-manager,build-tool,browser,ide,system)",
@@ -111,7 +114,7 @@ program
   .option("-e, --exclude <tools>", "comma-separated list of tools to exclude")
   .option(
     "--include <tools>",
-    "comma-separated list of tools to include (overrides --all and --exclude)",
+    "comma-separated list of tools to include (overrides --all and --exclude; the only way clean runs universal-binary)",
   ) // New option
   .option(
     "-d, --dry-run",

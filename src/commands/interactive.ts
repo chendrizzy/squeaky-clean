@@ -221,9 +221,12 @@ export const interactiveCommand = new Command("interactive")
         config.set({ output: { ...config.get().output, verbose: true } });
       }
 
-      // Get all available cache info
+      // Get all available cache info. The shared selection leaves out app
+      // thinning (universal-binary), which has its own command, `squeaky ub`.
       printInfo("🔍 Scanning for available caches...");
-      const allCaches = await cacheManager.getAllCacheInfo();
+      const allCaches = await cacheManager.getAllCacheInfo({
+        cleaners: cacheManager.selectCleaners().cleaners,
+      });
       const availableCaches = allCaches.filter(
         (cache: any) => cache.isInstalled && cache.size > 0,
       );

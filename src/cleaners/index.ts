@@ -59,6 +59,9 @@ import shipitCleaner from "./shipit";
 import appCachesCleaner from "./appCacheDiscovery";
 import tmpCleaner from "./tmp";
 
+/** App thinning rewrites installed apps, so `clean` runs it only when --include names it; `squeaky ub` is its command. */
+const OPT_IN_ONLY = "universal-binary";
+
 export class CacheManager {
   private cleaners: Map<string, CleanerModule>;
 
@@ -143,6 +146,40 @@ export class CacheManager {
    */
   getCleaner(name: string): CleanerModule | undefined {
     return this.cleaners.get(name);
+  }
+
+  /**
+   * The one cleaner selection rule: enabled cleaners, then `types`, then `include` (wins) else `exclude`, then
+   * universal-binary is dropped unless `include` names it. `optInSkipped` says the rule dropped it, for the caller's hint.
+   */
+  selectCleaners(
+    options: {
+      types?: CacheType[];
+      include?: string[];
+      exclude?: string[];
+    } = {},
+  ): { cleaners: CleanerModule[]; optInSkipped: boolean } {
+    const { types, include, exclude } = options;
+    let cleaners = this.getEnabledCleaners();
+
+    if (types && types.length > 0) {
+      cleaners = cleaners.filter((cleaner) => types.includes(cleaner.type));
+    }
+
+    if (include && include.length > 0) {
+      cleaners = cleaners.filter((cleaner) => include.includes(cleaner.name));
+    } else if (exclude && exclude.length > 0) {
+      cleaners = cleaners.filter((cleaner) => !exclude.includes(cleaner.name));
+    }
+
+    const optInSkipped =
+      !include?.includes(OPT_IN_ONLY) &&
+      cleaners.some((cleaner) => cleaner.name === OPT_IN_ONLY);
+    if (optInSkipped) {
+      cleaners = cleaners.filter((cleaner) => cleaner.name !== OPT_IN_ONLY);
+    }
+
+    return { cleaners, optInSkipped };
   }
 
   /**
@@ -261,25 +298,7 @@ export class CacheManager {
       showProgress?: boolean;
     } = {},
   ): Promise<ClearResult[]> {
-    let cleaners = this.getEnabledCleaners();
-
-    // Filter by types if specified
-    if (options.types && options.types.length > 0) {
-      cleaners = cleaners.filter((cleaner) =>
-        options.types!.includes(cleaner.type),
-      );
-    }
-
-    // Include specific tools if specified (takes precedence over exclude)
-    if (options.include && options.include.length > 0) {
-      cleaners = cleaners.filter((cleaner) =>
-        options.include!.includes(cleaner.name),
-      );
-    } else if (options.exclude && options.exclude.length > 0) {
-      cleaners = cleaners.filter(
-        (cleaner) => !options.exclude!.includes(cleaner.name),
-      );
-    }
+    const { cleaners } = this.selectCleaners(options);
 
     const allCacheInfos = await this.getAllCacheInfo({
       showProgress: options.showProgress,
