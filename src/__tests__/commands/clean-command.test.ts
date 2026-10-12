@@ -499,6 +499,37 @@ describe("clean command", () => {
   });
 
   it.each([true, false])(
+    "dryRun=%s: a universal-binary run that skipped every app shows why, not 'No cache data found'",
+    async (dryRun) => {
+      const { cleanCommand } = await import("../../commands/clean.js");
+      vi.mocked(cacheManager.cleanAllCaches).mockResolvedValue([
+        {
+          name: "universal-binary",
+          success: true,
+          sizeBefore: 0,
+          sizeAfter: 0,
+          heldBytes: 0,
+          clearedPaths: [],
+          error:
+            "B\u001bg: skipped:low-space (the volume of /mock needs 1.0 GB + 2.0 GB reserve, 1.7 GB free); `squeaky ub prune` frees held backups",
+        },
+      ]);
+
+      await cleanCommand({
+        include: "universal-binary",
+        dryRun,
+        force: true,
+      } as any);
+      const output = getConsoleOutput();
+
+      expect(output).toMatch(
+        /^universal-binary: B\\x1bg: skipped:low-space \(the volume of \/mock needs .*`squeaky ub prune` frees held backups$/m,
+      );
+      expect(output).not.toContain("No cache data found");
+    },
+  );
+
+  it.each([true, false])(
     "--json (dryRun=%s): freed and totalFreed exclude held bytes, carried as heldBytes/totalHeld",
     async (dryRun) => {
       const { cleanCommand } = await import("../../commands/clean.js");

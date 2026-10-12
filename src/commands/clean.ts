@@ -14,6 +14,7 @@ import {
   printError,
   printWarning,
   printCleanComplete,
+  printable,
   symbols,
   formatSize,
   formatSizeWithColor,
@@ -390,8 +391,12 @@ function renderCleanResults(
         `${result.name}: ${formatSizeWithColor(held)} ${ctx.dryRun ? "estimated savings; originals are kept as backups first" : "held in backups"} (${BACKUP_RELEASE})`,
       );
     }
+    // a run can succeed and still report what it skipped (universal-binary's low-space refusals among them)
+    if (result.error)
+      printWarning(`${result.name}: ${printable(result.error)}`);
     if (freed <= 0) {
-      if (held <= 0) printInfo(`${result.name}: No cache data found`);
+      if (held <= 0 && !result.error)
+        printInfo(`${result.name}: No cache data found`);
       continue;
     }
 

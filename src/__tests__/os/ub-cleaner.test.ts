@@ -425,7 +425,7 @@ describe.skipIf(!gate)("UniversalBinaryCleaner (engine-backed)", () => {
       [b, "thinned", undefined],
     ]);
     expect(r.error).toBe(
-      `A: skipped:low-space (${cleaner.lastOutcomes[0].detail})`,
+      `A: skipped:low-space (${cleaner.lastOutcomes[0].detail}); \`squeaky ub prune\` frees held backups`,
     );
     expect(cleaner.lastOutcomes[0].detail).toMatch(
       /needs .* reserve, 0\.0 MB free$/,

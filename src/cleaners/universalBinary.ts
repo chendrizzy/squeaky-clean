@@ -73,6 +73,8 @@ const DETAIL_IN_ERROR = new Set([
   "low-space",
 ]);
 
+const PRUNE_HINT = "`squeaky ub prune` frees held backups";
+
 const sum = (xs: number[]) => xs.reduce((n, x) => n + x, 0);
 
 const appName = (p: string) => printable(path.basename(p, ".app"));
@@ -131,7 +133,7 @@ export function outcomeLine(o: ThinOutcome): string {
   if (why === "skipped:running")
     return `⏸ ${name} skipped: running — quit it and re-run`;
   if (why === "skipped:low-space")
-    return `• ${name} skipped: low space — ${printable(o.detail ?? "")} (\`squeaky ub prune\` frees held backups)`;
+    return `• ${name} skipped: low space — ${printable(o.detail ?? "")} (${PRUNE_HINT})`;
   if (why === "blocked:app-management") {
     return `⛔ ${name} blocked: app-management — grant App Management to ${grantTarget()} in System Settings → Privacy & Security`;
   }
@@ -587,6 +589,10 @@ export class UniversalBinaryCleaner implements CleanerModule {
           (o) =>
             `${appName(o.app)}: ${o.status}${o.reason ? `:${o.reason}` : ""}${DETAIL_IN_ERROR.has(o.reason ?? "") && o.detail ? ` (${o.detail})` : ""}`,
         ),
+      // the remedy once, not per refused app
+      ...(this.lastOutcomes.some((o) => o.reason === "low-space")
+        ? [PRUNE_HINT]
+        : []),
     ];
     const sizeBefore = sum(
       done.flatMap((o) => o.candidates.map((c) => c.size)),
