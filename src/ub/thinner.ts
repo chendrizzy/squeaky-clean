@@ -230,7 +230,8 @@ async function spaceShortfall(
   const short: string[] = [];
   for (const [p, need] of needs) {
     const free = await freeBytes(p);
-    if (free - need < SPACE_RESERVE)
+    // negated so a NaN reading (unknown space) fails closed too
+    if (!(free - need >= SPACE_RESERVE))
       short.push(
         `the volume of ${p} needs ${fmtSize(need)} + ${fmtSize(SPACE_RESERVE)} reserve, ${fmtSize(free)} free`,
       );

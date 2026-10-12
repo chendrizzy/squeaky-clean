@@ -564,5 +564,16 @@ void thinBundle(app, { home: h, runId: "killed", seq: 0, minSavingsBytes: 0, dep
       expect(o.detail).toBe("free space unknown: EIO: i/o error, statfs");
       await untouched(f, before);
     });
+
+    it("a non-numeric free-space reading fails closed: skipped:low-space, nothing written", async () => {
+      const f = await buildFixtureApp(apps, { helper: true });
+      const before = [f.mainExe, f.helper!].map(sha);
+      const o = await thinBundle(
+        f.app,
+        ctx({ deps: { freeBytes: async () => NaN } }),
+      );
+      expect([o.status, o.reason]).toEqual(["skipped", "low-space"]);
+      await untouched(f, before);
+    });
   });
 });

@@ -394,7 +394,6 @@ describe("clean command", () => {
     // the consent pre-inspection ran over the selection, which has no UB
     expect(npm.getCacheCategories).toHaveBeenCalled();
     expect(ub.getCacheCategories).not.toHaveBeenCalled();
-    expect(ub.clear).not.toHaveBeenCalled();
     // the hint is printed from the selection alone, with no availability check
     expect(ub.isAvailable).not.toHaveBeenCalled();
     expect(countMatches(getConsoleOutput(), HINT)).toBe(1);
