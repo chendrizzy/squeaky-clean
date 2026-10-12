@@ -578,6 +578,8 @@ Disable automatic update checks. (aliases: `--disable-auto`, `--disable-auto-upd
 
 Thin Universal Binaries on Apple Silicon by removing unused x86_64 code.
 
+Each original is kept as a backup on your home volume until it is released. An app is skipped (`skipped:low-space`, with the volume, the space needed and the space free) when thinning it would leave its backup or app volume under 2 GB free; `squeaky ub prune` frees held backups. Thinning needs Node 18.15 or newer to read free space and skips every app otherwise.
+
 ```bash
 # List Universal Binaries without modifying
 squeaky ub --list
