@@ -164,6 +164,31 @@ describe("interactive command", () => {
     expect(output).not.toContain("5.0 GB");
     expect(output).toMatch(/Held in backups: 2\.5 GB \(freed by the next/);
   });
+
+  it("a dry run reports held bytes as would-be-held, never the backup size as freed", async () => {
+    vi.spyOn(cacheManager, "cleanAllCaches").mockResolvedValue([
+      {
+        name: "held-stub",
+        success: true,
+        sizeBefore: 5 * GB,
+        sizeAfter: 5 * GB,
+        heldBytes: 2.5 * GB,
+        clearedPaths: [],
+      },
+    ]);
+    vi.mocked(inquirer.prompt)
+      .mockResolvedValueOnce({ selectionMethod: "individual" })
+      .mockResolvedValueOnce({ caches: ["npm"] })
+      .mockResolvedValueOnce({ action: "dry" })
+      .mockResolvedValueOnce({ action: "cancel" });
+
+    await interactiveCommand.parseAsync([], { from: "user" });
+    const output = getConsoleOutput();
+
+    expect(output).not.toContain("5.0 GB");
+    expect(output).toContain("No space was freed");
+    expect(output).toMatch(/Would be held in backups: 2\.5 GB \(freed by/);
+  });
 });
 
 describe("enhanced interactive command", () => {

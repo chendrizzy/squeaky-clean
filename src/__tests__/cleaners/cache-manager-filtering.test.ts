@@ -192,6 +192,16 @@ describe("CacheManager.selectCleaners (universal-binary is opt-in)", () => {
     expect(names(cleaners)).toEqual(["npm", "universal-binary"]);
   });
 
+  it("excluding another tool does not opt in", () => {
+    expect(manager.selectCleaners({ exclude: ["docker"] })).toMatchObject({
+      cleaners: [npm],
+      optInSkipped: true,
+    });
+    expect(
+      manager.selectCleaners({ types: ["system"], exclude: ["docker"] }),
+    ).toMatchObject({ cleaners: [], optInSkipped: true });
+  });
+
   it("stays quiet when the user excluded it or included other tools", () => {
     expect(
       manager.selectCleaners({ exclude: ["universal-binary"] }),
