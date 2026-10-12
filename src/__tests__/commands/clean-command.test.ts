@@ -498,26 +498,33 @@ describe("clean command", () => {
     expect(output).toMatch(/^Held in backups: 2\.5 GB \(/m);
   });
 
-  it("--json: freed and totalFreed exclude held bytes, carried as heldBytes/totalHeld", async () => {
-    const { cleanCommand } = await import("../../commands/clean.js");
-    vi.mocked(cacheManager.cleanAllCaches).mockResolvedValue([
-      npmResult,
-      ubResult,
-    ]);
-    vi.spyOn(config, "getOutputFormat").mockReturnValue("json");
+  it.each([true, false])(
+    "--json (dryRun=%s): freed and totalFreed exclude held bytes, carried as heldBytes/totalHeld",
+    async (dryRun) => {
+      const { cleanCommand } = await import("../../commands/clean.js");
+      vi.mocked(cacheManager.cleanAllCaches).mockResolvedValue([
+        npmResult,
+        ubResult,
+      ]);
+      vi.spyOn(config, "getOutputFormat").mockReturnValue("json");
 
-    await cleanCommand({
-      include: "npm,universal-binary",
-      dryRun: true,
-    } as any);
-    const payload = JSON.parse(getConsoleOutput());
+      await cleanCommand({
+        include: "npm,universal-binary",
+        dryRun,
+        force: true,
+      } as any);
+      const payload = JSON.parse(getConsoleOutput());
 
-    expect(payload.totalFreed).toBe(1024);
-    expect(payload.totalHeld).toBe(2.5 * GB);
-    expect(payload.volumes).toEqual({ "/": 1024 });
-    const ub = payload.results.find((r: any) => r.name === "universal-binary");
-    expect(ub).toMatchObject({ freed: 0, heldBytes: 2.5 * GB });
-    const npm = payload.results.find((r: any) => r.name === "npm");
-    expect(npm).toMatchObject({ freed: 1024, heldBytes: 0 });
-  });
+      expect(payload.dryRun).toBe(dryRun);
+      expect(payload.totalFreed).toBe(1024);
+      expect(payload.totalHeld).toBe(2.5 * GB);
+      expect(payload.volumes).toEqual({ "/": 1024 });
+      const ub = payload.results.find(
+        (r: any) => r.name === "universal-binary",
+      );
+      expect(ub).toMatchObject({ freed: 0, heldBytes: 2.5 * GB });
+      const npm = payload.results.find((r: any) => r.name === "npm");
+      expect(npm).toMatchObject({ freed: 1024, heldBytes: 0 });
+    },
+  );
 });
