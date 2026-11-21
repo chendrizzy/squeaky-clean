@@ -83,18 +83,37 @@ class PipCleaner implements CleanerModule {
     return [...new Set(paths)]; // Remove duplicates
   }
 
+  /**
+   * Probe pip for its cache dir. Prefer `python3 -m pip` over bare `pip3`/`pip`:
+   * PATH often has wrapper shims (semgrep mfw, pyenv) that can hang forever when
+   * spawned with a piped stdin. Always ignore stdin and bound the wait.
+   */
   private async getPipCacheDir(): Promise<string | null> {
-    const pipCommands = ["pip3", "pip"];
+    // ponytail: 5s ceiling; hung shims used to block the whole parallel scan.
+    // Upgrade: resolve real pip binaries and skip known shim dirs.
+    const probes: Array<[string, string[]]> = [
+      ["python3", ["-m", "pip", "cache", "dir"]],
+      ["python", ["-m", "pip", "cache", "dir"]],
+      ["pip3", ["cache", "dir"]],
+      ["pip", ["cache", "dir"]],
+    ];
 
-    for (const cmd of pipCommands) {
+    for (const [cmd, args] of probes) {
       try {
-        const result = await execa(cmd, ["cache", "dir"]);
+        const result = await execa(cmd, args, {
+          stdin: "ignore",
+          timeout: 5000,
+          reject: false,
+        });
+        if (result.failed || result.timedOut) continue;
         const cacheDir = result.stdout.trim();
-        if (cacheDir && (await pathExists(cacheDir))) {
-          return cacheDir;
-        }
+        if (!cacheDir) continue;
+        // Pip answered. If the dir is missing the cache is simply empty —
+        // stop here so we don't fall through to shimmed `pip3`/`pip` that
+        // can each burn the full timeout.
+        return (await pathExists(cacheDir)) ? cacheDir : null;
       } catch {
-        // Command failed, try next
+        // Command missing or timed out — try next probe
       }
     }
 
@@ -296,13 +315,28 @@ class PipCleaner implements CleanerModule {
   }
 
   private async runPipCachePurge(): Promise<void> {
-    const pipCommands = ["pip3", "pip"];
+    const probes: Array<[string, string[]]> = [
+      ["python3", ["-m", "pip", "cache", "purge"]],
+      ["python", ["-m", "pip", "cache", "purge"]],
+      ["pip3", ["cache", "purge"]],
+      ["pip", ["cache", "purge"]],
+    ];
 
-    for (const cmd of pipCommands) {
+    for (const [cmd, args] of probes) {
       try {
-        await execa(cmd, ["cache", "purge"]);
-        printVerbose(`${symbols.soap} Executed: ${cmd} cache purge`);
-        return; // Success, don't try other commands
+        const result = await execa(cmd, args, {
+          stdin: "ignore",
+          timeout: 60_000,
+          reject: false,
+        });
+        if (result.failed || result.timedOut) {
+          printVerbose(
+            `Note: ${cmd} ${args.join(" ")} failed: ${result.stderr || result.stdout || "timed out/failed"}`,
+          );
+          continue;
+        }
+        printVerbose(`${symbols.soap} Executed: ${cmd} ${args.join(" ")}`);
+        return;
       } catch (error) {
         printVerbose(`Note: ${cmd} cache purge failed: ${error}`);
       }
