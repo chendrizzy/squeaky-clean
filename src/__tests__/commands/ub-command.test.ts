@@ -214,11 +214,7 @@ describe("squeaky ub command", () => {
     expect(fake.clear).toHaveBeenCalledWith(
       false,
       {
-        categories: [
-          "universal-plain",
-          "universal-tiny",
-          "universal-store",
-        ],
+        categories: ["universal-plain", "universal-tiny", "universal-store"],
         tickedIds: ["universal-store"],
         expectedPaths: {
           "universal-plain": "/Apps/Plain.app",

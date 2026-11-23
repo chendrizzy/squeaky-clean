@@ -203,14 +203,10 @@ export async function ubCommand(options: UBOptions): Promise<void> {
           const explicitIgnored = withoutSentinel.filter((id) =>
             Boolean(ignoredClass(id)),
           );
-          binariesToThin = [
-            ...thinnable.map((c) => c.id),
-            ...explicitIgnored,
-          ];
+          binariesToThin = [...thinnable.map((c) => c.id), ...explicitIgnored];
           // Same as --all for the safe set (floor still applies); only manual
           // auto-ignored ticks override class/floor.
-          tickedIds =
-            explicitIgnored.length > 0 ? explicitIgnored : undefined;
+          tickedIds = explicitIgnored.length > 0 ? explicitIgnored : undefined;
         } else {
           binariesToThin = withoutSentinel;
           tickedIds = withoutSentinel;

@@ -67,10 +67,12 @@ export async function ensureAgentHome(): Promise<AgentHome> {
   // rejects symlinks, so operating through the link path always fails; the
   // realpath must still be a user-owned 0700 directory.
   let home = agentHomeDir();
-  const link = await fs.promises.lstat(home).catch((e: NodeJS.ErrnoException) => {
-    if (e.code === "ENOENT") return null;
-    throw e;
-  });
+  const link = await fs.promises
+    .lstat(home)
+    .catch((e: NodeJS.ErrnoException) => {
+      if (e.code === "ENOENT") return null;
+      throw e;
+    });
   if (link?.isSymbolicLink()) {
     try {
       home = await fs.promises.realpath(home);
