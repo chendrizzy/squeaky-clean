@@ -50,9 +50,27 @@ describe.skipIf(!gate)("ub paths", () => {
     await expect(ensureAgentHome()).rejects.toBeInstanceOf(AgentHomeError);
   });
 
-  it("refuses a symlinked home", async () => {
+  it("resolves a symlinked home onto a secure real directory", async () => {
     const other = path.join(tmp, "other");
     fs.mkdirSync(other, { mode: 0o700 });
+    fs.chmodSync(other, 0o700);
+    fs.symlinkSync(other, path.join(tmp, "h"));
+    process.env.SQUEAKY_AGENT_HOME = path.join(tmp, "h");
+    const h = await ensureAgentHome();
+    expect(h.home).toBe(fs.realpathSync(other));
+    expect(fs.statSync(h.staging).mode & 0o777).toBe(0o700);
+  });
+
+  it("refuses a broken symlinked home", async () => {
+    fs.symlinkSync(path.join(tmp, "missing"), path.join(tmp, "h"));
+    process.env.SQUEAKY_AGENT_HOME = path.join(tmp, "h");
+    await expect(ensureAgentHome()).rejects.toBeInstanceOf(AgentHomeError);
+  });
+
+  it("refuses a symlinked home whose target is group-writable", async () => {
+    const other = path.join(tmp, "other");
+    fs.mkdirSync(other, { mode: 0o700 });
+    fs.chmodSync(other, 0o770);
     fs.symlinkSync(other, path.join(tmp, "h"));
     process.env.SQUEAKY_AGENT_HOME = path.join(tmp, "h");
     await expect(ensureAgentHome()).rejects.toBeInstanceOf(AgentHomeError);
