@@ -19,7 +19,18 @@ const fake = vi.hoisted(() => ({
   lastNotes: [] as string[],
 }));
 
-vi.mock("inquirer", () => ({ default: { prompt: vi.fn() } }));
+vi.mock("inquirer", () => ({
+  default: {
+    prompt: vi.fn(),
+    Separator: class Separator {
+      type = "separator" as const;
+      line: string;
+      constructor(line = "──────────────") {
+        this.line = line;
+      }
+    },
+  },
+}));
 vi.mock("ora", () => ({
   default: () => {
     const s = { start: () => s, stop: () => s, fail: () => s };
@@ -161,6 +172,54 @@ describe("squeaky ub command", () => {
         expectedPaths: {
           "universal-plain": "/Apps/Plain.app",
           "universal-tiny": "/Apps/Tiny.app",
+        },
+      },
+      undefined,
+      PROT,
+    );
+  });
+
+  it("the menu's 'select all except auto-ignored' matches --all (no tick)", async () => {
+    vi.mocked(inquirer.prompt).mockResolvedValueOnce({
+      binaries: ["__select_all_except_ignored__"],
+    });
+    await ubCommand({ force: true });
+    expect(fake.clear).toHaveBeenCalledWith(
+      false,
+      {
+        categories: ["universal-plain", "universal-tiny"],
+        tickedIds: undefined,
+        expectedPaths: {
+          "universal-plain": "/Apps/Plain.app",
+          "universal-tiny": "/Apps/Tiny.app",
+        },
+      },
+      undefined,
+      PROT,
+    );
+    const prompt = vi.mocked(inquirer.prompt).mock.calls[0]![0] as Array<{
+      choices: Array<{ name?: string; value?: string }>;
+    }>;
+    expect(prompt[0]!.choices[0]).toMatchObject({
+      name: "Select all except auto-ignored (2)",
+      value: "__select_all_except_ignored__",
+    });
+  });
+
+  it("select-all-safe plus an explicit auto-ignored tick keeps that override", async () => {
+    vi.mocked(inquirer.prompt).mockResolvedValueOnce({
+      binaries: ["__select_all_except_ignored__", "universal-store"],
+    });
+    await ubCommand({ force: true });
+    expect(fake.clear).toHaveBeenCalledWith(
+      false,
+      {
+        categories: ["universal-plain", "universal-tiny", "universal-store"],
+        tickedIds: ["universal-store"],
+        expectedPaths: {
+          "universal-plain": "/Apps/Plain.app",
+          "universal-tiny": "/Apps/Tiny.app",
+          "universal-store": "/Apps/Store.app",
         },
       },
       undefined,
