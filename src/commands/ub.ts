@@ -168,11 +168,24 @@ export async function ubCommand(options: UBOptions): Promise<void> {
       );
       console.log();
 
-      const choices = categories.map((cat) => ({
-        name: `${printable(cat.name)} (${formatSizeWithColor(cat.size || 0)} savings)${ignoredClass(cat.id) ? ` [auto-ignored: ${ignoredClass(cat.id)}]` : ""}`,
-        value: cat.id,
-        checked: false,
-      }));
+      // Top choice mirrors `squeaky ub --all`: every app that is not auto-ignored.
+      // An explicit tick on an auto-ignored app still overrides the class (spec §6.2).
+      const SELECT_ALL_SAFE = "__select_all_except_ignored__";
+      const choices: Array<
+        | { name: string; value: string; checked?: boolean }
+        | InstanceType<typeof inquirer.Separator>
+      > = [
+        {
+          name: `Select all except auto-ignored (${thinnable.length})`,
+          value: SELECT_ALL_SAFE,
+        },
+        new inquirer.Separator(),
+        ...categories.map((cat) => ({
+          name: `${printable(cat.name)} (${formatSizeWithColor(cat.size || 0)} savings)${ignoredClass(cat.id) ? ` [auto-ignored: ${ignoredClass(cat.id)}]` : ""}`,
+          value: cat.id,
+          checked: false,
+        })),
+      ];
 
       try {
         const answers = await inquirer.prompt<{ binaries: string[] }>([
@@ -180,12 +193,28 @@ export async function ubCommand(options: UBOptions): Promise<void> {
             type: "checkbox",
             name: "binaries",
             message:
-              "Select applications to thin (space to select, enter to confirm):",
+              "Select applications to thin (space to select, top item = all except auto-ignored, enter to confirm):",
             choices,
           },
         ]);
-        binariesToThin = answers.binaries;
-        tickedIds = answers.binaries;
+        const picked = answers.binaries;
+        const withoutSentinel = picked.filter((id) => id !== SELECT_ALL_SAFE);
+        if (picked.includes(SELECT_ALL_SAFE)) {
+          const explicitIgnored = withoutSentinel.filter((id) =>
+            Boolean(ignoredClass(id)),
+          );
+          binariesToThin = [
+            ...thinnable.map((c) => c.id),
+            ...explicitIgnored,
+          ];
+          // Same as --all for the safe set (floor still applies); only manual
+          // auto-ignored ticks override class/floor.
+          tickedIds =
+            explicitIgnored.length > 0 ? explicitIgnored : undefined;
+        } else {
+          binariesToThin = withoutSentinel;
+          tickedIds = withoutSentinel;
+        }
       } catch {
         // User cancelled
         printInfo("Operation cancelled.");
